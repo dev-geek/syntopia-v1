@@ -38,7 +38,7 @@ Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
 
 Route::post('/verify-test-code', [VerificationTestController::class, 'verifyCode']);
 
- 
+
 Route::get('/login-sub', [SubscriptionController::class, 'login'])->name('login-sub');
 Route::get('/admin/forgotpassword', [AdminController::class, 'AdminForgotPassword'])->name('admin.forgotpassword');
 Route::get('/admin/password/reset', [AdminForgotPasswordController::class, 'showLinkRequestForm'])->name('admin.password.request');
@@ -64,23 +64,26 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/update-password', [ProfileController::class, 'updatePassword'])->name('update-password');
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
 
-    
+
          //Subscription Plans
     Route::get('/subscription', [SubscriptionController::class, 'handleSubscription'])->name('subscription.general');
     Route::get('/pricing', [SubscriptionController::class, 'pricing'])->name('pricing');
 
+    // Payment routes
+    Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handlePaymentWebhook'])->name('payment.webhook');
 
-  
+
+
     Route::get('/starter-package-confirmed', [SubscriptionController::class, 'starterPackageConfirmed'])->name('starter-package-confirmed');
 
     Route::get('/pro-package-confirmed', [SubscriptionController::class, 'proPackageConfirmed'])->name('pro-package-confirmed');
 
     Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
 
-     
+
     });
-    
-        
+
+
 
 
 // Add this line before your auth routes
@@ -106,7 +109,7 @@ Route::middleware(['role'])->group(function () {
 
     Route::get('/add-users', [AdminController::class, 'addusers'])->name('add-users');
     Route::post('/add-user-excel', [AdminController::class, 'addExcelUsers'])->name('add-user-excel');
-    Route::get('/sub-admins', [AdminController::class, 'subadmins'])->name('subadmins');  
+    Route::get('/sub-admins', [AdminController::class, 'subadmins'])->name('subadmins');
     Route::post('/manage-sub-admins/update/{id}', [AdminController::class, 'managesubadmin'])->name('managesubadmin');
 });
 Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
@@ -126,7 +129,7 @@ Auth::routes([
 ]);
 
 Route::get('/home', [SubscriptionController::class, 'handleSubscription'])->name('profile');
- 
+
 
 Route::get('login/facebook', [SocialController::class, 'redirectToFacebook'])->name('login.facebook');
 Route::get('login/facebook/callback', [SocialController::class, 'handleFacebookCallback']);
