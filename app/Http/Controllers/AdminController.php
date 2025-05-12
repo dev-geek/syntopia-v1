@@ -179,5 +179,10 @@ class AdminController extends Controller
     {
         return view('admin.forgotpassword'); // Ensure you have a Blade file named `forgotpassword.blade.php`
     }
-    
+
+    public function createOrUpdateSubAdmin()
+    {
+
+    }
+
 }

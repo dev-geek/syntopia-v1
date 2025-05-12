@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\SubAdminController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SocialController;
 use App\Models\User;
@@ -110,7 +111,13 @@ Route::middleware(['role'])->group(function () {
     Route::get('/add-users', [AdminController::class, 'addusers'])->name('add-users');
     Route::post('/add-user-excel', [AdminController::class, 'addExcelUsers'])->name('add-user-excel');
     Route::get('/sub-admins', [AdminController::class, 'subadmins'])->name('subadmins');
-    Route::post('/manage-sub-admins/update/{id}', [AdminController::class, 'managesubadmin'])->name('managesubadmin');
+    // Route::post('/manage-sub-admins/update/{id}', [AdminController::class, 'managesubadmin'])->name('managesubadmin');
+
+    Route::get('sub-admins/create', [SubAdminController::class, 'create'])->name('sub-admins.create');// Store new subadmin
+    Route::post('sub-admins', [SubAdminController::class, 'store'])->name('sub-admins.store');
+    Route::get('sub-admins/{sub_admin}/edit', [SubAdminController::class, 'edit'])->name('sub-admins.edit');
+    Route::put('sub-admins/{sub_admin}', [SubAdminController::class, 'update'])->name('sub-admins.update');
+    Route::delete('sub-admins/{sub_admin}', [SubAdminController::class, 'destroy'])->name('sub-admins.destroy');
 });
 Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
 
