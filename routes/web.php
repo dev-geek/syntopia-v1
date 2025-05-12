@@ -14,8 +14,7 @@ use App\Http\Controllers\Auth\AdminResetPasswordController;
 use App\Http\Controllers\Auth\VerificationController;
 use App\Http\Controllers\VerificationTestController;
 use App\Http\Controllers\OrderController;
-
-
+use App\Http\Controllers\PaymentGatewaysController;
 
 /*
 |--------------------------------------------------------------------------
@@ -118,6 +117,11 @@ Route::middleware(['role'])->group(function () {
     Route::get('sub-admins/{sub_admin}/edit', [SubAdminController::class, 'edit'])->name('sub-admins.edit');
     Route::put('sub-admins/{sub_admin}', [SubAdminController::class, 'update'])->name('sub-admins.update');
     Route::delete('sub-admins/{sub_admin}', [SubAdminController::class, 'destroy'])->name('sub-admins.destroy');
+
+    // Manage Payment Gateways
+    Route::get('payment-gateways-list', [PaymentGatewaysController::class, 'index'])->name('payment-gateways.index');
+    Route::post('/payment-gateways/toggle-status', [PaymentGatewaysController::class, 'toggleStatus'])->name('payment-gateways.toggleStatus');
+
 });
 Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
 

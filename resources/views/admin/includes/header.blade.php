@@ -78,10 +78,10 @@
                         <a href="{{ route('add-users') }}" class="nav-link">Add Users</a>
                     </li>
                     <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('subadmins') }}" class="nav-link">Manage Sub Admin</a>
+                        <a href="{{ route('subadmins') }}" class="nav-link">Sub Admin</a>
                     </li>
                     <li class="nav-item d-none d-sm-inline-block">
-                        <a href="" class="nav-link">Manage Sub Admin</a>
+                        <a href="{{ route('payment-gateways.index') }}" class="nav-link">Payment Gateways</a>
                     </li>
                 @endif
                 <li class="nav-item d-none d-sm-inline-block">
