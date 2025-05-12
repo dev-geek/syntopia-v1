@@ -15,11 +15,6 @@
                             </button>
                         </div>
                     </div>
-                    @if (session('success'))
-                        <div class="alert alert-success mt-3">
-                            {{ session('success') }}
-                        </div>
-                    @endif
                     <form method="POST" action="{{ route('sub-admins.store') }}">
                         @csrf
 
@@ -43,15 +38,29 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="inputProjectLeader">Password</label>
-                                <input id="password" type="password"
-                                    class="form-control @error('password') is-invalid @enderror" name="password"
-                                    autocomplete="new-password">
+                                <label for="password">Password</label>
+                                <div class="input-group">
+                                    <input id="password" type="password" class="form-control" name="password">
+                                    <div class="input-group-append">
+                                        <span class="input-group-text" onclick="togglePassword('password', this)">
+                                            <i class="fas fa-eye"></i>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
+
                             <div class="form-group">
-                                <label for="inputProjectLeader">Confirm Password</label>
-                                <input id="password_confirmation" type="password" class="form-control"
-                                    name="password_confirmation" autocomplete="new-password">
+                                <label for="password_confirmation">Confirm Password</label>
+                                <div class="input-group">
+                                    <input id="password_confirmation" type="password" class="form-control"
+                                        name="password_confirmation">
+                                    <div class="input-group-append">
+                                        <span class="input-group-text"
+                                            onclick="togglePassword('password_confirmation', this)">
+                                            <i class="fas fa-eye"></i>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="row mb-0">
@@ -95,6 +104,21 @@
             "responsive": true,
         });
     });
+
+    // Toggle Password
+    function togglePassword(fieldId, iconSpan) {
+        const input = document.getElementById(fieldId);
+        const icon = iconSpan.querySelector('i');
+        if (input.type === "password") {
+            input.type = "text";
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            input.type = "password";
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    }
 </script>
 </body>
 
