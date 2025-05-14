@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
@@ -22,7 +23,7 @@ class Order extends Model
      */
     protected $fillable = [
         'user_id',
-        'package',
+        'package_id',
         'amount',
         'payment',
     ];
@@ -30,10 +31,20 @@ class Order extends Model
     /**
      * The relationships to other models.
      */
-    
+
     // Relationship with User model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function scopeForUser(Builder $query, int $userId): void
+    {
+        $query->where('user_id', $userId);
+    }
+
+    public function scopeUnpaid(Builder $query): void
+    {
+        $query->whereNull('payment');
     }
 }

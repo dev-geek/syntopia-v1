@@ -30,6 +30,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'pet',
         'verification_code',
+        'payment_gateway',
     ];
 
     /**
@@ -52,4 +53,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'password' => 'hashed',
         'status' => 'string'
     ];
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
 }

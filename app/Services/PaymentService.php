@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\PaymentGateways;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -28,11 +29,40 @@ class PaymentService
         return $this;
     }
 
+    // Determine gateway from user or admin
+    public function initializeGateway(Order $order)
+    {
+        $user = $order->user;
+
+        // User's existing gateway if set
+        if ($user->payment_gateway) {
+            $this->setGateway($user->payment_gateway);
+            return;
+        }
+
+        // Get admin's active gateway
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
+Log::info("Active Gateway Selected: {$activeGateway->name}");
+
+        if (!$activeGateway) {
+            throw new \Exception("No active payment gateway configured");
+        }
+
+        // Save to user's profile
+        $user->payment_gateway = $activeGateway->name;
+        $user->save();
+
+        $this->setGateway($activeGateway->name);
+        Log::info("PaymentService is using: {$this->gateway}");
+
+    }
+
     /**
      * Create a payment session for the given order
      */
     public function createPaymentSession(Order $order)
     {
+        $this->initializeGateway($order);
         switch ($this->gateway) {
             case 'fastspring':
                 return $this->createFastSpringSession($order);

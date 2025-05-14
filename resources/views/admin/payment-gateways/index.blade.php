@@ -47,11 +47,11 @@
                                                     @csrf
                                                     <input type="hidden" name="id" value="{{ $gateway->id }}">
                                                     <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" name="status"
-                                                            {{ $gateway->status == 1 ? 'checked' : '' }}
+                                                        <input class="form-check-input" type="checkbox" name="is_active"
+                                                            {{ $gateway->is_active == 1 ? 'checked' : '' }}
                                                             onchange="this.form.submit()">
                                                         <label class="form-check-label">
-                                                            {{ $gateway->status == 1 ? 'Active' : 'Inactive' }}
+                                                            {{ $gateway->is_active == 1 ? 'Active' : 'Inactive' }}
                                                         </label>
                                                     </div>
                                                 </form>

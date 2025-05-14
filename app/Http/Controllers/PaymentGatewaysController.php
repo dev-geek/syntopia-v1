@@ -36,21 +36,17 @@ class PaymentGatewaysController extends Controller
             }
 
             // Deactivate all first
-            PaymentGateways::query()->update(['status' => 0]);
+            PaymentGateways::query()->update(['is_active' => 0]);
 
             // Activate selected
-            $gateway->status = 1;
+            $gateway->is_active = 1;
             $gateway->save();
 
-            return redirect()->back()->with('success', $gateway->name . ' status changed successfully.');
+            return redirect()->back()->with('success', $gateway->name . ' payment gateway has been activated successfully.');
         } catch (\Exception $e) {
             Log::error('Payment gateway toggle error: '.$e->getMessage());
 
             return redirect()->back()->with('error', 'An unexpected error occurred. Please try again.');
         }
     }
-
-
-
-
 }
