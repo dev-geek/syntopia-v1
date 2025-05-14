@@ -23,19 +23,19 @@ class PaymentGatewaySeeder extends Seeder
         DB::table('payment_gateways')->insert([
             [
                 'name' => 'Pay Pro Global',
-                'status' => 1,
+                'is_active' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
                 'name' => 'FastSpring',
-                'status' => 0,
+                'is_active' => 0,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
                 'name' => 'Paddle',
-                'status' => 0,
+                'is_active' => 0,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],

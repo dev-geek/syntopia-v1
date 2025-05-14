@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -321,72 +322,51 @@
             }
         }
     </style>
-    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-        data-storefront="livebuzzstudio.test.onfastspring.com/popup-check-paymet" data-popup-closed="onFSPopupClosed">
-    </script>
+    <!-- Payment Gateway Scripts -->
+    @php
+        $activeGateways = $payment_gateways->pluck('name')->toArray();
+    @endphp
+    @if (in_array('FastSpring', $activeGateways))
+        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+            data-storefront="{{ config('payment.gateways.fastspring.storefront') }}" data-popup-closed="onFSPopupClosed">
+        </script>
+        <script>
+            function onFSPopupClosed(orderData) {
+                try {
+                    if (orderData?.reference) {
+                        console.log("Product purchased:", orderData.reference);
+                        // Handle successful purchase
+                        window.location.href = "/payment/success?gateway=fastspring&order=" + orderData.reference;
+                    } else {
+                        console.warn("Popup closed, but no order data returned.");
+                        window.location.href = "/payment/cancel?gateway=fastspring";
+                    }
+                } catch (err) {
+                    console.error("Error in onFSPopupClosed:", err);
+                }
+            }
+        </script>
+    @endif
 
+    <!-- Paddle Integration -->
+    @if (in_array('Paddle', $activeGateways))
+        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
+        <script>
+            Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
+            Paddle.Setup({
+                vendor: {{ config('payment.gateways.Paddle.vendor_id') }}
+            });
+        </script>
+    @endif
+
+    <!-- PayProGlobal Integration -->
+    @if (in_array('Pay Pro Global', $activeGateways))
+        <script src="{{ config('payment.gateways.payproglobal.script_url') }}"></script>
+    @endif
 
 </head>
 
 <body>
-    <script>
-        let currentSelectedPackage = "{{ $package ?? '' }}"; // default from URL
-
-        document.addEventListener("DOMContentLoaded", function() {
-            const packageFromURL = "{{ $package ?? '' }}";
-
-            // If coming directly from URL
-            if (packageFromURL !== '') {
-                const productPath = packageFromURL + "-plan";
-
-                fastspring.builder.add(productPath);
-
-                setTimeout(function() {
-                    fastspring.builder.checkout();
-                }, 100);
-            }
-
-            // Set up button clicks
-            document.querySelectorAll('.checkout-button').forEach(function(button) {
-                button.addEventListener('click', function() {
-                    const productPath = this.getAttribute('data-package');
-
-                    // Update the current selected package
-                    currentSelectedPackage = productPath.replace('-plan', '');
-
-                    fastspring.builder.add(productPath);
-
-                    setTimeout(function() {
-                        fastspring.builder.checkout();
-                    }, 100);
-                });
-            });
-        });
-
-        function onFSPopupClosed(orderReference) {
-            if (orderReference) {
-                console.log("Order ID:", orderReference.id);
-                fastspring.builder.reset();
-
-                // Correct dynamic redirection based on user selection
-                window.location.replace("/package/" + currentSelectedPackage);
-            } else {
-                console.log("Checkout was closed without a completed transaction.");
-            }
-        }
-    </script>
-
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById('get-started-free').addEventListener('click', function() {
-                if (!this.disabled) {
-                    window.location.href = "{{ route('subscription.general') }}?package_name=free";
-                }
-            });
-        });
-    </script>
-
-
 
     <div class="pricing-header">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
@@ -397,7 +377,6 @@
         <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
             @csrf
         </form>
-
     </div>
     <div class="pricing-wrapper">
         <div class="container">
@@ -413,11 +392,11 @@
                 <div class="card card-light">
                     <h3>Free</h3>
                     <p class="price">$0 <span class="per-month">/month</span></p>
-                    <button class="btn dark" id="get-started-free"
-                        {{ $latest_order_package == 'Free' ? 'disabled' : '' }}>
-                        {{ $latest_order_package == 'Free' ? 'Activated' : 'Get Started' }}
+                    <button class="btn dark checkout-button" data-package="free-plan"
+                        {{ $currentPackage == 'Free' ? 'disabled' : '' }}>
+                        {{ $currentPackage == 'Free' ? 'Activated' : 'Get Started' }}
                     </button>
-                    </button>
+
                     <p class="included-title">What's included</p>
                     <ul class="features">
                         <li><span class="icon"></span> 1 user</li>
@@ -436,8 +415,8 @@
                     <h3>Starter</h3>
                     <p class="price">$390 <span class="per-month">/60hrs a month</span></p>
                     <button class="btn dark checkout-button" data-package="starter-plan"
-                        {{ $latest_order_package == 'Starter' ? 'disabled' : '' }}>
-                        {{ $latest_order_package == 'Starter' ? 'Activated' : 'Get Started' }}
+                        {{ $currentPackage == 'Starter' ? 'disabled' : '' }}>
+                        {{ $currentPackage == 'Starter' ? 'Activated' : 'Get Started' }}
                     </button>
 
 
@@ -460,11 +439,11 @@
                 <div class="card card-dark">
                     <h3>Pro</h3>
                     <p class="price">$780 <span class="per-month">/120hrs a month</span></p>
-                    <!-- Button with Conditional Text and Disable Logic for Pro Plan -->
-                    <button class="btn purple checkout-button" data-package="pro-plan"
-                        {{ $latest_order_package == 'Pro' ? 'disabled' : '' }}>
-                        {{ $latest_order_package == 'Pro' ? 'Activated' : 'Get Started' }}
+                    <button class="btn dark checkout-button" data-package="pro-plan"
+                        {{ $currentPackage == 'Pro' ? 'disabled' : '' }}>
+                        {{ $currentPackage == 'Pro' ? 'Activated' : 'Get Started' }}
                     </button>
+
 
                     <p class="included-title">What's included</p>
                     <ul class="features">
@@ -488,10 +467,9 @@
                     <h3>Business</h3>
                     <p class="price">$2800 <span class="per-month">/unlimited</span></p>
                     <button class="btn dark checkout-button" data-package="business-plan"
-                        {{ $latest_order_package == 'Business' ? 'disabled' : '' }}>
-                        {{ $latest_order_package == 'Business' ? 'Activated' : 'Get Started' }}
+                        {{ $currentPackage == 'Business' ? 'disabled' : '' }}>
+                        {{ $currentPackage == 'Business' ? 'Activated' : 'Get Started' }}
                     </button>
-
                     <p class="included-title">What's included</p>
                     <ul class="features">
                         <li><span class="icon"></span> 3 users</li>
@@ -528,6 +506,7 @@
             </div>
         </div>
     </div>
+
     <div class="addons-wrapper">
         <div class="container">
             <div class="badge-wrapper">
@@ -569,8 +548,6 @@
                     </div>
                 </div>
             </div>
-
-
         </div>
     </div>
 
@@ -579,6 +556,165 @@
         <a href="mailto:support@syntopia.ai">support@syntopia.ai</a>
     </footer>
 
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Get current package and active gateways from backend
+            const currentPackage = "{{ $currentPackage ?? '' }}";
+            const activeGateways = @json($payment_gateways->pluck('name')->toArray() ?? []);
+
+            // Display error message if no gateways available
+            if (!activeGateways || activeGateways.length === 0) {
+                console.error('No payment gateways configured');
+            }
+
+            // Add click event listeners to all checkout buttons
+            document.querySelectorAll('.checkout-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    // Don't proceed if button is disabled (current plan)
+                    if (this.disabled) return;
+
+                    // Disable button temporarily to prevent double-clicks
+                    this.disabled = true;
+
+                    // Get product package from button's data attribute
+                    const productPath = this.getAttribute('data-package');
+
+                    // Process checkout with the selected package
+                    processCheckout(productPath);
+
+                    // Re-enable button after delay
+                    setTimeout(() => {
+                        this.disabled = false;
+                    }, 3000);
+                });
+            });
+
+            // Check if a package was specified in the URL
+            const packageFromURL = "{{ $currentPackage ?? '' }}";
+            if (packageFromURL && packageFromURL !== '' && packageFromURL !== currentPackage) {
+                processCheckout(packageFromURL.toLowerCase() + "-plan");
+            }
+
+            // Main checkout processing function
+            function processCheckout(productPath) {
+                if (!activeGateways || activeGateways.length === 0) {
+                    alert('No payment gateways are available. Please contact support.');
+                    return;
+                }
+
+                // Use the first active gateway
+                const activeGateway = activeGateways[0];
+
+                try {
+                    switch (activeGateway) {
+                        case 'FastSpring':
+                            processFastSpring(productPath);
+                            break;
+                        case 'Paddle':
+                            processPaddle(productPath);
+                            break;
+                        case 'Pay Pro Global':
+                            processPayProGlobal(productPath);
+                            break;
+                        default:
+                            throw new Error(`Unsupported payment gateway: ${activeGateway}`);
+                    }
+                } catch (error) {
+                    console.error('Checkout error:', error);
+                    alert('Payment gateway error. Please try again later or contact support.');
+                }
+            }
+
+            // FastSpring-specific processing
+            function processFastSpring(productPath) {
+                if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                    throw new Error('FastSpring is not properly initialized');
+                }
+
+                fastspring.builder.add(productPath);
+
+                // Use timeout to ensure the product is added before checkout
+                setTimeout(() => {
+                    fastspring.builder.checkout();
+                }, 100);
+            }
+
+            // Paddle-specific processing
+            function processPaddle(productPath) {
+                const packageName = productPath.replace('-plan', '');
+
+                fetch(`/api/paddle/checkout/${packageName}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('auth_token')}` // If using token auth
+                        },
+                        credentials: 'include' // Important for session cookies
+                    })
+                    .then(response => {
+                        const contentType = response.headers.get('content-type');
+                        if (!contentType || !contentType.includes('application/json')) {
+                            return response.text().then(text => {
+                                throw new Error(`Expected JSON but got: ${text.substring(0, 100)}...`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data.checkoutUrl) {
+                            throw new Error('Invalid checkout URL received from server');
+                        }
+
+                        if (typeof Paddle === 'undefined') {
+                            throw new Error('Paddle payment system not loaded');
+                        }
+
+                        Paddle.Checkout.open({
+                            override: data.checkoutUrl
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Paddle checkout error:', error);
+                        alert(`Payment error: ${error.message}`);
+                    });
+            }
+
+            // PayProGlobal-specific processing
+            function processPayProGlobal(productPath) {
+                // Extract package name (remove "-plan" suffix)
+                const packageName = productPath.replace('-plan', '');
+
+                // Request checkout URL from server
+                fetch(`/api/payproglobal/checkout/${packageName}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data.checkoutUrl) {
+                            throw new Error('Invalid checkout URL received from server');
+                        }
+
+                        // Redirect to PayProGlobal checkout
+                        window.location.href = data.checkoutUrl;
+                    })
+                    .catch(error => {
+                        console.error('PayProGlobal checkout error:', error);
+                        alert('Payment processing error. Please try again or contact support.');
+                    });
+            }
+        });
+    </script>
 </body>
 
 </html>

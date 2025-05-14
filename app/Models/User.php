@@ -59,4 +59,10 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Order::class);
     }
 
+    public function latestOrderPackageName()
+    {
+        // Get the latest order and return its associated package name
+        return $this->orders()->latest()->first()?->package->name ?? null;
+    }
+
 }

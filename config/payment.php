@@ -1,30 +1,66 @@
 <?php
 
 return [
-    'default_gateway' => 'fastspring', // Default fallback
+    /*
+    |--------------------------------------------------------------------------
+    | Default Payment Gateway
+    |--------------------------------------------------------------------------
+    |
+    | This option controls which payment gateway will be used by default when
+    | no specific gateway is mentioned. You can set this to any of the
+    | supported gateways.
+    |
+    */
+    'default_gateway' => env('DEFAULT_PAYMENT_GATEWAY', 'FastSpring'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Payment Gateways
+    |--------------------------------------------------------------------------
+    |
+    | Here you may configure all of the payment gateways for your application.
+    |
+    */
     'gateways' => [
-        'fastspring' => [
-            'api_url' => env('FASTSPRING_API_URL'),
-            'username' => env('FASTSPRING_USERNAME'),
-            'password' => env('FASTSPRING_PASSWORD'),
-            'webhook_secret' => env('FASTSPRING_SECRET'),
-        ],
-        'payproglobal' => [
-            'api_url' => env('PAYPROGLOBAL_API_URL'),
-            'api_key' => env('PAYPROGLOBAL_API_KEY'),
-            'webhook_secret' => env('PAYPROGLOBAL_SECRET'),
-        ],
-        'paddle' => [
-            'checkout_url' => env('PADDLE_CHECKOUT_URL'),
-            'vendor_id' => env('PADDLE_VENDOR_ID'),
-            'auth_code' => env('PADDLE_AUTH_CODE'),
-            'public_key' => env('PADDLE_PUBLIC_KEY'),
+        'FastSpring' => [
+            'storefront' => env('FASTSPRING_STOREFRONT', 'livebuzzstudio.test.onfastspring.com/popup-check-paymet'),
+            'username' => env('FASTSPRING_USERNAME', ''),
+            'password' => env('FASTSPRING_PASSWORD', ''),
+            'webhook_secret' => env('FASTSPRING_WEBHOOK_SECRET', ''),
             'product_ids' => [
-                'starter' => env('PADDLE_STARTER_ID'),
-                'pro' => env('PADDLE_PRO_ID'),
-                'business' => env('PADDLE_BUSINESS_ID'),
-                'default' => env('PADDLE_DEFAULT_ID'),
+                'free' => 'free-plan',
+                'starter' => 'starter-plan',
+                'pro' => 'pro-plan',
+                'business' => 'business-plan',
+                'enterprise' => 'enterprise-plan',
+            ],
+        ],
+
+        'Paddle' => [
+            'vendor_id' => env('PADDLE_VENDOR_ID', '216879'),
+            'api_key' => env('PADDLE_API_KEY', ''),
+            'public_key' => env('PADDLE_PUBLIC_KEY', ''),
+            'api_url' => env('PADDLE_API_URL', 'https://vendors.paddle.com/api/2.0'),
+            'environment' => env('PADDLE_ENVIRONMENT', 'production'), // sandbox or production
+            'product_ids' => [
+                'starter' => (int)env('PADDLE_PRODUCT_STARTER', 1),
+                'pro' => (int)env('PADDLE_PRODUCT_PRO', 2),
+                'business' => (int)env('PADDLE_PRODUCT_BUSINESS', 3),
+                'enterprise' => (int)env('PADDLE_PRODUCT_ENTERPRISE', 4),
+            ],
+            'checkout_url' => 'https://sandbox-checkout.paddle.com'
+        ],
+
+        'PayProGlobal' => [
+            'api_key' => env('PAYPROGLOBAL_API_KEY', ''),
+            'api_url' => env('PAYPROGLOBAL_API_URL', 'https://api.payproglobal.com/v1'),
+            'script_url' => env('PAYPROGLOBAL_SCRIPT_URL', 'https://checkout.payproglobal.com/checkout.js'),
+            'webhook_secret' => env('PAYPROGLOBAL_WEBHOOK_SECRET', ''),
+            'product_ids' => [
+                'starter' => (int)env('PPG_PRODUCT_STARTER', 1),
+                'pro' => (int)env('PPG_PRODUCT_PRO', 2),
+                'business' => (int)env('PPG_PRODUCT_BUSINESS', 3),
+                'enterprise' => (int)env('PPG_PRODUCT_ENTERPRISE', 4),
             ],
         ],
     ],

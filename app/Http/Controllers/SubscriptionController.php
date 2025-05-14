@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Order;
+use App\Models\Package;
+use App\Models\PaymentGateways;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class SubscriptionController extends Controller
 {
@@ -14,164 +17,143 @@ class SubscriptionController extends Controller
         protected PaymentService $paymentService
     ) {}
 
-    public function createPaymentSession()
+    public function handleSubscription()
+{
+    $user = auth()->user();
+
+    // Check if user has an active package
+    if ($user && $user->package && $user->subscription_ends_at && $user->subscription_ends_at > now()) {
+        // User has an active subscription, redirect to their dashboard
+        return redirect()->route('profile');
+    } else if ($user && $user->package && $user->package === 'Free') {
+        // User is on the free plan
+        return redirect()->route('profile');
+    } else {
+        // User doesn't have an active package, show pricing page
+        return $this->index();
+    }
+}
+
+/**
+ * Display the pricing page
+ */
+public function index()
+{
+    return view('subscription.index', [
+        'payment_gateways' => PaymentGateways::where('is_active', 1)->get(),
+        'currentPackage' => auth()->user()->package ?? null,
+    ]);
+}
+
+/**
+ * Handle webhook callbacks from payment gateways
+ */
+public function handlePaymentWebhook(Request $request, $gateway)
+{
+    Log::info("Webhook received from $gateway", [
+        'headers' => $request->headers->all(),
+        'data' => $request->all()
+    ]);
+
+    try {
+        $this->paymentService->setGateway($gateway);
+        $result = $this->paymentService->handlePaymentCallback($request->all());
+
+        return response()->json(['status' => 'success']);
+    } catch (\Exception $e) {
+        Log::error("$gateway webhook processing error", ['error' => $e->getMessage()]);
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
+    /**
+     * Handle Paddle checkout API request
+     */
+    public function paddleCheckout(Request $request, $packageName)
     {
         try {
-            $order = Order::query()
-                ->forUser(Auth::id())
-                ->unpaid()
-                ->latest()
-                ->firstOrFail();
+            $this->paymentService->setGateway('Paddle');
+            $result = $this->paymentService->createPaymentSession($packageName, auth()->user());
 
-            return redirect()->away(
-                $this->paymentService->createPaymentSession($order)
-            );
+            return response()->json($result);
         } catch (\Exception $e) {
-            Log::error("Payment session error: {$e->getMessage()}");
-            return back()->with('error', $e->getMessage());
+            Log::error('Paddle checkout error', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
-    public function pricing()
-    {
-        $user = Auth::user();
-        $latestOrder = Order::query()
-            ->forUser($user->id)
-            ->latest()
-            ->first();
-
-        return view('subscription.index', [
-            'user_order' => $user->orders,
-            'latest_order_package' => $latestOrder?->package
-        ]);
-    }
-
-    public function handleSubscription(Request $request)
-    {
-        $user = Auth::user();
-        $package = strtolower($request->query('package_name', ''));
-
-        if ($this->hasExistingPackage($user, $package)) {
-            return view('subscription.package', [
-                'latest_order_package' => $package
-            ]);
-        }
-
-        if ($package === 'free') {
-            $this->createFreeOrder($user);
-            return $this->packageView($user, $package);
-        }
-
-        return view('subscription.index', [
-            'package' => $package,
-            'latest_order_package' => $user->latestOrder?->package
-        ]);
-    }
-
-    // Package handlers
-    public function handleStarterPackage()
-    {
-        return $this->handlePackage('Starter', 390);
-    }
-
-    public function handleProPlan()
-    {
-        return $this->handlePackage('Pro', 780);
-    }
-
-    public function handleBusinessPlan()
-    {
-        return $this->handlePackage('Business', 2800);
-    }
-
-    // Confirmation handlers
-    public function starterPackageConfirmed()
-    {
-        return $this->confirmPackage('Starter');
-    }
-
-    public function proPackageConfirmed()
-    {
-        return $this->confirmPackage('Pro');
-    }
-
-    public function businessPackageConfirmed()
-    {
-        return $this->confirmPackage('Business');
-    }
-
-    // Webhook handler
-    public function handlePaymentWebhook(Request $request, string $gateway)
+    /**
+     * Handle PayProGlobal checkout API request
+     */
+    public function payProGlobalCheckout(Request $request, $packageName)
     {
         try {
-            $this->paymentService->setGateway($gateway)
-                ->handlePaymentCallback($request->all());
+            $this->paymentService->setGateway('Pay Pro Global');
+            $result = $this->paymentService->createPaymentSession($packageName, auth()->user());
 
-            return response()->json(['success' => true]);
+            return response()->json($result);
         } catch (\Exception $e) {
-            Log::error("Payment webhook error: {$e->getMessage()}");
-            return response()->json(['error' => $e->getMessage()], 400);
+            Log::error('PayProGlobal checkout error', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
-    /*********************
-     * Private Helpers *
-     *********************/
-
-    private function handlePackage(string $package, float $amount)
+    /**
+     * Handle successful payment
+     */
+    public function paymentSuccess(Request $request)
     {
-        $user = Auth::user();
+        $gateway = $request->query('gateway');
+        $orderId = $request->query('order');
 
-        $order = Order::firstOrCreate(
-            ['user_id' => $user->id, 'package' => $package],
-            ['amount' => $amount, 'payment' => null]
-        );
-
-        return view("subscription.{$package}", [
-            'hasPackage' => is_null($order->payment),
-            'hasFreePackage' => $user->orders()->where('package', 'Free')->exists()
+        Log::info("Payment success callback", [
+            'gateway' => $gateway,
+            'order' => $orderId,
+            'data' => $request->all()
         ]);
+
+        // For FastSpring we need to update the order immediately since we don't wait for webhook
+        if ($gateway === 'fastspring' && $orderId) {
+            $order = Order::find($orderId);
+            if ($order && $order->status === 'pending') {
+                $order->update([
+                    'status' => 'completed',
+                    'transaction_id' => 'FS-' . Str::random(10), // Placeholder until webhook arrives
+                    'payment_method' => 'FastSpring'
+                ]);
+
+                // Update user subscription
+                $user = $order->user;
+                $user->update([
+                    'package' => $order->package,
+                    'subscription_ends_at' => now()->addMonth(), // Adjust based on package
+                ]);
+            }
+        }
+
+        // Flash success message
+        session()->flash('success', 'Your subscription has been successfully processed!');
+
+        // Redirect
+        return redirect()->route('pricing');
     }
 
-    private function confirmPackage(string $package)
+    /**
+     * Handle cancelled payment
+     */
+    public function paymentCancel(Request $request)
     {
-        $user = Auth::user();
+        $gateway = $request->query('gateway');
 
-        $user->orders()
-            ->where('package', $package)
-            ->update(['payment' => 'yes']);
-
-        return view('subscription.index', [
-            'packages' => $user->orders()
-                ->select('package')
-                ->distinct()
-                ->pluck('package')
+        Log::info("Payment cancelled", [
+            'gateway' => $gateway,
+            'data' => $request->all()
         ]);
-    }
 
-    private function hasExistingPackage($user, string $package): bool
-    {
-        return $user->orders()
-            ->whereRaw('LOWER(package) = ?', [strtolower($package)])
-            ->exists();
-    }
+        // Flash message
+        session()->flash('error', 'Your payment was cancelled. Please try again or contact support if you need assistance.');
 
-    private function createFreeOrder($user): void
-    {
-        $user->orders()->create([
-            'package' => 'Free',
-            'amount' => 0,
-            'payment' => null
-        ]);
-    }
-
-    private function packageView($user, string $package)
-    {
-        return view('subscription.package', [
-            'user_order' => $user->orders,
-            'latest_order_package' => $user->orders()
-                ->latest()
-                ->value('package')
-        ]);
+        // Redirect back to subscription page
+        return redirect()->route('subscription.index');
     }
 }

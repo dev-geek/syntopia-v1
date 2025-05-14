@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\PaymentGateways;
+use App\Models\Package;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class PaymentService
 {
@@ -16,7 +19,7 @@ class PaymentService
     {
         // Default gateway can be set from config or database
         $this->gateway = config('payment.default_gateway');
-        $this->config = config('payment.gateways.'.$this->gateway);
+        $this->config = config('payment.gateways.' . $this->gateway);
     }
 
     /**
@@ -25,11 +28,13 @@ class PaymentService
     public function setGateway($gateway)
     {
         $this->gateway = $gateway;
-        $this->config = config('payment.gateways.'.$gateway);
+        $this->config = config('payment.gateways.' . $gateway);
         return $this;
     }
 
-    // Determine gateway from user or admin
+    /**
+     * Determine gateway from user or admin settings
+     */
     public function initializeGateway(Order $order)
     {
         $user = $order->user;
@@ -42,11 +47,12 @@ class PaymentService
 
         // Get admin's active gateway
         $activeGateway = PaymentGateways::where('is_active', true)->first();
-Log::info("Active Gateway Selected: {$activeGateway->name}");
 
         if (!$activeGateway) {
             throw new \Exception("No active payment gateway configured");
         }
+
+        Log::info("Active Gateway Selected: {$activeGateway->name}");
 
         // Save to user's profile
         $user->payment_gateway = $activeGateway->name;
@@ -54,21 +60,40 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
 
         $this->setGateway($activeGateway->name);
         Log::info("PaymentService is using: {$this->gateway}");
-
     }
 
     /**
-     * Create a payment session for the given order
+     * Create a payment session for the given package and user
      */
-    public function createPaymentSession(Order $order)
+    public function createPaymentSession(string $packageName, User $user)
     {
-        $this->initializeGateway($order);
+        // Create an order record
+        $package = Package::where('name', $packageName)->firstOrFail();
+
+        $order = Order::create([
+            'user_id' => $user->id,
+            'package' => $packageName,
+            'amount' => $package->price,
+            'status' => 'pending',
+            'order_id' => 'ORD-' . strtoupper(Str::random(10)),
+        ]);
+
+        // Determine the payment gateway to use
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
+
+        if (!$activeGateway) {
+            throw new \Exception("No active payment gateway configured");
+        }
+
+        $this->setGateway($activeGateway->name);
+
+        // Process with appropriate gateway
         switch ($this->gateway) {
-            case 'fastspring':
+            case 'FastSpring':
                 return $this->createFastSpringSession($order);
-            case 'paddle':
+            case 'Paddle':
                 return $this->createPaddleSession($order);
-            case 'payproglobal':
+            case 'Pay Pro Global':
                 return $this->createPayProGlobalSession($order);
             default:
                 throw new \Exception("Unsupported payment gateway: {$this->gateway}");
@@ -81,11 +106,11 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
     public function handlePaymentCallback(array $data)
     {
         switch ($this->gateway) {
-            case 'fastspring':
+            case 'FastSpring':
                 return $this->handleFastSpringCallback($data);
-            case 'paddle':
+            case 'Paddle':
                 return $this->handlePaddleCallback($data);
-            case 'payproglobal':
+            case 'Pay Pro Global':
                 return $this->handlePayProGlobalCallback($data);
             default:
                 throw new \Exception("Unsupported payment gateway: {$this->gateway}");
@@ -97,28 +122,14 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
      */
     protected function createFastSpringSession(Order $order)
     {
-        $payload = [
-            'reference' => 'order_'.$order->id,
-            'product' => $order->package,
-            'price' => $order->amount,
-            'currency' => 'USD',
-            'customer' => [
-                'email' => $order->user->email,
-                'firstName' => $order->user->name,
-            ],
-            'returnUrl' => route('payment.success'),
-            'cancelUrl' => route('payment.cancel'),
+        // For FastSpring, we don't need to create a session via API
+        // The JavaScript library handles it client-side
+        // But we'll return the product path to use
+        return [
+            'success' => true,
+            'productPath' => $this->getFastSpringProductPath($order->package),
+            'orderId' => $order->id
         ];
-
-        $response = Http::withBasicAuth($this->config['username'], $this->config['password'])
-            ->post($this->config['api_url'].'/sessions', $payload);
-
-        if ($response->failed()) {
-            Log::error('FastSpring API Error', ['response' => $response->body()]);
-            throw new \Exception('Failed to create FastSpring session');
-        }
-
-        return $response->json()['url']; // Return checkout URL
     }
 
     protected function handleFastSpringCallback(array $data)
@@ -127,6 +138,7 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
         $signature = hash_hmac('sha256', $data['events'], $this->config['webhook_secret']);
 
         if (!hash_equals($signature, $data['signature'])) {
+            Log::error('Invalid FastSpring webhook signature');
             throw new \Exception('Invalid FastSpring webhook signature');
         }
 
@@ -141,10 +153,13 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
                 $order = Order::find($orderId);
                 if ($order) {
                     $order->update([
-                        'payment' => 'yes',
+                        'status' => 'completed',
                         'transaction_id' => $event['data']['id'],
-                        'payment_method' => 'fastspring',
+                        'payment_method' => 'FastSpring',
                     ]);
+
+                    // Update user subscription
+                    $this->updateUserSubscription($order);
                 }
             }
         }
@@ -157,26 +172,30 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
      */
     protected function createPaddleSession(Order $order)
     {
+        // For Paddle API v2
         $payload = [
-            'vendor_id' => $this->config['vendor_id'],
-            'vendor_auth_code' => $this->config['auth_code'],
             'product_id' => $this->getPaddleProductId($order->package),
-            'title' => $order->package.' Subscription',
-            'image_url' => asset('images/logo.png'),
-            'prices' => [$order->amount.'USD'],
-            'return_url' => route('payment.success'),
             'customer_email' => $order->user->email,
             'passthrough' => json_encode(['order_id' => $order->id]),
+            'return_url' => route('payment.success', ['gateway' => 'paddle']),
+            'cancel_url' => route('payment.cancel', ['gateway' => 'paddle']),
         ];
 
-        $response = Http::post($this->config['checkout_url'], $payload);
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->config['api_key'],
+            ])->post($this->config['api_url'] . '/checkout', $payload);
 
-        if ($response->failed()) {
-            Log::error('Paddle API Error', ['response' => $response->body()]);
-            throw new \Exception('Failed to create Paddle checkout');
+            if ($response->failed()) {
+                Log::error('Paddle API Error', ['response' => $response->body()]);
+                throw new \Exception('Failed to create Paddle checkout: ' . $response->body());
+            }
+
+            return ['success' => true, 'checkoutUrl' => $response->json()['url']];
+        } catch (\Exception $e) {
+            Log::error('Paddle checkout error', ['error' => $e->getMessage()]);
+            return ['success' => false, 'error' => $e->getMessage()];
         }
-
-        return $response->json()['response']['url']; // Return checkout URL
     }
 
     protected function handlePaddleCallback(array $data)
@@ -184,6 +203,7 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
         // Verify Paddle webhook signature
         $publicKey = $this->config['public_key'];
         $signature = base64_decode($data['p_signature']);
+
         $fields = $data;
         unset($fields['p_signature']);
         ksort($fields);
@@ -192,20 +212,27 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
         $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA1);
 
         if ($verified !== 1) {
+            Log::error('Invalid Paddle webhook signature');
             throw new \Exception('Invalid Paddle webhook signature');
         }
 
         // Process the event
         if ($data['alert_name'] === 'payment_succeeded') {
-            $orderId = json_decode($data['passthrough'], true)['order_id'];
+            $passthrough = json_decode($data['passthrough'], true);
+            $orderId = $passthrough['order_id'] ?? null;
 
-            $order = Order::find($orderId);
-            if ($order) {
-                $order->update([
-                    'payment' => 'yes',
-                    'transaction_id' => $data['checkout_id'],
-                    'payment_method' => 'paddle',
-                ]);
+            if ($orderId) {
+                $order = Order::find($orderId);
+                if ($order) {
+                    $order->update([
+                        'status' => 'completed',
+                        'transaction_id' => $data['checkout_id'],
+                        'payment_method' => 'Paddle',
+                    ]);
+
+                    // Update user subscription
+                    $this->updateUserSubscription($order);
+                }
             }
         }
 
@@ -217,58 +244,69 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
      */
     protected function createPayProGlobalSession(Order $order)
     {
-        $payload = [
-            'customer' => [
-                'email' => $order->user->email,
-                'firstName' => $order->user->name,
-            ],
-            'product' => [
-                'name' => $order->package.' Subscription',
-                'price' => $order->amount,
-                'currency' => 'USD',
-            ],
-            'settings' => [
-                'returnUrl' => route('payment.success'),
-                'cancelUrl' => route('payment.cancel'),
-            ],
-            'custom' => [
-                'order_id' => $order->id,
-            ],
-        ];
+        try {
+            $payload = [
+                'product_id' => $this->getPayProGlobalProductId($order->package),
+                'customer' => [
+                    'email' => $order->user->email,
+                    'first_name' => $order->user->first_name ?? 'Customer',
+                    'last_name' => $order->user->last_name ?? $order->user->id,
+                ],
+                'custom_fields' => [
+                    'order_id' => $order->id,
+                ],
+                'return_url' => route('payment.success', ['gateway' => 'payproglobal']),
+                'cancel_url' => route('payment.cancel', ['gateway' => 'payproglobal']),
+            ];
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer '.$this->config['api_key'],
-            'Content-Type' => 'application/json',
-        ])->post($this->config['api_url'].'/checkout', $payload);
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->config['api_key'],
+                'Content-Type' => 'application/json',
+            ])->post($this->config['api_url'] . '/checkout-sessions', $payload);
 
-        if ($response->failed()) {
-            Log::error('PayProGlobal API Error', ['response' => $response->body()]);
-            throw new \Exception('Failed to create PayProGlobal checkout');
+            if ($response->failed()) {
+                Log::error('PayProGlobal API Error', ['response' => $response->body()]);
+                throw new \Exception('Failed to create PayProGlobal checkout: ' . $response->body());
+            }
+
+            return ['success' => true, 'checkoutUrl' => $response->json()['checkout_url']];
+        } catch (\Exception $e) {
+            Log::error('PayProGlobal checkout error', ['error' => $e->getMessage()]);
+            return ['success' => false, 'error' => $e->getMessage()];
         }
-
-        return $response->json()['url']; // Return checkout URL
     }
 
     protected function handlePayProGlobalCallback(array $data)
     {
         // Verify webhook signature
-        $signature = hash_hmac('sha256', json_encode($data), $this->config['webhook_secret']);
+        $receivedSignature = $data['signature'] ?? '';
+        $payload = $data;
+        unset($payload['signature']);
 
-        if (!hash_equals($signature, $data['signature'])) {
+        $calculatedSignature = hash_hmac('sha256', json_encode($payload), $this->config['webhook_secret']);
+
+        if (!hash_equals($calculatedSignature, $receivedSignature)) {
+            Log::error('Invalid PayProGlobal webhook signature');
             throw new \Exception('Invalid PayProGlobal webhook signature');
         }
 
         // Process the event
-        if ($data['event'] === 'payment.completed') {
-            $orderId = $data['custom']['order_id'];
+        if ($data['event_type'] === 'payment_success') {
+            $customFields = $data['custom_fields'] ?? [];
+            $orderId = $customFields['order_id'] ?? null;
 
-            $order = Order::find($orderId);
-            if ($order) {
-                $order->update([
-                    'payment' => 'yes',
-                    'transaction_id' => $data['transaction_id'],
-                    'payment_method' => 'payproglobal',
-                ]);
+            if ($orderId) {
+                $order = Order::find($orderId);
+                if ($order) {
+                    $order->update([
+                        'status' => 'completed',
+                        'transaction_id' => $data['transaction_id'] ?? null,
+                        'payment_method' => 'Pay Pro Global',
+                    ]);
+
+                    // Update user subscription
+                    $this->updateUserSubscription($order);
+                }
             }
         }
 
@@ -276,16 +314,78 @@ Log::info("Active Gateway Selected: {$activeGateway->name}");
     }
 
     /**
-     * Helper method to get Paddle product ID based on package
+     * Update user subscription based on completed order
      */
-    protected function getPaddleProductId(string $package): string
+    protected function updateUserSubscription(Order $order)
+    {
+        $user = $order->user;
+
+        // Update user's subscription details
+        $user->update([
+            'package' => $order->package,
+            'subscription_ends_at' => $this->calculateSubscriptionEndDate($order->package),
+        ]);
+
+        // You might want to log subscription activity or trigger other services
+        Log::info("User {$user->id} subscription updated to {$order->package}");
+
+        return true;
+    }
+
+    /**
+     * Calculate subscription end date based on package
+     */
+    protected function calculateSubscriptionEndDate(string $packageName)
+    {
+        // This is just an example - adjust based on your actual packages
+        $periodMap = [
+            'Free' => null, // No end date for free tier
+            'Starter' => now()->addMonth(),
+            'Pro' => now()->addMonth(),
+            'Business' => now()->addMonth(),
+            'Enterprise' => now()->addYear(), // Assuming enterprise is annual
+        ];
+
+        return $periodMap[$packageName] ?? now()->addMonth();
+    }
+
+    /**
+     * Helper methods to get product IDs for each gateway
+     */
+    protected function getFastSpringProductPath(string $package): string
+    {
+        $mapping = [
+            'Free' => 'free-plan',
+            'Starter' => 'starter-plan',
+            'Pro' => 'pro-plan',
+            'Business' => 'business-plan',
+            'Enterprise' => 'enterprise-plan',
+        ];
+
+        return $mapping[$package] ?? 'starter-plan';
+    }
+
+    protected function getPaddleProductId(string $package): int
     {
         $mapping = [
             'Starter' => $this->config['product_ids']['starter'],
             'Pro' => $this->config['product_ids']['pro'],
             'Business' => $this->config['product_ids']['business'],
+            'Enterprise' => $this->config['product_ids']['enterprise'],
         ];
 
-        return $mapping[$package] ?? $this->config['product_ids']['default'];
+        return $mapping[$package] ?? $this->config['product_ids']['starter'];
+    }
+
+    protected function getPayProGlobalProductId(string $package): int
+    {
+        $mapping = [
+            'Starter' => $this->config['product_ids']['starter'],
+            'Pro' => $this->config['product_ids']['pro'],
+            'Business' => $this->config['product_ids']['business'],
+            'Enterprise' => $this->config['product_ids']['enterprise'],
+        ];
+
+        return $mapping[$package] ?? $this->config['product_ids']['starter'];
     }
 }
