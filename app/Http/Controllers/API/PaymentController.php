@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Config;
-use App\Models\Package; // Add Package model
+use App\Models\Package;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -89,110 +89,111 @@ class PaymentController extends Controller
     }
 
     /**
-     * Generate a checkout URL for Paddle
-     *
-     * @param Request $request
-     * @param string $package
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function paddleCheckout(Request $request, $package)
-    {
-        try {
-
-            $validation = $this->validatePackageAndGetUser($package);
-            if (!is_array($validation)) {
-                return $validation;
-            }
-
-            $user = $validation['user'];
-            $packageData = $validation['packageData'];
-            $productIds = $this->getProductIds('paddle');
-            $productId = $productIds[$package] ?? null;
-
-            if (!$productId) {
-                return response()->json([
-                    'error' => 'This package is not available for purchase',
-                    'message' => 'Product ID not found for package: ' . $package
-                ], 400);
-            }
-
-            $vendorId = config('payment.gateways.Paddle.vendor_id');
-            if (!$vendorId) {
-                throw new \Exception('Paddle vendor ID not configured');
-            }
-
-            $checkoutBase = config('payment.gateways.Paddle.environment') === 'sandbox'
-                ? 'https://sandbox-checkout.paddle.com'
-                : 'https://checkout.paddle.com';
-
-            $checkoutUrl = "{$checkoutBase}/product/{$productId}?" . http_build_query([
-                'guest_email' => $user->email,
-                'vendor' => config('payment.gateways.Paddle.vendor_id'),
-                'passthrough' => json_encode([
-                    'user_id' => $user->id,
-                    'package' => $package
-                ]),
-                'success_url' => route('payment.success'),
-                'cancel_url' => route('payment.cancel'),
-                'display_mode' => 'inline', // Better UX than overlay
-                'paddle_js' => 'true',
-                'paddlejs-version' => '1.2.2'
-            ]);
-
-            return response()->json([
-                'checkoutUrl' => $checkoutUrl,
-                'package_details' => [
-                    'name' => $packageData->name,
-                    'price' => $packageData->price,
-                    'duration' => $packageData->duration,
-                    'features' => is_array($packageData->features)
-                        ? $packageData->features
-                        : json_decode($packageData->features, true)
-                ],
-                'environment' => config('payment.gateways.Paddle.environment')
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Payment processing failed',
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Generate a checkout URL for FastSpring
-     *
-     * @param Request $request
-     * @param string $package
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function fastspringCheckout(Request $request, $package)
-    {
-        // Remove "-plan" suffix if present
-        $package = str_replace('-plan', '', $package);
-        $package = strtolower($package); // Normalize package name to lowercase
+ * Generate a checkout URL for Paddle
+ *
+ * @param Request $request
+ * @param string $package
+ * @return \Illuminate\Http\JsonResponse
+ */
+public function paddleCheckout(Request $request, string $package)
+{
+    try {
+        $package = str_replace('-plan', '', strtolower($package));
 
         $validation = $this->validatePackageAndGetUser($package);
         if (!is_array($validation)) {
-            return $validation; // Returns the error response
+            return $validation; // error response
         }
 
         $user = $validation['user'];
         $packageData = $validation['packageData'];
-        $productIds = $this->getProductIds('fastspring');
+
+        $productIds = $this->getProductIds('paddle');
         $productId = $productIds[$package] ?? null;
 
-        // For free or enterprise plans that don't use direct checkout
-        if ($productId === null) {
-            if ($package === 'free') {
-                // Handle free plan activation logic
-                try {
-                    // Update user's subscription in database
-                    // $user->updateSubscription('free', $packageData->id);
+        if (!$productId) {
+            return response()->json([
+                'error' => 'Unavailable package',
+                'message' => 'This package is not available for purchase'
+            ], 400);
+        }
 
+        // Return the structured payload needed by Paddle.Checkout.open()
+        return response()->json([
+            'data' => [
+                'items' => [
+                    [
+                        'price_id' => $productId,
+                        'quantity' => 1,
+                    ],
+                ],
+                'settings' => [
+                    'theme' => 'light',
+                    'allow_logout' => true,
+                    'show_add_discounts' => true,
+                    'allow_discount_removal' => true,
+                    'display_mode' => 'wide-overlay',
+                    'locale' => 'en',
+                    'show_add_tax_id' => true,
+                    'source_page' => url()->current(),
+                    'variant' => 'multi-page',
+                    'allowed_payment_methods' => [],
+                ],
+            ],
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Checkout failed',
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+
+    public function fastspringCheckout(Request $request, $package)
+    {
+        try {
+            // Remove "-plan" suffix if present
+            $package = str_replace('-plan', '', $package);
+            $package = strtolower($package); // Normalize package name to lowercase
+
+            $validation = $this->validatePackageAndGetUser($package);
+            if (!is_array($validation)) {
+                return $validation; // Returns the error response
+            }
+
+            $user = $validation['user'];
+            $packageData = $validation['packageData'];
+            $productIds = $this->getProductIds('fastspring');
+            $productId = $productIds[$package] ?? null;
+
+            // For free or enterprise plans that don't use direct checkout
+            if ($productId === null) {
+                if ($package === 'free') {
+                    // Handle free plan activation logic
+                    try {
+                        // Update user's subscription in database
+                        // $user->updateSubscription('free', $packageData->id);
+
+                        return response()->json([
+                            'success' => true,
+                            'message' => 'Free plan activated',
+                            'package_details' => [
+                                'name' => $packageData->name,
+                                'price' => $packageData->price,
+                                'duration' => $packageData->duration,
+                                'features' => json_decode($packageData->features)
+                            ]
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Free plan activation failed: ' . $e->getMessage());
+                        return response()->json(['error' => 'Failed to activate free plan'], 500);
+                    }
+                } elseif ($package === 'enterprise') {
+                    // Return a contact form URL or other appropriate action
                     return response()->json([
-                        'success' => true,
-                        'message' => 'Free plan activated',
+                        'checkoutUrl' => url('/contact/enterprise'),
                         'package_details' => [
                             'name' => $packageData->name,
                             'price' => $packageData->price,
@@ -200,30 +201,62 @@ class PaymentController extends Controller
                             'features' => json_decode($packageData->features)
                         ]
                     ]);
-                } catch (\Exception $e) {
-                    Log::error('Free plan activation failed: ' . $e->getMessage());
-                    return response()->json(['error' => 'Failed to activate free plan'], 500);
                 }
-            } elseif ($package === 'enterprise') {
-                // Return a contact form URL or other appropriate action
-                return response()->json([
-                    'checkoutUrl' => url('/contact/enterprise'),
-                    'package_details' => [
-                        'name' => $packageData->name,
-                        'price' => $packageData->price,
-                        'duration' => $packageData->duration,
-                        'features' => json_decode($packageData->features)
-                    ]
-                ]);
             }
-        }
 
-        // For FastSpring, we typically return the product path to be used by the JS SDK
-        // FastSpring checkout is handled on the frontend
-        try {
-            return response()->json([
+            // Get FastSpring store configuration
+            $storeId = Config::get('payment.gateways.fastspring.store_id');
+            if (!$storeId) {
+                throw new \Exception('FastSpring store ID not configured');
+            }
+
+            $environment = Config::get('payment.gateways.fastspring.environment', 'production');
+            $builderUrl = $environment === 'test'
+                ? 'https://test-builder.fastspring.com'
+                : 'https://builder.fastspring.com';
+
+            // Create a secure hash for validating the order if your implementation requires it
+            $secureHash = hash_hmac(
+                'sha256',
+                $user->id . $package . time(),
+                Config::get('payment.gateways.FastSpring.api_secret', '')
+            );
+
+            // Prepare the necessary data for FastSpring checkout
+            $checkoutData = [
+                'storeId' => $storeId,
                 'productPath' => $productId,
+                'builderUrl' => $builderUrl,
+                'tags' => [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'package' => $package,
+                    'secure_hash' => $secureHash
+                ],
+                'payloadData' => [
+                    'items' => [
+                        [
+                            'path' => $productId,
+                            'quantity' => 1
+                        ]
+                    ],
+                    'contact' => [
+                        'email' => $user->email
+                    ],
+                    'tags' => [
+                        'user_id' => $user->id,
+                        'package' => $package
+                    ]
+                ]
+            ];
+
+            // Prepare success URLs and callback URLs
+            $checkoutData['successUrl'] = route('payment.success') . '?source=fastspring';
+            $checkoutData['cancellationUrl'] = route('payment.cancel') . '?source=fastspring';
+
+            return response()->json([
                 'success' => true,
+                'checkout_data' => $checkoutData,
                 'package_details' => [
                     'name' => $packageData->name,
                     'price' => $packageData->price,
@@ -232,7 +265,10 @@ class PaymentController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
-            Log::error('FastSpring checkout error: ' . $e->getMessage());
+            Log::error('FastSpring checkout error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'error' => 'Failed to process FastSpring checkout',
                 'message' => $e->getMessage()
@@ -249,70 +285,76 @@ class PaymentController extends Controller
      */
     public function payProGlobalCheckout(Request $request, $package)
     {
-        // Remove "-plan" suffix if present
-        $package = str_replace('-plan', '', $package);
-        $package = strtolower($package); // Normalize package name to lowercase
+        try {
+            // Normalize package name
+            $package = str_replace('-plan', '', strtolower($package));
 
-        $validation = $this->validatePackageAndGetUser($package);
-        if (!is_array($validation)) {
-            return $validation; // Returns the error response
-        }
+            // Validate package and user
+            $validation = $this->validatePackageAndGetUser($package);
+            if (!is_array($validation)) {
+                return $validation;
+            }
 
-        $user = $validation['user'];
-        $packageData = $validation['packageData'];
-        $productIds = $this->getProductIds('payproglobal');
-        $productId = $productIds[$package] ?? null;
+            $user = $validation['user'];
+            $packageData = $validation['packageData'];
 
-        // For free or enterprise plans that don't use direct checkout
-        if ($productId === null) {
+            // Handle free plan
             if ($package === 'free') {
-                // Handle free plan activation logic
-                try {
-                    // Update user's subscription in database
-                    // $user->updateSubscription('free', $packageData->id);
+                // $user->updateSubscription('free', $packageData->id);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Free plan activated',
+                    'package_details' => [
+                        'name' => $packageData->name,
+                        'price' => $packageData->price,
+                        'duration' => $packageData->duration,
+                        'features' => is_string($packageData->features)
+                            ? json_decode($packageData->features)
+                            : $packageData->features
+                    ]
+                ]);
+            }
 
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Free plan activated',
-                        'package_details' => [
-                            'name' => $packageData->name,
-                            'price' => $packageData->price,
-                            'duration' => $packageData->duration,
-                            'features' => json_decode($packageData->features)
-                        ]
-                    ]);
-                } catch (\Exception $e) {
-                    Log::error('Free plan activation failed: ' . $e->getMessage());
-                    return response()->json(['error' => 'Failed to activate free plan'], 500);
-                }
-            } elseif ($package === 'enterprise') {
-                // Return a contact form URL or other appropriate action
+            // Handle enterprise plan
+            if ($package === 'enterprise') {
                 return response()->json([
                     'checkoutUrl' => url('/contact/enterprise'),
                     'package_details' => [
                         'name' => $packageData->name,
                         'price' => $packageData->price,
                         'duration' => $packageData->duration,
-                        'features' => json_decode($packageData->features)
+                        'features' => is_string($packageData->features)
+                            ? json_decode($packageData->features)
+                            : $packageData->features
                     ]
                 ]);
             }
-        }
 
-        // For paid plans, generate a PayProGlobal checkout URL
-        try {
-            // In a real implementation, you would use PayProGlobal's API
-            // This is a simplified example
-            $merchantId = Config::get('payment.gateways.payproglobal.merchant_id');
-            $checkoutUrl = "https://secure.payproglobal.com/orderpage.aspx";
-            $checkoutUrl .= "?pid=" . urlencode($productId);
-            $checkoutUrl .= "&mid=" . urlencode($merchantId);
+            // Get product ID for paid plans
+            $productIds = [
+                'starter' => Config::get('payment.gateways.PayProGlobal.product_id_starter'),
+                'pro' => Config::get('payment.gateways.PayProGlobal.product_id_pro'),
+                'business' => Config::get('payment.gateways.PayProGlobal.product_id_business'),
+            ];
+
+            $productId = $productIds[$package] ?? null;
+
+            if (!$productId) {
+                throw new \Exception("Product ID not configured for package: {$package}");
+            }
+
+            // Generate PayProGlobal checkout URL with popup support
+            $checkoutUrl = "https://store.payproglobal.com/checkout?products[1][id]={$productId}";
             $checkoutUrl .= "&email=" . urlencode($user->email);
+            $checkoutUrl .= "&products[0][id]=" . $productId;
             $checkoutUrl .= "&custom=" . urlencode(json_encode([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'package' => $package
+                'package' => $package,
             ]));
+            $checkoutUrl .= "&first_name=" . urlencode($user->first_name ?? '');
+            $checkoutUrl .= "&last_name=" . urlencode($user->last_name ?? '');
+            $checkoutUrl .= "&page-template=popup";  // Critical for popup compatibility
 
             return response()->json([
                 'checkoutUrl' => $checkoutUrl,
@@ -320,79 +362,17 @@ class PaymentController extends Controller
                     'name' => $packageData->name,
                     'price' => $packageData->price,
                     'duration' => $packageData->duration,
-                    'features' => json_decode($packageData->features)
+                    'features' => is_string($packageData->features)
+                        ? json_decode($packageData->features)
+                        : $packageData->features
                 ]
             ]);
         } catch (\Exception $e) {
-            Log::error('PayProGlobal checkout error: ' . $e->getMessage());
+            Log::error("PayProGlobal checkout failed for {$package}: " . $e->getMessage());
             return response()->json([
-                'error' => 'Failed to generate PayProGlobal checkout URL',
+                'error' => 'Checkout processing failed',
                 'message' => $e->getMessage()
             ], 500);
-        }
-    }
-
-    public function handleSuccess(Request $request)
-    {
-        try {
-            // 1. Basic validation
-            $validated = $request->validate([
-                'checkout_id' => 'required|string',
-                'order_id' => 'nullable|string',
-                'transaction_id' => 'nullable|string'
-            ]);
-
-            // 2. Verify with Paddle API
-            $verificationResponse = $this->verifyPaddlePayment($validated['checkout_id']);
-
-            if (!$verificationResponse['success']) {
-                throw new \Exception("Payment verification failed: " . ($verificationResponse['message'] ?? 'Unknown error'));
-            }
-
-            // 3. Get user from passthrough data
-            $passthrough = json_decode($request->passthrough ?? '{}', true);
-            $userId = $passthrough['user_id'] ?? null;
-            $package = $passthrough['package'] ?? null;
-
-            if (!$userId) {
-                throw new \Exception("User information missing in payment data");
-            }
-
-            // 4. Process the successful payment
-            $user = User::findOrFail($userId);
-            $this->activateUserSubscription($user, $package, $validated['order_id']);
-
-            // 5. Prepare success data
-            $orderDetails = [
-                'order_id' => $validated['order_id'],
-                'transaction_id' => $validated['transaction_id'],
-                'package' => $package,
-                'amount' => $verificationResponse['amount'] ?? null,
-                'date' => now()->format('F j, Y')
-            ];
-
-
-            // 6. Show success page with all needed info
-            return view('payment.success', [
-                'order' => $orderDetails,
-                'user' => $user,
-                // 'next_steps' => [
-                //     'Access your dashboard' => route('/'),
-                //     'Download invoice' => route('invoice.show', $validated['order_id']),
-                //     'Get started guide' => route('guides.getting-started')
-                // ]
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Payment success handling failed: ' . $e->getMessage(), [
-                'request' => $request->all(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return view('payment.verification-pending', [
-                'error' => $e->getMessage(),
-                'contact_support' => true,
-                'order_id' => $request->order_id ?? 'unknown'
-            ]);
         }
     }
 
@@ -439,30 +419,6 @@ class PaymentController extends Controller
                 'error',
                 'Your payment was cancelled. Please try again or contact support.'
             );
-        }
-    }
-
-    private function verifyPaddlePayment($checkoutId)
-    {
-        try {
-            $paddle = new Paddle(
-                config('payment.gateways.Paddle.vendor_id'),
-                config('payment.gateways.Paddle.api_key')
-            );
-
-            $response = $paddle->getOrderDetails($checkoutId);
-
-            return [
-                'success' => $response['status'] === 'completed',
-                'amount' => $response['total'],
-                'currency' => $response['currency'],
-                'message' => $response['status'] === 'completed' ? 'Verified' : $response['status']
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'message' => 'Verification service unavailable'
-            ];
         }
     }
 

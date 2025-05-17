@@ -8,6 +8,83 @@
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        .ppg-checkout-modal {
+            z-index: 99999;
+            display: none;
+            background-color: transparent;
+            border: 0px none transparent;
+            visibility: visible;
+            margin: 0px;
+            padding: 0px;
+            -webkit-tap-highlight-color: transparent;
+            position: fixed;
+            left: 0px;
+            top: 0px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ppg-checkout-modal.ppg-show {
+            display: block;
+        }
+
+        .ppg-btn-close {
+            position: absolute;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            top: 20px;
+            right: 35px;
+            background: rgb(0 0 0 / 35%);
+            height: 50px;
+            width: 50px;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            z-index: 100000;
+        }
+
+        .ppg-btn-close.ppg-show {
+            display: flex;
+        }
+
+        .ppg-btn-close img {
+            width: 24px;
+        }
+
+        .ppg-iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .ppg-loader {
+            position: absolute;
+            top: calc(50% - 24px);
+            left: calc(50% - 24px);
+            width: 48px;
+            height: 48px;
+            border: 5px solid #000;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: ppg-rotation 1s linear infinite;
+            z-index: 100000;
+        }
+
+        @keyframes ppg-rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -322,13 +399,14 @@
             }
         }
     </style>
+
     <!-- Payment Gateway Scripts -->
     @php
         $activeGateways = $payment_gateways->pluck('name')->toArray();
     @endphp
     @if (in_array('FastSpring', $activeGateways))
         <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="{{ config('payment.gateways.fastspring.storefront') }}" data-popup-closed="onFSPopupClosed">
+            data-storefront="livebuzzstudio.test.onfastspring.com/popup-check-paymet" data-popup-closed="onFSPopupClosed">
         </script>
         <script>
             function onFSPopupClosed(orderData) {
@@ -350,18 +428,21 @@
 
     <!-- Paddle Integration -->
     @if (in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
         <script>
             Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
-            Paddle.Setup({
-                vendor: {{ config('payment.gateways.Paddle.vendor_id') }}
-            });
+            Paddle.Initialize({
+            token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
+            eventCallback: function(data) {
+                console.log('[Paddle Event]', data);
+            }
+        });
         </script>
     @endif
 
     <!-- PayProGlobal Integration -->
     @if (in_array('Pay Pro Global', $activeGateways))
-        <script src="{{ config('payment.gateways.payproglobal.script_url') }}"></script>
+        <script src="{{ config('payment.gateways.PayProGlobal.script_url') }}"></script>
     @endif
 
 </head>
@@ -631,7 +712,9 @@
                     throw new Error('FastSpring is not properly initialized');
                 }
 
-                fastspring.builder.add(productPath);
+                const packageName = productPath.replace('-plan', '');
+
+                fastspring.builder.add(packageName);
 
                 // Use timeout to ensure the product is added before checkout
                 setTimeout(() => {
@@ -640,46 +723,45 @@
             }
 
             // Paddle-specific processing
-            function processPaddle(productPath) {
-                const packageName = productPath.replace('-plan', '');
+function processPaddle(productPath) {
+    const packageName = productPath.replace('-plan', '');
 
-                fetch(`/api/paddle/checkout/${packageName}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            'Accept': 'application/json',
-                            'Authorization': `Bearer ${localStorage.getItem('auth_token')}` // If using token auth
-                        },
-                        credentials: 'include' // Important for session cookies
-                    })
-                    .then(response => {
-                        const contentType = response.headers.get('content-type');
-                        if (!contentType || !contentType.includes('application/json')) {
-                            return response.text().then(text => {
-                                throw new Error(`Expected JSON but got: ${text.substring(0, 100)}...`);
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (!data.checkoutUrl) {
-                            throw new Error('Invalid checkout URL received from server');
-                        }
+    fetch(`/api/paddle/checkout/${packageName}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw err; });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (!data.data) {
+            throw new Error('Invalid data received from server');
+        }
 
-                        if (typeof Paddle === 'undefined') {
-                            throw new Error('Paddle payment system not loaded');
-                        }
+        if (typeof Paddle === 'undefined') {
+            console.error('Paddle.js not loaded');
+            alert('Payment gateway unavailable. Please try again later.');
+            return;
+        }
 
-                        Paddle.Checkout.open({
-                            override: data.checkoutUrl
-                        });
-                    })
-                    .catch(error => {
-                        console.error('Paddle checkout error:', error);
-                        alert(`Payment error: ${error.message}`);
-                    });
-            }
+        Paddle.Checkout.open({
+            items: data.data.items,
+            ...data.data.settings
+        });
+    })
+    .catch(error => {
+        console.error('Paddle checkout error:', error);
+        const message = error.message || 'Payment processing error. Please try again or contact support.';
+        alert(message);
+    });
+}
+
 
             // PayProGlobal-specific processing
             function processPayProGlobal(productPath) {
@@ -705,14 +787,24 @@
                             throw new Error('Invalid checkout URL received from server');
                         }
 
-                        // Redirect to PayProGlobal checkout
-                        window.location.href = data.checkoutUrl;
+                        // OPEN IN NEW WINDOW INSTEAD OF POPUP
+                        const width = 1000;
+                        const height = 700;
+                        const left = (screen.width - width) / 2;
+                        const top = (screen.height - height) / 2;
+
+                        window.open(
+                            data.checkoutUrl,
+                            'PayProGlobalCheckout',
+                            `width=${width},height=${height},top=${top},left=${left}`
+                        );
                     })
                     .catch(error => {
                         console.error('PayProGlobal checkout error:', error);
                         alert('Payment processing error. Please try again or contact support.');
                     });
             }
+
         });
     </script>
 </body>

@@ -51,7 +51,7 @@
                                                             {{ $gateway->is_active == 1 ? 'checked' : '' }}
                                                             onchange="this.form.submit()">
                                                         <label class="form-check-label">
-                                                            {{ $gateway->is_active == 1 ? 'Active' : 'Inactive' }}
+                                                            {{ $gateway->is_active == 1 ? 'Active' : 'In Active' }}
                                                         </label>
                                                     </div>
                                                 </form>

@@ -3,11 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use App\Models\Order;
-use App\Models\Package;
 use App\Models\PaymentGateways;
 use App\Services\PaymentService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -18,53 +17,53 @@ class SubscriptionController extends Controller
     ) {}
 
     public function handleSubscription()
-{
-    $user = auth()->user();
+    {
+        $user = auth()->user();
 
-    // Check if user has an active package
-    if ($user && $user->package && $user->subscription_ends_at && $user->subscription_ends_at > now()) {
-        // User has an active subscription, redirect to their dashboard
-        return redirect()->route('profile');
-    } else if ($user && $user->package && $user->package === 'Free') {
-        // User is on the free plan
-        return redirect()->route('profile');
-    } else {
-        // User doesn't have an active package, show pricing page
-        return $this->index();
+        // Check if user has an active package
+        if ($user && $user->package && $user->subscription_ends_at && $user->subscription_ends_at > now()) {
+            // User has an active subscription, redirect to their dashboard
+            return redirect()->route('profile');
+        } else if ($user && $user->package && $user->package === 'Free') {
+            // User is on the free plan
+            return redirect()->route('profile');
+        } else {
+            // User doesn't have an active package, show pricing page
+            return $this->index();
+        }
     }
-}
 
-/**
- * Display the pricing page
- */
-public function index()
-{
-    return view('subscription.index', [
-        'payment_gateways' => PaymentGateways::where('is_active', 1)->get(),
-        'currentPackage' => auth()->user()->package ?? null,
-    ]);
-}
-
-/**
- * Handle webhook callbacks from payment gateways
- */
-public function handlePaymentWebhook(Request $request, $gateway)
-{
-    Log::info("Webhook received from $gateway", [
-        'headers' => $request->headers->all(),
-        'data' => $request->all()
-    ]);
-
-    try {
-        $this->paymentService->setGateway($gateway);
-        $result = $this->paymentService->handlePaymentCallback($request->all());
-
-        return response()->json(['status' => 'success']);
-    } catch (\Exception $e) {
-        Log::error("$gateway webhook processing error", ['error' => $e->getMessage()]);
-        return response()->json(['error' => $e->getMessage()], 500);
+    /**
+     * Display the pricing page
+     */
+    public function index()
+    {
+        return view('subscription.index', [
+            'payment_gateways' => PaymentGateways::where('is_active', 1)->get(),
+            'currentPackage' => auth()->user()->package ?? null,
+        ]);
     }
-}
+
+    /**
+     * Handle webhook callbacks from payment gateways
+     */
+    public function handlePaymentWebhook(Request $request, $gateway)
+    {
+        Log::info("Webhook received from $gateway", [
+            'headers' => $request->headers->all(),
+            'data' => $request->all()
+        ]);
+
+        try {
+            $this->paymentService->setGateway($gateway);
+            $result = $this->paymentService->handlePaymentCallback($request->all());
+
+            return response()->json(['status' => 'success']);
+        } catch (\Exception $e) {
+            Log::error("$gateway webhook processing error", ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
 
     /**
      * Handle Paddle checkout API request
@@ -112,27 +111,34 @@ public function handlePaymentWebhook(Request $request, $gateway)
             'data' => $request->all()
         ]);
 
-        // For FastSpring we need to update the order immediately since we don't wait for webhook
-        if ($gateway === 'fastspring' && $orderId) {
+        $order = null;
+        if ($orderId) {
             $order = Order::find($orderId);
-            if ($order && $order->status === 'pending') {
-                $order->update([
-                    'status' => 'completed',
-                    'transaction_id' => 'FS-' . Str::random(10), // Placeholder until webhook arrives
-                    'payment_method' => 'FastSpring'
-                ]);
-
-                // Update user subscription
-                $user = $order->user;
-                $user->update([
-                    'package' => $order->package,
-                    'subscription_ends_at' => now()->addMonth(), // Adjust based on package
-                ]);
-            }
         }
 
-        // Flash success message
-        session()->flash('success', 'Your subscription has been successfully processed!');
+        if ($order && $order->status === 'completed') {
+            // Order has already been completed via webhook
+            session()->flash('success', 'Your subscription has been activated successfully!');
+        } else {
+            // Order is still pending webhook confirmation
+            session()->flash('info', 'Your payment is being processed. Your subscription will be activated shortly.');
+        }
+
+        if ($gateway === 'fastspring' && $orderId && config('payment.gateways.FastSpring.use_redirect_callback')) {
+            DB::transaction(function () use ($orderId) {
+                $order = Order::lockForUpdate()->find($orderId);
+                if ($order && $order->status === 'pending') {
+                    $order->update([
+                        'status' => 'completed',
+                        'transaction_id' => 'FS-' . Str::random(10),
+                        'payment_method' => 'FastSpring'
+                    ]);
+
+                    // Update user subscription
+                    $this->updateUserSubscription($order);
+                }
+            }, 3);
+        }
 
         // Redirect
         return redirect()->route('pricing');

@@ -34,6 +34,7 @@ return [
                 'business' => 'business-plan',
                 'enterprise' => 'enterprise-plan',
             ],
+            'use_redirect_callback' => true,
         ],
 
         'Paddle' => [
@@ -48,7 +49,11 @@ return [
                 'business' => (int)env('PADDLE_PRODUCT_BUSINESS', 3),
                 'enterprise' => (int)env('PADDLE_PRODUCT_ENTERPRISE', 4),
             ],
-            'checkout_url' => 'https://sandbox-checkout.paddle.com'
+            'checkout_url' => 'https://sandbox-checkout.paddle.com',
+            'paddle_pro_id' => env('PADDLE_PRO_ID', 'pro_01jv801tp2181wh94vc8k01vnq'),
+            'paddle_starter_id' => env('PADDLE_STARTER_ID', 'pro_01jv801tp2181wh94vc8k01vnq'),
+            'paddle_business_id' => env('PADDLE_BUSINESS_ID', 'pro_01jv801tp2181wh94vc8k01vnq'),
+            'client_side_token' => env('CLIENT_SIDE_TOKEN', 'live_d7950a6aa716db8860f429e985b'),
         ],
 
         'PayProGlobal' => [
@@ -62,6 +67,8 @@ return [
                 'business' => (int)env('PPG_PRODUCT_BUSINESS', 3),
                 'enterprise' => (int)env('PPG_PRODUCT_ENTERPRISE', 4),
             ],
+            'merchant_id' => env('MERCHANT_ID', ''),
+            'product_id_pro' => env('PPG_PRODUCT_PRO_ID', '112701')
         ],
     ],
 ];

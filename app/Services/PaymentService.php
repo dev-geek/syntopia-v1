@@ -134,12 +134,18 @@ class PaymentService
 
     protected function handleFastSpringCallback(array $data)
     {
+        // Validation
+        if (!isset($data['events']) || !isset($data['signature'])) {
+            Log::error('Invalid FastSpring webhook payload - missing required fields');
+            throw new \Exception('Invalid webhook payload');
+        }
+
         // Verify the webhook signature
         $signature = hash_hmac('sha256', $data['events'], $this->config['webhook_secret']);
 
         if (!hash_equals($signature, $data['signature'])) {
             Log::error('Invalid FastSpring webhook signature');
-            throw new \Exception('Invalid FastSpring webhook signature');
+            throw new \Exception('Invalid webhook signature');
         }
 
         // Process the events
