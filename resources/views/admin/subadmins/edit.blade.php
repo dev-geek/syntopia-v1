@@ -8,18 +8,13 @@
             <div class="col-md-6" style="margin-top: 50px;">
                 <div class="card card-primary">
                     <div class="card-header">
-                        <h3 class="card-title">Create a Sub Admin</h3>
+                        <h3 class="card-title">Update Sub Admin Record</h3>
                         <div class="card-tools">
                             <button type="button" class="btn btn-tool" data-card-widget="collapse" title="Collapse">
                                 <i class="fas fa-minus"></i>
                             </button>
                         </div>
                     </div>
-                    @if (session('success'))
-                        <div class="alert alert-success mt-3">
-                            {{ session('success') }}
-                        </div>
-                    @endif
                     <form method="POST" action="{{ route('sub-admins.update', $subadmin->id) }}">
                         @csrf
                         @method('PUT')

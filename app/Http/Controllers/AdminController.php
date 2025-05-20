@@ -33,24 +33,28 @@ class AdminController extends Controller
     {
         // $users = User::whereNotNull('role')->where('role', '!=', 1 )->get();
         $users = User::all();
-        return view('admin.users',compact('users'));
+        return view('admin.users', compact('users'));
     }
     public function destroy($id)
-{
-    $user = User::findOrFail($id);
-    $user->delete();
+    {
+        $user = User::findOrFail($id);
+        $user->delete();
 
-    return redirect()->route('admin.users')->with('success', 'User deleted successfully.');
-}
+        return redirect()->route('admin.users')->with('success', 'User deleted successfully.');
+    }
     public function subadmins()
     {
-        $users = User::whereNotNull('role')->where('role', 2)->get();
-        return view('admin.subadmins',compact('users'));
+        $users = User::where('role', 2)
+            ->orderBy('created_at', 'desc')
+            ->paginate(10);
+
+        return view('admin.subadmins', compact('users'));
     }
+
     public function profile()
     {
         $user = Auth::user();
-        return view('admin.profile',compact('user'));
+        return view('admin.profile', compact('user'));
     }
     public function manageProfile($id)
     {
@@ -104,8 +108,6 @@ class AdminController extends Controller
 
         // Return a success message
         return redirect()->route('admin.users')->with('success', 'User updated successfully.');
-
-
     }
     public function manageAdminProfileUpdate(Request $request, $id)
     {
@@ -145,8 +147,6 @@ class AdminController extends Controller
 
         // Return a success message
         return redirect()->route('subadmins')->with('success', 'Sub Admin   updated successfully.');
-
-
     }
 
     public function adminOrders()
@@ -180,9 +180,5 @@ class AdminController extends Controller
         return view('admin.forgotpassword'); // Ensure you have a Blade file named `forgotpassword.blade.php`
     }
 
-    public function createOrUpdateSubAdmin()
-    {
-
-    }
-
+    public function createOrUpdateSubAdmin() {}
 }
