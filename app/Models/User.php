@@ -27,9 +27,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'status',
         'email_verified_at',
         'subscriber_password',
-        'city',	
-        'pet',	
+        'city',
+        'pet',
         'verification_code',
+        'payment_gateway',
     ];
 
     /**
@@ -52,4 +53,16 @@ class User extends Authenticatable implements MustVerifyEmail
         'password' => 'hashed',
         'status' => 'string'
     ];
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function latestOrderPackageName()
+    {
+        // Get the latest order and return its associated package name
+        return $this->orders()->latest()->first()?->package->name ?? null;
+    }
+
 }
