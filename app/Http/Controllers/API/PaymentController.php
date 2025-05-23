@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Config;
 use App\Models\Package;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class PaymentController extends Controller
 {
@@ -89,67 +90,137 @@ class PaymentController extends Controller
     }
 
     /**
- * Generate a checkout URL for Paddle
- *
- * @param Request $request
- * @param string $package
- * @return \Illuminate\Http\JsonResponse
- */
-public function paddleCheckout(Request $request, string $package)
-{
-    try {
-        $package = str_replace('-plan', '', strtolower($package));
+     * Generate a checkout URL for Paddle
+     *
+     * @param Request $request
+     * @param string $package
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function paddleCheckout(Request $request, string $package)
+    {
+        try {
+            // Add logging to debug
+            \Log::info('Paddle checkout called for package: ' . $package);
 
-        $validation = $this->validatePackageAndGetUser($package);
-        if (!is_array($validation)) {
-            return $validation; // error response
-        }
+            $package = str_replace('-plan', '', strtolower($package));
 
-        $user = $validation['user'];
-        $packageData = $validation['packageData'];
+            $validation = $this->validatePackageAndGetUser($package);
+            if (!is_array($validation)) {
+                return $validation; // error response
+            }
 
-        $productIds = $this->getProductIds('paddle');
-        $productId = $productIds[$package] ?? null;
+            $user = $validation['user'];
+            $packageData = $validation['packageData'];
 
-        if (!$productId) {
-            return response()->json([
-                'error' => 'Unavailable package',
-                'message' => 'This package is not available for purchase'
-            ], 400);
-        }
+            $productIds = $this->getProductIds('paddle');
+            $productId = $productIds[$package] ?? null;
 
-        // Return the structured payload needed by Paddle.Checkout.open()
-        return response()->json([
-            'data' => [
+            if (!$productId) {
+                \Log::error('Product ID not found for package: ' . $package);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unavailable package',
+                    'message' => 'This package is not available for purchase'
+                ], 400);
+            }
+
+            // Calculate billing period
+            $startsAt = now()->format('Y-m-d\TH:i:s\Z');
+            $endsAt = now()->addYear()->subSecond()->format('Y-m-d\TH:i:s\Z');
+
+            $actualPriceId = 'pri_01jvyvt5hs48d5gd85m54nv0a6';
+
+            // Prepare transaction data for Paddle API
+            $transactionData = [
                 'items' => [
                     [
-                        'price_id' => $productId,
                         'quantity' => 1,
+                        'price_id' => $actualPriceId,
                     ],
                 ],
-                'settings' => [
-                    'theme' => 'light',
-                    'allow_logout' => true,
-                    'show_add_discounts' => true,
-                    'allow_discount_removal' => true,
-                    'display_mode' => 'wide-overlay',
-                    'locale' => 'en',
-                    'show_add_tax_id' => true,
-                    'source_page' => url()->current(),
-                    'variant' => 'multi-page',
-                    'allowed_payment_methods' => [],
+                'currency_code' => 'USD',
+                'collection_mode' => 'manual',
+                'billing_details' => [
+                    'enable_checkout' => true,
+                    'purchase_order_number' => 'PO-' . uniqid(),
+                    'payment_terms' => [
+                        'interval' => 'day',
+                        'frequency' => 14,
+                    ],
                 ],
-            ],
-        ]);
+                'billing_period' => [
+                    'starts_at' => $startsAt,
+                    'ends_at' => $endsAt,
+                ],
+            ];
 
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'Checkout failed',
-            'message' => $e->getMessage(),
-        ], 500);
+            $apiKey = config('payment.gateways.Paddle.api_key');
+
+            \Log::info('API Key format check: ' . substr($apiKey, 0, 10) . '...');
+
+            // Make request to Paddle API with corrected header format
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->timeout(30)->post('https://sandbox-api.paddle.com/transactions', $transactionData);
+
+            // Log the request details for debugging
+            \Log::info('Request URL: https://sandbox-api.paddle.com/transactions');
+            \Log::info('Request data: ' . json_encode($transactionData));
+            \Log::info('Response status: ' . $response->status());
+            \Log::info('Response headers: ' . json_encode($response->headers()));
+
+            if (!$response->successful()) {
+                \Log::error('Paddle API error: ' . $response->body());
+                \Log::error('Response status: ' . $response->status());
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Paddle API error',
+                    'message' => 'Failed to create transaction: ' . $response->body(),
+                    'status_code' => $response->status()
+                ], 400);
+            }
+
+            $paddleResponse = $response->json();
+            \Log::info('Paddle response: ' . json_encode($paddleResponse));
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'transaction_id' => $paddleResponse['data']['id'],
+                    'checkout_url' => $paddleResponse['data']['checkout']['url'] ?? null,
+                    'items' => $transactionData['items'],
+                    'customer_id' => null,
+                    'currency_code' => $transactionData['currency_code'],
+                    'collection_mode' => $transactionData['collection_mode'],
+                    'billing_details' => $transactionData['billing_details'],
+                    'billing_period' => $transactionData['billing_period'],
+                    'settings' => [
+                        'theme' => 'light',
+                        'allow_logout' => true,
+                        'show_add_discounts' => true,
+                        'allow_discount_removal' => true,
+                        'display_mode' => 'inline',
+                        'locale' => 'en',
+                        'show_add_tax_id' => true,
+                        'variant' => 'one-page',
+                        'allowed_payment_methods' => ['card', 'paypal'],
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Paddle checkout exception: ' . $e->getMessage());
+            \Log::error('Exception trace: ' . $e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Checkout failed',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
-}
-
 
     public function fastspringCheckout(Request $request, $package)
     {

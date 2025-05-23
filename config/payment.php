@@ -38,11 +38,10 @@ return [
         ],
 
         'Paddle' => [
-            'vendor_id' => env('PADDLE_VENDOR_ID', '216879'),
             'api_key' => env('PADDLE_API_KEY', ''),
             'public_key' => env('PADDLE_PUBLIC_KEY', ''),
-            'api_url' => env('PADDLE_API_URL', 'https://vendors.paddle.com/api/2.0'),
-            'environment' => env('PADDLE_ENVIRONMENT', 'production'), // sandbox or production
+            'api_url' => env('PADDLE_API_URL', 'https://api.paddle.com/'),
+            'environment' => env('PADDLE_ENVIRONMENT', 'sandbox'), // sandbox or production
             'product_ids' => [
                 'starter' => (int)env('PADDLE_PRODUCT_STARTER', 1),
                 'pro' => (int)env('PADDLE_PRODUCT_PRO', 2),
@@ -50,10 +49,8 @@ return [
                 'enterprise' => (int)env('PADDLE_PRODUCT_ENTERPRISE', 4),
             ],
             'checkout_url' => 'https://sandbox-checkout.paddle.com',
-            'paddle_pro_id' => env('PADDLE_PRO_ID', 'pro_01jv801tp2181wh94vc8k01vnq'),
-            'paddle_starter_id' => env('PADDLE_STARTER_ID', 'pro_01jv801tp2181wh94vc8k01vnq'),
-            'paddle_business_id' => env('PADDLE_BUSINESS_ID', 'pro_01jv801tp2181wh94vc8k01vnq'),
-            'client_side_token' => env('CLIENT_SIDE_TOKEN', 'live_d7950a6aa716db8860f429e985b'),
+            'client_side_token' => env('CLIENT_SIDE_TOKEN', 'test_dab715bb779c31552d5b22561f0'),
+            'pro_plan_price_id' => 'pri_01jvyvt5hs48d5gd85m54nv0a6',
         ],
 
         'PayProGlobal' => [
