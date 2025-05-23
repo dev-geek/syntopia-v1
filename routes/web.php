@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\API\PaymentController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\UserLogController;
 use App\Http\Controllers\Auth\AdminForgotPasswordController;
@@ -170,3 +171,4 @@ Route::post('/email/resend', [App\Http\Controllers\Auth\VerificationController::
     ->name('verification.resend');
 
 Route::delete('users/{user}', [AdminController::class, 'destroy'])->name('users.destroy');
+Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');

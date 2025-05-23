@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta http-equiv="Content-Security-Policy"
+        content="frame-ancestors 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com http://127.0.0.1 http://localhost; frame-src 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com;">
+    {{-- <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;"> --}}
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -430,13 +433,33 @@
     @if (in_array('Paddle', $activeGateways))
         <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
         <script>
+            //     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
+            //     Paddle.Initialize({
+            //     token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
+            //     eventCallback: function(data) {
+            //         console.log('[Paddle Event]', data);
+            //     }
+            // });
             Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
             Paddle.Initialize({
-            token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
-            eventCallback: function(data) {
-                console.log('[Paddle Event]', data);
-            }
-        });
+                token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
+                eventCallback: function(event) {
+                    console.log('[Paddle Event]', event);
+
+                    // Handle successful payment
+                    if (event.name === 'checkout.completed') {
+                        console.log('Payment completed:', event.data);
+                        // Redirect or update UI
+                        alert('Payment successful!');
+                        // window.location.href = '/success';
+                    }
+
+                    // Handle checkout closure
+                    if (event.name === 'checkout.closed') {
+                        console.log('Checkout closed');
+                    }
+                }
+            });
         </script>
     @endif
 
@@ -520,7 +543,7 @@
                 <div class="card card-dark">
                     <h3>Pro</h3>
                     <p class="price">$780 <span class="per-month">/120hrs a month</span></p>
-                    <button class="btn dark checkout-button" data-package="pro-plan"
+                    <button class="btn dark checkout-button" data-package="Pro-plan"
                         {{ $currentPackage == 'Pro' ? 'disabled' : '' }}>
                         {{ $currentPackage == 'Pro' ? 'Activated' : 'Get Started' }}
                     </button>
@@ -723,45 +746,143 @@
             }
 
             // Paddle-specific processing
-function processPaddle(productPath) {
-    const packageName = productPath.replace('-plan', '');
+            function processPaddle(productPath) {
+                console.log('processPaddle called with:', productPath);
 
-    fetch(`/api/paddle/checkout/${packageName}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.json().then(err => { throw err; });
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (!data.data) {
-            throw new Error('Invalid data received from server');
-        }
+                const packageName = productPath.replace('-plan', '');
+                console.log('Package name:', packageName);
 
-        if (typeof Paddle === 'undefined') {
-            console.error('Paddle.js not loaded');
-            alert('Payment gateway unavailable. Please try again later.');
-            return;
-        }
+                // Try different possible URLs
+                const possibleUrls = [
+                    `/paddle-checkout/${packageName}`, // If using web routes
+                    `/api/paddle-checkout/${packageName}`, // If using API routes
+                    `/api/v1/paddle-checkout/${packageName}`, // If using versioned API
+                    `paddle-checkout/${packageName}`, // Relative path
+                ];
 
-        Paddle.Checkout.open({
-            items: data.data.items,
-            ...data.data.settings
-        });
-    })
-    .catch(error => {
-        console.error('Paddle checkout error:', error);
-        const message = error.message || 'Payment processing error. Please try again or contact support.';
-        alert(message);
-    });
-}
+                let currentUrlIndex = 0;
 
+                function tryNextUrl() {
+                    if (currentUrlIndex >= possibleUrls.length) {
+                        alert(
+                            'Unable to connect to payment service. Please check your network connection and try again.'
+                            );
+                        return;
+                    }
+
+                    const url = possibleUrls[currentUrlIndex];
+                    console.log('Trying URL:', url);
+
+                    fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                ...(document.querySelector('meta[name="csrf-token"]') && {
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                        .content
+                                })
+                            },
+                            credentials: 'same-origin'
+                        })
+                        .then(response => {
+                            console.log('Response status:', response.status);
+                            console.log('Response headers:', response.headers);
+
+                            if (!response.ok) {
+                                if (response.status === 404 && currentUrlIndex < possibleUrls.length - 1) {
+                                    currentUrlIndex++;
+                                    return tryNextUrl();
+                                }
+                                return response.text().then(text => {
+                                    console.error('Error response:', text);
+                                    try {
+                                        const errorData = JSON.parse(text);
+                                        throw new Error(errorData.message || 'Server error');
+                                    } catch (e) {
+                                        throw new Error(
+                                            `HTTP ${response.status}: ${response.statusText}`);
+                                    }
+                                });
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (!data) return;
+
+                            console.log('Success response:', data);
+
+                            if (!data.success) {
+                                throw new Error(data.message || data.error || 'Unknown error occurred');
+                            }
+
+                            if (!data.data) {
+                                throw new Error('Invalid response format');
+                            }
+
+                            if (typeof Paddle === 'undefined') {
+                                console.error('Paddle.js not loaded');
+                                alert(
+                                    'Payment gateway unavailable. Please ensure Paddle.js is loaded and try again.'
+                                    );
+                                return;
+                            }
+
+                            const checkoutData = data.data;
+
+                            if (checkoutData.checkout_url) {
+                                console.log('Redirecting to checkout URL:', checkoutData.checkout_url);
+                                window.open(checkoutData.checkout_url, '_blank');
+                                return;
+                            }
+
+                            // Otherwise, open Paddle checkout overlay with the transaction ID
+                            console.log('Opening Paddle checkout with transaction ID:', checkoutData
+                                .transaction_id);
+
+                            try {
+                                // Use the transaction ID to open checkout
+                                if (checkoutData.transaction_id) {
+                                    Paddle.Checkout.open({
+                                        transactionId: checkoutData.transaction_id,
+                                        ...checkoutData.settings
+                                    });
+                                } else {
+                                    // Fallback to creating new checkout
+                                    Paddle.Checkout.open({
+                                        items: checkoutData.items,
+                                        customer: checkoutData.customer_id ? {
+                                            id: checkoutData.customer_id
+                                        } : undefined,
+                                        settings: checkoutData.settings
+                                    });
+                                }
+                            } catch (paddleError) {
+                                console.error('Paddle checkout error:', paddleError);
+                                alert('Failed to open checkout. Please try again.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Fetch error for URL', url, ':', error);
+
+                            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                                if (currentUrlIndex < possibleUrls.length - 1) {
+                                    currentUrlIndex++;
+                                    tryNextUrl();
+                                    return;
+                                }
+                                alert('Network error. Please check your internet connection and try again.');
+                            } else {
+                                const message = error.message ||
+                                    'Payment processing error. Please try again or contact support.';
+                                alert(message);
+                            }
+                        });
+                }
+
+                tryNextUrl();
+            }
 
             // PayProGlobal-specific processing
             function processPayProGlobal(productPath) {
