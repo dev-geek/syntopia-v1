@@ -7,7 +7,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
         content="frame-ancestors 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com http://127.0.0.1 http://localhost; frame-src 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com;">
-    {{-- <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;"> --}}
+    {{--
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;"> --}}
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -405,14 +406,14 @@
 
     <!-- Payment Gateway Scripts -->
     @php
-        $activeGateways = $payment_gateways->pluck('name')->toArray();
+    $activeGateways = $payment_gateways->pluck('name')->toArray();
     @endphp
     @if (in_array('FastSpring', $activeGateways))
-        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-check-paymet" data-popup-closed="onFSPopupClosed">
-        </script>
-        <script>
-            function onFSPopupClosed(orderData) {
+    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+        data-storefront="livebuzzstudio.test.onfastspring.com/popup-check-paymet" data-popup-closed="onFSPopupClosed">
+    </script>
+    <script>
+        function onFSPopupClosed(orderData) {
                 try {
                     if (orderData?.reference) {
                         console.log("Product purchased:", orderData.reference);
@@ -426,14 +427,14 @@
                     console.error("Error in onFSPopupClosed:", err);
                 }
             }
-        </script>
+    </script>
     @endif
 
     <!-- Paddle Integration -->
     @if (in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-        <script>
-            //     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script>
+        //     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
             //     Paddle.Initialize({
             //     token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
             //     eventCallback: function(data) {
@@ -460,12 +461,12 @@
                     }
                 }
             });
-        </script>
+    </script>
     @endif
 
     <!-- PayProGlobal Integration -->
     @if (in_array('Pay Pro Global', $activeGateways))
-        <script src="{{ config('payment.gateways.PayProGlobal.script_url') }}"></script>
+    <script src="{{ config('payment.gateways.PayProGlobal.script_url') }}"></script>
     @endif
 
 </head>
@@ -496,8 +497,8 @@
                 <div class="card card-light">
                     <h3>Free</h3>
                     <p class="price">$0 <span class="per-month">/month</span></p>
-                    <button class="btn dark checkout-button" data-package="free-plan"
-                        {{ $currentPackage == 'Free' ? 'disabled' : '' }}>
+                    <button class="btn dark checkout-button" data-package="free-plan" {{ $currentPackage=='Free'
+                        ? 'disabled' : '' }}>
                         {{ $currentPackage == 'Free' ? 'Activated' : 'Get Started' }}
                     </button>
 
@@ -518,8 +519,8 @@
                 <div class="card card-light">
                     <h3>Starter</h3>
                     <p class="price">$390 <span class="per-month">/60hrs a month</span></p>
-                    <button class="btn dark checkout-button" data-package="starter-plan"
-                        {{ $currentPackage == 'Starter' ? 'disabled' : '' }}>
+                    <button class="btn dark checkout-button" data-package="starter-plan" {{ $currentPackage=='Starter'
+                        ? 'disabled' : '' }}>
                         {{ $currentPackage == 'Starter' ? 'Activated' : 'Get Started' }}
                     </button>
 
@@ -543,8 +544,8 @@
                 <div class="card card-dark">
                     <h3>Pro</h3>
                     <p class="price">$780 <span class="per-month">/120hrs a month</span></p>
-                    <button class="btn dark checkout-button" data-package="Pro-plan"
-                        {{ $currentPackage == 'Pro' ? 'disabled' : '' }}>
+                    <button class="btn dark checkout-button" data-package="Pro-plan" {{ $currentPackage=='Pro'
+                        ? 'disabled' : '' }}>
                         {{ $currentPackage == 'Pro' ? 'Activated' : 'Get Started' }}
                     </button>
 
@@ -570,8 +571,8 @@
                 <div class="card card-light">
                     <h3>Business</h3>
                     <p class="price">$2800 <span class="per-month">/unlimited</span></p>
-                    <button class="btn dark checkout-button" data-package="business-plan"
-                        {{ $currentPackage == 'Business' ? 'disabled' : '' }}>
+                    <button class="btn dark checkout-button" data-package="business-plan" {{ $currentPackage=='Business'
+                        ? 'disabled' : '' }}>
                         {{ $currentPackage == 'Business' ? 'Activated' : 'Get Started' }}
                     </button>
                     <p class="included-title">What's included</p>
@@ -764,9 +765,7 @@
 
                 function tryNextUrl() {
                     if (currentUrlIndex >= possibleUrls.length) {
-                        alert(
-                            'Unable to connect to payment service. Please check your network connection and try again.'
-                            );
+                        alert('Unable to connect to payment service. Please check your network connection and try again.');
                         return;
                     }
 
@@ -780,8 +779,7 @@
                                 'Accept': 'application/json',
                                 'X-Requested-With': 'XMLHttpRequest',
                                 ...(document.querySelector('meta[name="csrf-token"]') && {
-                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                                        .content
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                                 })
                             },
                             credentials: 'same-origin'
@@ -801,8 +799,7 @@
                                         const errorData = JSON.parse(text);
                                         throw new Error(errorData.message || 'Server error');
                                     } catch (e) {
-                                        throw new Error(
-                                            `HTTP ${response.status}: ${response.statusText}`);
+                                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                                     }
                                 });
                             }
@@ -817,46 +814,33 @@
                                 throw new Error(data.message || data.error || 'Unknown error occurred');
                             }
 
-                            if (!data.data) {
-                                throw new Error('Invalid response format');
-                            }
+                            // FIXED: The response structure - no data.data, just data directly
+                            const checkoutData = data; // Changed from data.data to data
 
-                            if (typeof Paddle === 'undefined') {
-                                console.error('Paddle.js not loaded');
-                                alert(
-                                    'Payment gateway unavailable. Please ensure Paddle.js is loaded and try again.'
-                                    );
-                                return;
-                            }
-
-                            const checkoutData = data.data;
-
+                            // Check if we have a checkout URL (redirect approach)
                             if (checkoutData.checkout_url) {
                                 console.log('Redirecting to checkout URL:', checkoutData.checkout_url);
                                 window.open(checkoutData.checkout_url, '_blank');
                                 return;
                             }
 
-                            // Otherwise, open Paddle checkout overlay with the transaction ID
-                            console.log('Opening Paddle checkout with transaction ID:', checkoutData
-                                .transaction_id);
+                            // Otherwise, try to use Paddle overlay with transaction ID
+                            if (typeof Paddle === 'undefined') {
+                                console.error('Paddle.js not loaded');
+                                alert('Payment gateway unavailable. Please ensure Paddle.js is loaded and try again.');
+                                return;
+                            }
+
+                            console.log('Opening Paddle checkout with transaction ID:', checkoutData.transaction_id);
 
                             try {
                                 // Use the transaction ID to open checkout
                                 if (checkoutData.transaction_id) {
                                     Paddle.Checkout.open({
-                                        transactionId: checkoutData.transaction_id,
-                                        ...checkoutData.settings
+                                        transactionId: checkoutData.transaction_id
                                     });
                                 } else {
-                                    // Fallback to creating new checkout
-                                    Paddle.Checkout.open({
-                                        items: checkoutData.items,
-                                        customer: checkoutData.customer_id ? {
-                                            id: checkoutData.customer_id
-                                        } : undefined,
-                                        settings: checkoutData.settings
-                                    });
+                                    throw new Error('No transaction ID or checkout URL provided');
                                 }
                             } catch (paddleError) {
                                 console.error('Paddle checkout error:', paddleError);
@@ -874,8 +858,7 @@
                                 }
                                 alert('Network error. Please check your internet connection and try again.');
                             } else {
-                                const message = error.message ||
-                                    'Payment processing error. Please try again or contact support.';
+                                const message = error.message || 'Payment processing error. Please try again or contact support.';
                                 alert(message);
                             }
                         });
