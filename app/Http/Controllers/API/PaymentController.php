@@ -112,11 +112,20 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            // Check if user has a name
+            if (empty($user->name)) {
+                \Log::error('User name is missing for user ID: ' . $user->id);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'User information incomplete',
+                    'message' => 'Your account must have a name to proceed with the purchase.'
+                ], 400);
+            }
+
             $productIds = $this->getProductIds('paddle');
             $productId = $productIds[$package] ?? null;
 
             if (!$productId) {
-                \Log::error('Product ID not found for package: ' . $package);
                 return response()->json([
                     'success' => false,
                     'error' => 'Unavailable package',
@@ -137,6 +146,11 @@ class PaymentController extends Controller
                         'quantity' => 1,
                         'price_id' => $actualPriceId,
                     ],
+                ],
+
+                'customer' => [
+                    'email' => $user->email,
+                    'name' => $user->name,
                 ],
                 'currency_code' => 'USD',
                 'collection_mode' => 'manual',
@@ -192,7 +206,7 @@ class PaymentController extends Controller
                     'transaction_id' => $paddleResponse['data']['id'],
                     'checkout_url' => $paddleResponse['data']['checkout']['url'] ?? null,
                     'items' => $transactionData['items'],
-                    'customer_id' => null,
+                    'customer_id' => Auth::user()->id,
                     'currency_code' => $transactionData['currency_code'],
                     'collection_mode' => $transactionData['collection_mode'],
                     'billing_details' => $transactionData['billing_details'],
