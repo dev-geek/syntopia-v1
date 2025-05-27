@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\PaymentGateways;
 use App\Services\PaymentService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -41,6 +42,7 @@ class SubscriptionController extends Controller
         return view('subscription.index', [
             'payment_gateways' => PaymentGateways::where('is_active', 1)->get(),
             'currentPackage' => auth()->user()->package ?? null,
+            'currentPackage' => optional(Auth::user())->package?->name,
         ]);
     }
 

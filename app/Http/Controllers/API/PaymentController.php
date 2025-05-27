@@ -163,6 +163,21 @@ class PaymentController extends Controller
                 ], 500);
             }
 
+            $package = \App\Models\Package::where('name', $processedPackage)->first();
+
+            if (!$package) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unavailable package',
+                    'message' => 'This package is not available for purchase',
+                    'available_packages' => \App\Models\Package::pluck('name')->toArray()
+                ], 400);
+            }
+
+            // Update user's package_id
+            $user->package_id = $package->id;
+            $user->save();
+
             $products = $productsResponse->json()['data'];
 
             // Find matching product by name
@@ -173,6 +188,8 @@ class PaymentController extends Controller
                     break;
                 }
             }
+
+
 
             if (!$matchingProduct) {
 

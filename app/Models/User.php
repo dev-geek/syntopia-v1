@@ -31,6 +31,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'pet',
         'verification_code',
         'payment_gateway',
+        'package_id'
     ];
 
     /**
@@ -63,6 +64,11 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         // Get the latest order and return its associated package name
         return $this->orders()->latest()->first()?->package->name ?? null;
+    }
+
+    public function package()
+    {
+        return $this->belongsTo(Package::class, 'package_id');
     }
 
 }

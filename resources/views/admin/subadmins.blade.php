@@ -71,16 +71,14 @@
                                                     </a>
 
                                                     <!-- Delete Button -->
-<button type="button"
-    class="btn btn-sm btn-danger"
-    onclick="confirmDelete({{ $user->id }}, '{{ route('sub-admins.destroy', $user->id) }}')"
-    title="Delete">
-    <i class="fas fa-trash-alt"></i>
-</button>
-
+                                                    <button type="button"
+                                                        class="btn btn-sm btn-danger"
+                                                        onclick="confirmDelete({{ $user->id }}, '{{ route('sub-admins.destroy', $user->id) }}')"
+                                                        title="Delete">
+                                                        <i class="fas fa-trash-alt"></i>
+                                                    </button>
                                                 </td>
                                             @endif
-
                                     </tr>
                                     @endforeach
                                     </tfoot>

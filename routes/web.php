@@ -123,6 +123,8 @@ Route::middleware(['role'])->group(function () {
     Route::get('payment-gateways-list', [PaymentGatewaysController::class, 'index'])->name('payment-gateways.index');
     Route::post('/payment-gateways/toggle-status', [PaymentGatewaysController::class, 'toggleStatus'])->name('payment-gateways.toggleStatus');
 
+    Route::post('store-user', [AdminController::class, 'storeUser'])->name('store.user');
+
 });
 Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
 
