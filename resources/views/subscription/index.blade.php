@@ -7,7 +7,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
         content="frame-ancestors 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com http://127.0.0.1 http://localhost; frame-src 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com;">
-    {{-- <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;"> --}}
+    {{--
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;"> --}}
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -415,7 +416,6 @@
             function onFSPopupClosed(orderData) {
                 try {
                     if (orderData?.reference) {
-                        console.log("Product purchased:", orderData.reference);
                         // Handle successful purchase
                         window.location.href = "/payment/success?gateway=fastspring&order=" + orderData.reference;
                     } else {
@@ -433,30 +433,18 @@
     @if (in_array('Paddle', $activeGateways))
         <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
         <script>
-            //     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
-            //     Paddle.Initialize({
-            //     token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
-            //     eventCallback: function(data) {
-            //         console.log('[Paddle Event]', data);
-            //     }
-            // });
             Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
             Paddle.Initialize({
                 token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
                 eventCallback: function(event) {
-                    console.log('[Paddle Event]', event);
-
                     // Handle successful payment
                     if (event.name === 'checkout.completed') {
-                        console.log('Payment completed:', event.data);
-                        // Redirect or update UI
-                        alert('Payment successful!');
-                        // window.location.href = '/success';
+                        window.location.href = '/pricing';
                     }
 
                     // Handle checkout closure
                     if (event.name === 'checkout.closed') {
-                        console.log('Checkout closed');
+                        window.location.href = '/pricing';
                     }
                 }
             });
@@ -659,19 +647,17 @@
         Having trouble? Contact us at
         <a href="mailto:support@syntopia.ai">support@syntopia.ai</a>
     </footer>
-
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            // Get current package and active gateways from backend
             const currentPackage = "{{ $currentPackage ?? '' }}";
             const activeGateways = @json($payment_gateways->pluck('name')->toArray() ?? []);
+            const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
 
-            // Display error message if no gateways available
             if (!activeGateways || activeGateways.length === 0) {
                 console.error('No payment gateways configured');
             }
 
-            // Add click event listeners to all checkout buttons
             document.querySelectorAll('.checkout-button').forEach(button => {
                 button.addEventListener('click', function() {
                     // Don't proceed if button is disabled (current plan)
@@ -701,16 +687,10 @@
 
             // Main checkout processing function
             function processCheckout(productPath) {
-                if (!activeGateways || activeGateways.length === 0) {
-                    alert('No payment gateways are available. Please contact support.');
-                    return;
-                }
-
-                // Use the first active gateway
-                const activeGateway = activeGateways[0];
+                const userGateway = "{{ $currentLoggedInUserPaymentGateway }}";
 
                 try {
-                    switch (activeGateway) {
+                    switch (userGateway) {
                         case 'FastSpring':
                             processFastSpring(productPath);
                             break;
@@ -721,11 +701,37 @@
                             processPayProGlobal(productPath);
                             break;
                         default:
-                            throw new Error(`Unsupported payment gateway: ${activeGateway}`);
+                            // If we don't recognize the gateway, try the first available one as fallback
+                            if (activeGateways && activeGateways.length > 0) {
+                                processCheckoutWithGateway(productPath, activeGateways[0]);
+                            } else {
+                                throw new Error(`Unsupported payment gateway: ${userGateway}`);
+                            }
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
-                    alert('Payment gateway error. Please try again later or contact support.');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment Gateway Error',
+                        text: 'Payment gateway error. Please try again later or contact support.',
+                        confirmButtonText: 'OK'
+                    });
+                }
+            }
+
+            function processCheckoutWithGateway(productPath, gateway) {
+                switch (gateway) {
+                    case 'FastSpring':
+                        processFastSpring(productPath);
+                        break;
+                    case 'Paddle':
+                        processPaddle(productPath);
+                        break;
+                    case 'Pay Pro Global':
+                        processPayProGlobal(productPath);
+                        break;
+                    default:
+                        throw new Error(`Unsupported payment gateway: ${gateway}`);
                 }
             }
 
@@ -747,10 +753,7 @@
 
             // Paddle-specific processing
             function processPaddle(productPath) {
-                console.log('processPaddle called with:', productPath);
-
                 const packageName = productPath.replace('-plan', '');
-                console.log('Package name:', packageName);
 
                 // Try different possible URLs
                 const possibleUrls = [
@@ -764,14 +767,16 @@
 
                 function tryNextUrl() {
                     if (currentUrlIndex >= possibleUrls.length) {
-                        alert(
-                            'Unable to connect to payment service. Please check your network connection and try again.'
-                            );
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Connection Error',
+                            text: 'Unable to connect to payment service. Please check your network connection and try again.',
+                            confirmButtonText: 'OK'
+                        });
                         return;
                     }
 
                     const url = possibleUrls[currentUrlIndex];
-                    console.log('Trying URL:', url);
 
                     fetch(url, {
                             method: 'POST',
@@ -787,8 +792,6 @@
                             credentials: 'same-origin'
                         })
                         .then(response => {
-                            console.log('Response status:', response.status);
-                            console.log('Response headers:', response.headers);
 
                             if (!response.ok) {
                                 if (response.status === 404 && currentUrlIndex < possibleUrls.length - 1) {
@@ -811,56 +814,56 @@
                         .then(data => {
                             if (!data) return;
 
-                            console.log('Success response:', data);
-
                             if (!data.success) {
                                 throw new Error(data.message || data.error || 'Unknown error occurred');
                             }
 
-                            if (!data.data) {
-                                throw new Error('Invalid response format');
+                            const checkoutData = data; // Changed from data.data to data
+
+                            // Check if we have a checkout URL (redirect approach)
+                            if (checkoutData.checkout_url) {
+                                window.location.href = checkoutData.checkout_url;
+                                return;
                             }
 
+                            // Otherwise, try to use Paddle overlay with transaction ID
                             if (typeof Paddle === 'undefined') {
                                 console.error('Paddle.js not loaded');
-                                alert(
-                                    'Payment gateway unavailable. Please ensure Paddle.js is loaded and try again.'
-                                    );
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Payment Gateway Unavailable',
+                                    text: 'Payment gateway unavailable. Please ensure Paddle.js is loaded and try again.',
+                                    confirmButtonText: 'OK'
+                                });
                                 return;
                             }
-
-                            const checkoutData = data.data;
-
-                            if (checkoutData.checkout_url) {
-                                console.log('Redirecting to checkout URL:', checkoutData.checkout_url);
-                                window.open(checkoutData.checkout_url, '_blank');
-                                return;
-                            }
-
-                            // Otherwise, open Paddle checkout overlay with the transaction ID
-                            console.log('Opening Paddle checkout with transaction ID:', checkoutData
-                                .transaction_id);
 
                             try {
                                 // Use the transaction ID to open checkout
                                 if (checkoutData.transaction_id) {
                                     Paddle.Checkout.open({
-                                        transactionId: checkoutData.transaction_id,
-                                        ...checkoutData.settings
+                                        transactionId: checkoutData.transaction_id
+                                    });
+
+                                    // Show success message
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Opening Checkout',
+                                        text: 'Payment window is loading...',
+                                        timer: 2000,
+                                        showConfirmButton: false
                                     });
                                 } else {
-                                    // Fallback to creating new checkout
-                                    Paddle.Checkout.open({
-                                        items: checkoutData.items,
-                                        customer: checkoutData.customer_id ? {
-                                            id: checkoutData.customer_id
-                                        } : undefined,
-                                        settings: checkoutData.settings
-                                    });
+                                    throw new Error('No transaction ID or checkout URL provided');
                                 }
                             } catch (paddleError) {
                                 console.error('Paddle checkout error:', paddleError);
-                                alert('Failed to open checkout. Please try again.');
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Checkout Failed',
+                                    text: 'Failed to open checkout. Please try again.',
+                                    confirmButtonText: 'OK'
+                                });
                             }
                         })
                         .catch(error => {
@@ -872,11 +875,21 @@
                                     tryNextUrl();
                                     return;
                                 }
-                                alert('Network error. Please check your internet connection and try again.');
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Network Error',
+                                    text: 'Please check your internet connection and try again.',
+                                    confirmButtonText: 'OK'
+                                });
                             } else {
                                 const message = error.message ||
                                     'Payment processing error. Please try again or contact support.';
-                                alert(message);
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Payment Error',
+                                    text: message,
+                                    confirmButtonText: 'OK'
+                                });
                             }
                         });
                 }
@@ -919,10 +932,24 @@
                             'PayProGlobalCheckout',
                             `width=${width},height=${height},top=${top},left=${left}`
                         );
+
+                        // Show success message
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Opening Payment Window',
+                            text: 'Payment window is opening in a new tab...',
+                            timer: 2000,
+                            showConfirmButton: false
+                        });
                     })
                     .catch(error => {
                         console.error('PayProGlobal checkout error:', error);
-                        alert('Payment processing error. Please try again or contact support.');
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Payment Processing Error',
+                            text: 'Payment processing error. Please try again or contact support.',
+                            confirmButtonText: 'OK'
+                        });
                     });
             }
 

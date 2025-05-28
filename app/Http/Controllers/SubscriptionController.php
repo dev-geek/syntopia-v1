@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\PaymentGateways;
 use App\Services\PaymentService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -38,9 +39,19 @@ class SubscriptionController extends Controller
      */
     public function index()
     {
+        $user = Auth::user();
+
+        $currentLoggedInUserPaymentGateway = optional($user->paymentGateway)->name ?? null;
+
+        // Create a collection with just the user's original gateway
+        $userGateway = new PaymentGateways();
+        $userGateway->name = $currentLoggedInUserPaymentGateway;
+        $filteredGateways = collect([$userGateway]);
+
         return view('subscription.index', [
-            'payment_gateways' => PaymentGateways::where('is_active', 1)->get(),
-            'currentPackage' => auth()->user()->package ?? null,
+            'payment_gateways' => $filteredGateways,
+            'currentPackage' => $user->package->name ?? null,
+            'currentLoggedInUserPaymentGateway' => $currentLoggedInUserPaymentGateway,
         ]);
     }
 

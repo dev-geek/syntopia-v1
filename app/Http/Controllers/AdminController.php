@@ -156,7 +156,7 @@ class AdminController extends Controller
     }
     public function addusers()
     {
-        return view('admin.addusers');
+        return view('admin.users.create');
     }
     public function addExcelUsers(Request $request)
     {
@@ -181,4 +181,25 @@ class AdminController extends Controller
     }
 
     public function createOrUpdateSubAdmin() {}
+
+    public function storeUser(Request $request)
+    {
+        // Validate the incoming request data
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        // Create the user
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']), // Hash the password
+            'status' => $request->input('status'),
+        ]);
+
+        // Redirect or return a response
+        return redirect()->route('admin.users')->with('success', 'User created successfully.');
+    }
 }

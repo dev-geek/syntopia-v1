@@ -99,21 +99,15 @@ class PaymentController extends Controller
     public function paddleCheckout(Request $request, string $package)
     {
         try {
-            \Log::info('Paddle checkout called for package: ' . $package);
-
             $apiKey = config('payment.gateways.Paddle.api_key');
 
             if (empty($apiKey)) {
-                \Log::error('Paddle API key missing in configuration');
                 return response()->json([
                     'success' => false,
                     'error' => 'Payment configuration error',
                     'message' => 'Payment system is not properly configured'
                 ], 500);
             }
-
-            // Sanitized logging for verification
-            \Log::info('Using Paddle API key starting with: ' . substr($apiKey, 0, 10) . '...');
 
             // Process package name
             $processedPackage = str_replace('-plan', '', strtolower($package));
@@ -141,59 +135,27 @@ class PaymentController extends Controller
                 'Content-Type' => 'application/json'
             ];
 
-            // Create customer if not exists
+            // Handle customer creation or lookup
             if (!$user->paddle_customer_id) {
-                \Log::info('Creating new Paddle customer for user: ' . $user->email);
-
-                $customerResponse = Http::withHeaders($headers)
-                    ->post('https://api.paddle.com/customers', [
-                        'email' => $user->email,
-                        'name' => $userName,
-                    ]);
-                dd($customerResponse);
-
-                if (!$customerResponse->successful()) {
-                    $statusCode = $customerResponse->status();
-                    $errorBody = $customerResponse->body();
-                    $errorData = json_decode($errorBody, true);
-
-                    \Log::error("Paddle customer creation failed [{$statusCode}]: " . $errorBody);
-
-                    // Extract specific error message
-                    $errorMessage = $errorData['error']['detail'] ?? 'Customer creation failed';
-                    $errorCode = $errorData['error']['code'] ?? 'unknown_error';
-
+                $customerId = $this->getOrCreatePaddleCustomer($user, $headers);
+                if (!$customerId) {
                     return response()->json([
                         'success' => false,
                         'error' => 'Customer setup failed',
-                        'message' => $errorMessage,
-                        'error_code' => $errorCode,
-                        'debug' => [
-                            'status_code' => $statusCode,
-                            'api_key_format' => substr($apiKey, 0, 10) . '...',
-                            'paddle_error' => $errorData
-                        ]
+                        'message' => 'Unable to create or find customer in payment system'
                     ], 500);
                 }
-
-                $customerData = $customerResponse->json();
-                $user->paddle_customer_id = $customerData['data']['id'];
+                $user->paddle_customer_id = $customerId;
                 $user->save();
-
-                \Log::info('Paddle customer created with ID: ' . $user->paddle_customer_id);
             }
 
-            // Fetch products from Paddle including prices
-            \Log::info('Fetching products from Paddle');
-
             $productsResponse = Http::withHeaders($headers)
-                ->get('https://api.paddle.com/products', [
+                ->get('https://sandbox-api.paddle.com/products', [
                     'include' => 'prices',
                     'per_page' => 200,
                 ]);
 
             if (!$productsResponse->successful()) {
-                \Log::error('Failed to fetch products from Paddle: ' . $productsResponse->body());
                 return response()->json([
                     'success' => false,
                     'error' => 'Product fetch failed',
@@ -201,8 +163,22 @@ class PaymentController extends Controller
                 ], 500);
             }
 
+            $package = \App\Models\Package::where('name', $processedPackage)->first();
+
+            if (!$package) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unavailable package',
+                    'message' => 'This package is not available for purchase',
+                    'available_packages' => \App\Models\Package::pluck('name')->toArray()
+                ], 400);
+            }
+
+            // Update user's package_id
+            $user->package_id = $package->id;
+            $user->save();
+
             $products = $productsResponse->json()['data'];
-            \Log::info('Found ' . count($products) . ' products from Paddle');
 
             // Find matching product by name
             $matchingProduct = null;
@@ -213,9 +189,9 @@ class PaymentController extends Controller
                 }
             }
 
+
+
             if (!$matchingProduct) {
-                \Log::error('Product not found: ' . $processedPackage);
-                \Log::info('Available products: ' . collect($products)->pluck('name')->implode(', '));
 
                 return response()->json([
                     'success' => false,
@@ -224,8 +200,6 @@ class PaymentController extends Controller
                     'available_packages' => collect($products)->pluck('name')->toArray()
                 ], 400);
             }
-
-            \Log::info('Found matching product: ' . $matchingProduct['name']);
 
             // Check for active prices
             $prices = $matchingProduct['prices'] ?? [];
@@ -242,7 +216,6 @@ class PaymentController extends Controller
             }
 
             $priceId = $activePrices[0]['id'];
-            \Log::info('Using price ID: ' . $priceId);
 
             // Prepare transaction data
             $transactionData = [
@@ -255,24 +228,16 @@ class PaymentController extends Controller
                 'customer_id' => $user->paddle_customer_id,
                 'currency_code' => 'USD',
                 'collection_mode' => 'automatic',
-                'billing_details' => [
-                    'enable_checkout' => true,
-                    'purchase_order_number' => 'PO-' . uniqid()
-                ]
+                'billing_details' => null,
             ];
 
-            \Log::info('Creating transaction for customer: ' . $user->paddle_customer_id);
-
-            // Create transaction
             $response = Http::withHeaders($headers)
-                ->post('https://api.paddle.com/transactions', $transactionData);
+                ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
 
             // Handle response
             if (!$response->successful()) {
                 $errorBody = $response->body();
                 $errorData = json_decode($errorBody, true);
-
-                \Log::error('Transaction creation failed: ' . $errorBody);
 
                 $errorMessage = $errorData['error']['detail'] ?? 'Transaction creation failed';
                 $errorCode = $errorData['error']['code'] ?? 'unknown_error';
@@ -287,24 +252,74 @@ class PaymentController extends Controller
             }
 
             $transaction = $response->json()['data'];
-
-            \Log::info('Transaction created successfully: ' . $transaction['id']);
-
             return response()->json([
                 'success' => true,
                 'checkout_url' => $transaction['checkout']['url'] ?? null,
                 'transaction_id' => $transaction['id']
             ]);
-
         } catch (\Exception $e) {
-            \Log::error('Checkout error: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
-
             return response()->json([
                 'success' => false,
                 'error' => 'Checkout failed',
                 'message' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Get existing customer or create new one
+     */
+    private function getOrCreatePaddleCustomer($user, $headers)
+    {
+        try {
+
+            // First, try to find existing customer by email
+            $searchResponse = Http::withHeaders($headers)
+                ->get('https://sandbox-api.paddle.com/customers', [
+                    'email' => $user->email
+                ]);
+
+            if ($searchResponse->successful()) {
+                $customers = $searchResponse->json()['data'] ?? [];
+
+                if (!empty($customers)) {
+                    $existingCustomer = $customers[0];
+                    return $existingCustomer['id'];
+                }
+            }
+
+            $customerResponse = Http::withHeaders($headers)
+                ->post('https://sandbox-api.paddle.com/customers', [
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'custom_data' => [
+                        'customer_reference_id' => (string) $user->id
+                    ],
+                    'locale' => 'en'
+                ]);
+
+            if ($customerResponse->successful()) {
+                $customerData = $customerResponse->json();
+                $customerId = $customerData['data']['id'];
+                return $customerId;
+            } else {
+                $errorBody = $customerResponse->body();
+                $errorData = json_decode($errorBody, true);
+
+                // If customer already exists error, try to extract the customer ID from the error
+                if (isset($errorData['error']['code']) && $errorData['error']['code'] === 'customer_already_exists') {
+
+                    // Extract customer ID from error message if possible
+                    $detail = $errorData['error']['detail'] ?? '';
+                    if (preg_match('/customer of id (ctm_[a-zA-Z0-9]+)/', $detail, $matches)) {
+                        $existingCustomerId = $matches[1];
+                        return $existingCustomerId;
+                    }
+                }
+                return null;
+            }
+        } catch (\Exception $e) {
+            return null;
         }
     }
 
@@ -324,14 +339,9 @@ class PaymentController extends Controller
             $packageData = $validation['packageData'];
             $productIds = $this->getProductIds('fastspring');
             $productId = $productIds[$package] ?? null;
-
-            // For free or enterprise plans that don't use direct checkout
             if ($productId === null) {
                 if ($package === 'free') {
-                    // Handle free plan activation logic
                     try {
-                        // Update user's subscription in database
-                        // $user->updateSubscription('free', $packageData->id);
 
                         return response()->json([
                             'success' => true,

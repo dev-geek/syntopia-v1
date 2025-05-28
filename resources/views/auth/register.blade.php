@@ -19,7 +19,7 @@
             font-weight: 500;
            color:#000;
         }
-       
+
         .container-box {
             max-width: 100%;
             width: 520px;
@@ -62,7 +62,7 @@
         .d-flex{
             height: 80vh;
         }
-        
+
         label {
             font-weight: 500;
             font-size: 13px;
@@ -70,7 +70,7 @@
             display: block;
             margin-bottom: 5px;
         }
-       
+
         .footer-text{
             text-align: center;
         }
@@ -99,12 +99,12 @@
             color: #6c757d !important;
         }
         @media (max-width: 768px){
-           
+
         .d-flex{
             height: 75vh;
         }
         }
-        
+
     </style>
 </head>
 <body>
@@ -112,7 +112,7 @@
     <!-- Logo at the top -->
     <div class="logo-container">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
-       
+
     </div>
 
     <!-- Centered Signup Form -->
@@ -125,11 +125,11 @@
             <form method="POST" action="{{ route('register.user') }}">
             @csrf
                 <input type="hidden" name="email" value="{{ request()->get('email') }}">
-                
+
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label for="first_name">First Name</label>
-                        <input type="text" id="first_name" name="first_name" class="form-control @error('first_name') is-invalid @enderror" 
+                        <input type="text" id="first_name" name="first_name" class="form-control @error('first_name') is-invalid @enderror"
                             placeholder="Enter your first name" required value="{{ old('first_name') }}">
                         @error('first_name')
                             <span class="invalid-feedback" role="alert">
@@ -139,7 +139,7 @@
                     </div>
                     <div class="col-md-6 mb-3">
                         <label for="last_name">Last Name</label>
-                        <input type="text" id="last_name" name="last_name" class="form-control @error('last_name') is-invalid @enderror" 
+                        <input type="text" id="last_name" name="last_name" class="form-control @error('last_name') is-invalid @enderror"
                             placeholder="Enter your last name" required value="{{ old('last_name') }}">
                         @error('last_name')
                             <span class="invalid-feedback" role="alert">
@@ -149,8 +149,18 @@
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" class="form-control @error('email') is-invalid @enderror"
+                        placeholder="Enter an email address" required>
+                    @error('email')
+                        <span class="invalid-feedback" role="alert">
+                            <strong>{{ $message }}</strong>
+                        </span>
+                    @enderror
+                </div>
+                <div class="mb-3">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" class="form-control @error('password') is-invalid @enderror" 
+                    <input type="password" id="password" name="password" class="form-control @error('password') is-invalid @enderror"
                         placeholder="Enter a strong password" required>
                     @error('password')
                         <span class="invalid-feedback" role="alert">
@@ -168,19 +178,19 @@
 
             <!-- Terms & Privacy -->
             <p class="text-muted mt-3" style="font-size: 11px;">
-                By joining the workspace, you agree to our 
-                <a href="#" class="text-primary">User Terms of Service</a> and 
+                By joining the workspace, you agree to our
+                <a href="#" class="text-primary">User Terms of Service</a> and
                 <a href="#" class="text-primary">Privacy Policy</a>.
-               
+
             </p>
 
         </div>
     </div>
     <div class="footer-text ">
-         Having trouble? Contact us at 
+         Having trouble? Contact us at
                 <a href="mailto:info@syntopia.ai" class="text-primary">info@syntopia.ai</a>.
     </div>
-    
+
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
