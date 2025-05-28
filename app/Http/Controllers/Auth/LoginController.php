@@ -38,8 +38,8 @@ class LoginController extends Controller
 
         // Check if the user is authenticated
         if (Auth::check()) {
-            if($user->role== '3' && $user->status== '0' && $user->email_verified_at == null) {
-                Auth::logout(); // Log the user out if their status is 0
+            if($user->role != '1' && $user->role != '2' && $user->email_verified_at == null) {
+                Auth::logout();
                 return route('login-sub');
             }
 
