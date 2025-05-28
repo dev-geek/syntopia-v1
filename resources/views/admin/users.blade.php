@@ -35,7 +35,7 @@
                                         <th>Email</th>
                                         <th>Role</th>
                                         <th>Status</th>
-                                        @if (Auth::check() && Auth::user()->role == 1)
+                                        @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
                                             <th>
                                                 Action
                                         @endif
@@ -47,25 +47,30 @@
                                         @foreach ($users as $user)
                                             <td>{{ $user->name }}</td>
                                             <td>{{ $user->email }} </td>
-                                            @if ($user->role == 1)
-                                                <td>Admin</td>
-                                            @elseif($user->role == 2)
-                                                <td>Editor</td>
-                                            @else
-                                                <td>Subscriber</td>
-                                            @endif
+                                            <td>
+                                                @if ($user->hasRole('Super Admin'))
+                                                    Super Admin
+                                                @elseif ($user->hasRole('Sub Admin'))
+                                                    Sub Admin
+                                                @elseif ($user->hasRole('User'))
+                                                    User
+                                                @else
+                                                    Unknown
+                                                @endif
+                                            </td>
+
                                             @if ($user->status == 1)
                                                 <td>Active</td>
                                             @else
                                                 <td>Deactive</td>
                                             @endif
-                                            @if (Auth::check() && Auth::user()->role == 1)
+                                            @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
                                                 <td>
-                                                    <a href="{{ route('manage.profile', $user->id) }}" class="btn btn-sm btn-primary mx-2" title="Edit">
+                                                    <a href="{{ route('manage.profile', $user->id) }}"
+                                                        class="btn btn-sm btn-primary mx-2" title="Edit">
                                                         <i class="fas fa-edit"></i></a>
-                                                    <form action="{{ route('users.destroy', $user->id) }}"
-                                                        method="POST" style="display:inline-block;"
-                                                        onsubmit="return confirm('Are you sure you want to delete this user?');">
+                                                    <form action="{{ route('users.destroy', $user) }}" method="POST"
+                                                        class="delete-form" style="display:inline-block;">
                                                         @csrf
                                                         @method('DELETE')
                                                         <button type="submit" class="btn btn-danger btn-sm"
@@ -97,6 +102,7 @@
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     $(function() {
         $("#example1").DataTable({
@@ -116,6 +122,38 @@
         });
     });
 </script>
+<script>
+    document.querySelectorAll('.delete-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            Swal.fire({
+                title: 'Are you sure?',
+                text: "You won't be able to revert this!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+        });
+    });
+
+    @if (session('success'))
+        Swal.fire({
+            icon: 'success',
+            title: 'Deleted!',
+            text: '{{ session('success') }}',
+            timer: 2500,
+            showConfirmButton: false
+        });
+    @endif
+</script>
+
 </body>
 
 </html>
