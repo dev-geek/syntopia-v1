@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Mail\VerifyEmail;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -43,7 +44,7 @@ class VerificationController extends Controller
     {
         // Get email from session
         $email = session('email');
-        
+
         if (!$email) {
             return redirect()->route('login');
         }
@@ -58,18 +59,18 @@ class VerificationController extends Controller
             'token_from_form' => $request->_token,
             'token_from_session' => session('_token'),
         ]);
-    
+
         return response()->json(['message' => 'Check logs'], 403);
     }
 
     public function resend()
     {
         $user = User::where('email', session('email'))->first();
-        
+
         if ($user) {
             $user->verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             $user->save();
-            
+
             Mail::to($user->email)->send(new VerifyEmail($user));
         }
 
