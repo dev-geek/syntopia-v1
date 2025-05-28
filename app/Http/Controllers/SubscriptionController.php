@@ -39,10 +39,19 @@ class SubscriptionController extends Controller
      */
     public function index()
     {
+        $user = Auth::user();
+
+        $currentLoggedInUserPaymentGateway = optional($user->paymentGateway)->name ?? null;
+
+        // Create a collection with just the user's original gateway
+        $userGateway = new PaymentGateways();
+        $userGateway->name = $currentLoggedInUserPaymentGateway;
+        $filteredGateways = collect([$userGateway]);
+
         return view('subscription.index', [
-            'payment_gateways' => PaymentGateways::where('is_active', 1)->get(),
-            'currentPackage' => auth()->user()->package ?? null,
-            'currentPackage' => optional(Auth::user())->package?->name,
+            'payment_gateways' => $filteredGateways,
+            'currentPackage' => $user->package->name ?? null,
+            'currentLoggedInUserPaymentGateway' => $currentLoggedInUserPaymentGateway,
         ]);
     }
 

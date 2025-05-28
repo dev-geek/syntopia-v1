@@ -650,16 +650,14 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            // Get current package and active gateways from backend
             const currentPackage = "{{ $currentPackage ?? '' }}";
             const activeGateways = @json($payment_gateways->pluck('name')->toArray() ?? []);
+            const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
 
-            // Display error message if no gateways available
             if (!activeGateways || activeGateways.length === 0) {
                 console.error('No payment gateways configured');
             }
 
-            // Add click event listeners to all checkout buttons
             document.querySelectorAll('.checkout-button').forEach(button => {
                 button.addEventListener('click', function() {
                     // Don't proceed if button is disabled (current plan)
@@ -689,21 +687,10 @@
 
             // Main checkout processing function
             function processCheckout(productPath) {
-                if (!activeGateways || activeGateways.length === 0) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment Gateway Unavailable',
-                        text: 'No payment gateways are available. Please contact support.',
-                        confirmButtonText: 'OK'
-                    });
-                    return;
-                }
-
-                // Use the first active gateway
-                const activeGateway = activeGateways[0];
+                const userGateway = "{{ $currentLoggedInUserPaymentGateway }}";
 
                 try {
-                    switch (activeGateway) {
+                    switch (userGateway) {
                         case 'FastSpring':
                             processFastSpring(productPath);
                             break;
@@ -714,7 +701,12 @@
                             processPayProGlobal(productPath);
                             break;
                         default:
-                            throw new Error(`Unsupported payment gateway: ${activeGateway}`);
+                            // If we don't recognize the gateway, try the first available one as fallback
+                            if (activeGateways && activeGateways.length > 0) {
+                                processCheckoutWithGateway(productPath, activeGateways[0]);
+                            } else {
+                                throw new Error(`Unsupported payment gateway: ${userGateway}`);
+                            }
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
@@ -724,6 +716,22 @@
                         text: 'Payment gateway error. Please try again later or contact support.',
                         confirmButtonText: 'OK'
                     });
+                }
+            }
+
+            function processCheckoutWithGateway(productPath, gateway) {
+                switch (gateway) {
+                    case 'FastSpring':
+                        processFastSpring(productPath);
+                        break;
+                    case 'Paddle':
+                        processPaddle(productPath);
+                        break;
+                    case 'Pay Pro Global':
+                        processPayProGlobal(productPath);
+                        break;
+                    default:
+                        throw new Error(`Unsupported payment gateway: ${gateway}`);
                 }
             }
 

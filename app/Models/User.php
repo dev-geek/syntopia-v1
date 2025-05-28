@@ -71,4 +71,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(Package::class, 'package_id');
     }
 
+    public function paymentGateway()
+    {
+        return $this->belongsTo(PaymentGateways::class);
+    }
+
 }
