@@ -4,21 +4,22 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;  // Correct import
+use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use App\Models\Order;
 use Maatwebsite\Excel\Facades\Excel;
-use App\Imports\UsersImport;  // You would create this import class to handle the Excel data
-
-
-
-
+use App\Imports\UsersImport;
+use Spatie\Permission\Models\Role;
 
 
 class AdminController extends Controller
 {
     public function index()
     {
+        if (!auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            abort(403, 'Unauthorized');
+        }
+
         return view('admin.index');
     }
     public function login()
@@ -35,13 +36,13 @@ class AdminController extends Controller
         $users = User::all();
         return view('admin.users', compact('users'));
     }
-    public function destroy($id)
+   public function destroy(User $user)
     {
-        $user = User::findOrFail($id);
         $user->delete();
 
         return redirect()->route('admin.users')->with('success', 'User deleted successfully.');
     }
+
     public function subadmins()
     {
         $users = User::where('role', 2)
@@ -184,7 +185,6 @@ class AdminController extends Controller
 
     public function storeUser(Request $request)
     {
-        // Validate the incoming request data
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
@@ -195,11 +195,13 @@ class AdminController extends Controller
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => Hash::make($validated['password']), // Hash the password
+            'password' => Hash::make($validated['password']),
             'status' => $request->input('status'),
         ]);
 
-        // Redirect or return a response
+        // Assign the role of 'User'
+        $user->assignRole('User');
+
         return redirect()->route('admin.users')->with('success', 'User created successfully.');
     }
 }

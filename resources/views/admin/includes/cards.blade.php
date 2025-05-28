@@ -6,8 +6,7 @@
             <div class="info-box-content">
                 <span class="info-box-text">All Users</span>
                 <span class="info-box-number">
-                    {{ \App\Models\User::where('role', 3)->count() }}
-
+                    {{ \App\Models\User::role('User')->count() }}
                 </span>
             </div>
             <!-- /.info-box-content -->
@@ -22,7 +21,7 @@
 
             <div class="info-box-content">
                 <span class="info-box-text">Active Users</span>
-                <span class="info-box-number"> {{ \App\Models\User::where('role', 3)->where('status', 1)->count() }}
+                <span class="info-box-number"> {{ \App\Models\User::role('User')->where('status', 1)->count() }}
                 </span>
             </div>
             <!-- /.info-box-content -->
@@ -54,7 +53,7 @@
 
             <div class="info-box-content">
                 <span class="info-box-text">New Members</span>
-                <span class="info-box-number">{{ \App\Models\User::where('role', 3)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->count() }}</span>
+                <span class="info-box-number">{{ \App\Models\User::role('User')->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->count() }}</span>
             </div>
             <!-- /.info-box-content -->
         </div>

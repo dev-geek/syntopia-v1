@@ -16,14 +16,10 @@ class CheckUserRole
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Check if the user is authenticated and has the specified role
-        if (Auth::check() && Auth::user()->role == 1) {
-            return $next($request); // Allow the request to proceed if the role matches
+        if (Auth::check() && Auth::user()->hasRole('Super Admin')) {
+            return $next($request); // Allow access for Super Admin
         }
 
-        // Redirect to a different page if the user does not have the required role
-        return redirect()->back()->with('success', 'your message,here');   
-
-        // return $next($request);
+        return redirect()->back()->with('error', 'You are not authorized to access this page.');
     }
 }

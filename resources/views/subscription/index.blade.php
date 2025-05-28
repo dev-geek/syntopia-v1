@@ -651,12 +651,7 @@
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             const currentPackage = "{{ $currentPackage ?? '' }}";
-            const activeGateways = @json($payment_gateways->pluck('name')->toArray() ?? []);
             const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
-
-            if (!activeGateways || activeGateways.length === 0) {
-                console.error('No payment gateways configured');
-            }
 
             document.querySelectorAll('.checkout-button').forEach(button => {
                 button.addEventListener('click', function() {
@@ -681,16 +676,19 @@
 
             // Check if a package was specified in the URL
             const packageFromURL = "{{ $currentPackage ?? '' }}";
+            const userGateway = "{{ $currentLoggedInUserPaymentGateway }}";
+            const activeGatewaysByAdmin = @json($activeGatewaysByAdmin);
+
+            const selectedGateway = userGateway && userGateway.trim() !== "" ? userGateway : (activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null);
+
             if (packageFromURL && packageFromURL !== '' && packageFromURL !== currentPackage) {
                 processCheckout(packageFromURL.toLowerCase() + "-plan");
             }
 
             // Main checkout processing function
             function processCheckout(productPath) {
-                const userGateway = "{{ $currentLoggedInUserPaymentGateway }}";
-
                 try {
-                    switch (userGateway) {
+                    switch (selectedGateway) {
                         case 'FastSpring':
                             processFastSpring(productPath);
                             break;
@@ -701,12 +699,7 @@
                             processPayProGlobal(productPath);
                             break;
                         default:
-                            // If we don't recognize the gateway, try the first available one as fallback
-                            if (activeGateways && activeGateways.length > 0) {
-                                processCheckoutWithGateway(productPath, activeGateways[0]);
-                            } else {
-                                throw new Error(`Unsupported payment gateway: ${userGateway}`);
-                            }
+                            throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);

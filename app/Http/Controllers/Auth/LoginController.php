@@ -6,78 +6,60 @@ use App\Http\Controllers\Controller;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-use Closure;
 use Illuminate\Validation\ValidationException;
 use App\Models\User;
-
 
 class LoginController extends Controller
 {
     use AuthenticatesUsers;
 
     /**
-     * Where to redirect users after login.
-     *
-     * @var string
+     * Redirect users after login based on role using Spatie roles.
      */
     protected function authenticated(Request $request, $user)
     {
-        // Check if user is admin (role 1 or 2)
-        if ($user->role == 1 || $user->role == 2) {
+        // Admin or Super Admin redirect
+        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
             return redirect()->route('admin.index');
         }
 
-        // For regular users, redirect to intended URL or profile
-        return redirect()->intended(route('profile'));
-    }
-    public function redirectTo()
-    {
-        $user = Auth::user();
-
-        if ($user->role != '1' && $user->role != '2' && $user->email_verified_at == null) {
+        // Check if email verified for non-admin users
+        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin']) && !$user->hasVerifiedEmail()) {
             Auth::logout();
             return redirect()->route('verification.code')->withErrors('Please verify your email before logging in.');
         }
 
-
-        // Check if the user is authenticated
-        if (Auth::check()) {
-            // Redirect users to the admin panel if they have role '1' or '2'
-            if (in_array($user->role, ['1', '2'])) {
-                return route('admin.index'); // Redirect to the admin page
-            }
-        }
-
-        // Default redirect to home or other route
-        return '/';
+        // Regular user redirect
+        return redirect()->intended(route('profile'));
     }
 
-
     /**
-     * Handle the incoming request and ensure user has the 'admin' role.
+     * Optional: override redirectTo for middleware or other redirections.
+     * Since we use authenticated(), this may not be necessary.
      */
-    public function handle(Request $request, Closure $next)
+    public function redirectTo()
     {
         $user = Auth::user();
 
-
-        if (Auth::check()) {
-            if (Auth::check() && in_array(Auth::user()->role, ['1', '2']))  {
-                return redirect()->route('admin.index'); // Redirect to admin login if the user doesn't have the 'admin' role
+        if ($user) {
+            if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+                return route('admin.index');
             }
 
-        } else {
-            return redirect()->route('/home'); // Redirect if the user is not authenticated
+            if (!$user->hasVerifiedEmail()) {
+                Auth::logout();
+                // You cannot redirect from here easily, so fallback to home with error
+                return route('login')->withErrors('Please verify your email before logging in.');
+            }
+
+            return route('profile');
         }
 
-        return $next($request); // Continue with the request if the user is authenticated and has the 'admin' role
+        return '/';
     }
 
     /**
-     * Create a new controller instance.
-     *
-     * @return void
+     * Constructor applies guest middleware except logout.
      */
     public function __construct()
     {
@@ -86,71 +68,77 @@ class LoginController extends Controller
     }
 
     /**
-     * Logout the user and redirect to admin or home based on the role.
+     * Logout the user and redirect appropriately.
      */
     public function logout(Request $request)
     {
-        $user = Auth::user(); // Get the logged-in user
+        $user = Auth::user();
 
-        // Perform logout
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        // Redirect based on user role
-        if ($user && $user->role === 'admin') {
-            return redirect()->route('admin.index'); // Redirect to the admin panel if the user has the 'admin' role
+        // Redirect based on role
+        if ($user && $user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            return redirect()->route('admin-login'); // Adjust if you want admin login page
         }
-          // Redirect based on user role
-    if ($user && ($user->role == 1 || $user->role == 2)) {
-        return redirect()->route('admin-login'); // Redirect to the admin login page if the user has role 1 or 2
+
+        return redirect('/'); // Default redirect
     }
 
-        return
-         redirect('/'); // Default redirect if no role
-    }
+    /**
+     * Custom login method for regular users.
+     */
     public function customLogin(Request $request)
     {
-        // Validate the login input (email and password)
-        $credentials = $request->only('email', 'password','status');
-        if (Auth::attempt($credentials)) {
-            return redirect()->intended(route('profile'));
+        $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        $credentials = $request->only('email', 'password');
+
+        // Check if user exists
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            throw ValidationException::withMessages([
+                'email' => ['User does not exist.'],
+            ]);
         }
 
-        // Check if the user exists
-    $user = \App\Models\User::where('email', $request->email)->first();
-
-    if (!$user) {
-        throw ValidationException::withMessages([
-            'email' => ['User does not exist.'],
-        ]);
-    }
-
-    // Check if the user signed in with Google
-    if ($user->google_id !== null) {
-        throw ValidationException::withMessages([
-            'email' => ['Password not set! You have signed in with Google.'],
-        ]);
-    }
-
-    // Attempt to log in the user
-    if (Auth::attempt($credentials)) {
-        // Check if the user's status is 0 (inactive)
-        if (Auth::user()->status == 0) {
-            Auth::logout(); // Log the user out if their status is 0
-            return redirect()->route('login')->withErrors('Your account is deactive.');
+        if ($user->google_id !== null) {
+            throw ValidationException::withMessages([
+                'email' => ['Password not set! You have signed in with Google.'],
+            ]);
         }
 
-        // Redirect to the appropriate page after successful login
-        return redirect()->intended($this->redirectTo());
+        if (!Auth::attempt($credentials)) {
+            throw ValidationException::withMessages([
+                'password' => ['Password is incorrect.'],
+            ]);
+        }
+
+        // After successful login
+        $user = Auth::user();
+
+        if ($user->status == 0) {
+            return redirect()->route('verify.code')->withErrors('Verify your account first.');
+        }
+
+        if (is_null($user->email_verified_at)) {
+            return redirect()->route('verification.code')
+                            ->withErrors('Please verify your email before logging in.')
+                            ->with('email', $request->email);
+
+        }
+
+        return redirect()->intended(route('profile'));
     }
 
-    // If the password is incorrect
-    throw ValidationException::withMessages([
-        'password' => ['Password is incorrect.'],
-    ]);
-    }
-
+    /**
+     * Check if an email exists in the database (AJAX).
+     */
     public function checkEmail(Request $request)
     {
         $email = $request->input('email');
@@ -158,5 +146,4 @@ class LoginController extends Controller
 
         return response()->json(['exists' => $exists]);
     }
-
 }

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +14,7 @@ class PaymentGatewaySeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = \App\Models\User::where('role', 1)->first();
+        $admin = User::role(['Super Admin', 'Sub Admin'])->first();
 
         if (!$admin) {
             $this->command->warn('No admin user found. Skipping PaymentGatewaySeeder.');

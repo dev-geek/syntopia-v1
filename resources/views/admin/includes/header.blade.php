@@ -74,7 +74,7 @@
                 <li class="nav-item d-none d-sm-inline-block">
                     <a href="{{ route('admin.orders') }}" class="nav-link">Subscriptions</a>
                 </li>
-                @if (Auth::user()->role == 1)
+                @if (Auth::user()->hasRole('Super Admin'))
                     <li class="nav-item d-none d-sm-inline-block">
                         <a href="{{ route('add-users') }}" class="nav-link">Add Users</a>
                     </li>

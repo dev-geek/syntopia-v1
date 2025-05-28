@@ -13,18 +13,19 @@ class UserSeeder extends Seeder
     public function run()
     {
         // Ensure no duplicate entry
-        User::updateOrCreate(
+        $user = User::updateOrCreate(
             ['email' => 'admin@syntopia.io'], // Check if user already exists
             [
                 'name' => 'Super Admin',
                 'email' => 'admin@syntopia.io',
-                'password' => Hash::make('admin@syntopia.io'), // Securely hash the password
-                'role' => 1,
+                'password' => Hash::make('admin@syntopia.io'),
                 'status' => 1,
                 'city' => 'Lahore',
                 'pet' => 'Dog',
                 'email_verified_at' => Carbon::now(), // Set email verified date
             ]
         );
+
+        $user->assignRole('Super Admin');
     }
 }

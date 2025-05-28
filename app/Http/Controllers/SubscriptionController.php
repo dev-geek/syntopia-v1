@@ -48,11 +48,22 @@ class SubscriptionController extends Controller
         $userGateway->name = $currentLoggedInUserPaymentGateway;
         $filteredGateways = collect([$userGateway]);
 
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
+
+        $activeGatewaysByAdmin = PaymentGateways::where('is_active', true)
+                            ->whereNotNull('name')
+                            ->pluck('name')
+                            ->filter() // Removes nulls, empty strings
+                            ->values();
+
         return view('subscription.index', [
             'payment_gateways' => $filteredGateways,
             'currentPackage' => $user->package->name ?? null,
+            'activeGateway' => $activeGateway,
             'currentLoggedInUserPaymentGateway' => $currentLoggedInUserPaymentGateway,
+            'activeGatewaysByAdmin' => $activeGatewaysByAdmin,
         ]);
+
     }
 
     /**
