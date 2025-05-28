@@ -35,14 +35,14 @@ class LoginController extends Controller
     {
         $user = Auth::user();
 
+        if ($user->role != '1' && $user->role != '2' && $user->email_verified_at == null) {
+            Auth::logout();
+            return redirect()->route('verification.code')->withErrors('Please verify your email before logging in.');
+        }
+
 
         // Check if the user is authenticated
         if (Auth::check()) {
-            if($user->role != '1' && $user->role != '2' && $user->email_verified_at == null) {
-                Auth::logout();
-                return route('login-sub');
-            }
-
             // Redirect users to the admin panel if they have role '1' or '2'
             if (in_array($user->role, ['1', '2'])) {
                 return route('admin.index'); // Redirect to the admin page
