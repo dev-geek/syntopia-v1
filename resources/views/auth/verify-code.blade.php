@@ -95,9 +95,9 @@
     <div class="d-flex justify-content-center align-items-center">
         <div class="container-box text-center">
             <h1 class="heading-text">Check your Email</h1>
-            <p class="email-text">Please enter the verification code was sent to {{ auth()->user()->email }}</p>
+            <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>
 
-            <form method="POST" action="{{ url('/verify-test-code') }}">
+            <form method="POST" action="{{ url('/verify-code') }}">
     @csrf
     <div class="mb-3">
         <label for="verification-code">Verification code</label>
@@ -118,21 +118,21 @@
                 </p>
             </div>
 
-           
+
 
             <p class="text-muted mt-3" style="font-size: 11px;">
-                By joining the workspace, you agree to our 
-                <a href="#" class="text-primary">User Terms of Service</a> and 
+                By joining the workspace, you agree to our
+                <a href="#" class="text-primary">User Terms of Service</a> and
                 <a href="#" class="text-primary">Privacy Policy</a>.
             </p>
         </div>
     </div>
-    
+
     <div class="footer-text">
-        Having trouble? Contact us at 
+        Having trouble? Contact us at
         <a href="mailto:info@syntopia.ai" class="text-primary">info@syntopia.ai</a>.
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html> 
+</html>

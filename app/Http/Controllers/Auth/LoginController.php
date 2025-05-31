@@ -18,15 +18,17 @@ class LoginController extends Controller
      */
     protected function authenticated(Request $request, $user)
     {
-        // Admin or Super Admin redirect
+        // Admin or Super Admin bypass verification
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
             return redirect()->route('admin.index');
         }
 
-        // Check if email verified for non-admin users
-        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin']) && !$user->hasVerifiedEmail()) {
+        // Check verification status for regular users
+        if (!$this->isUserVerified($user)) {
             Auth::logout();
-            return redirect()->route('verification.code')->withErrors('Please verify your email before logging in.');
+            session(['email' => $user->email]);
+            return redirect()->route('verification.code')
+                ->withErrors('Please verify your email before logging in.');
         }
 
         // Regular user redirect
@@ -34,9 +36,14 @@ class LoginController extends Controller
     }
 
     /**
-     * Optional: override redirectTo for middleware or other redirections.
-     * Since we use authenticated(), this may not be necessary.
+     * Check if user is properly verified
      */
+    private function isUserVerified($user)
+    {
+        // User must have status = 1 AND email_verified_at filled
+        return ($user->status == 1) && !is_null($user->email_verified_at);
+    }
+
     public function redirectTo()
     {
         $user = Auth::user();
@@ -46,10 +53,8 @@ class LoginController extends Controller
                 return route('admin.index');
             }
 
-            if (!$user->hasVerifiedEmail()) {
-                Auth::logout();
-                // You cannot redirect from here easily, so fallback to home with error
-                return route('login')->withErrors('Please verify your email before logging in.');
+            if (!$this->isUserVerified($user)) {
+                return route('verification.code');
             }
 
             return route('profile');
@@ -58,18 +63,12 @@ class LoginController extends Controller
         return '/';
     }
 
-    /**
-     * Constructor applies guest middleware except logout.
-     */
     public function __construct()
     {
         $this->middleware('guest')->except('logout');
         $this->middleware('auth')->only('logout');
     }
 
-    /**
-     * Logout the user and redirect appropriately.
-     */
     public function logout(Request $request)
     {
         $user = Auth::user();
@@ -80,14 +79,14 @@ class LoginController extends Controller
 
         // Redirect based on role
         if ($user && $user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin-login'); // Adjust if you want admin login page
+            return redirect()->route('admin-login');
         }
 
-        return redirect('/'); // Default redirect
+        return redirect('/');
     }
 
     /**
-     * Custom login method for regular users.
+     * Custom login method with proper verification checks
      */
     public function customLogin(Request $request)
     {
@@ -95,6 +94,9 @@ class LoginController extends Controller
             'email' => ['required', 'email'],
             'password' => ['required'],
         ]);
+
+        // Always store email in session
+        session(['email' => $request->email]);
 
         $credentials = $request->only('email', 'password');
 
@@ -113,32 +115,31 @@ class LoginController extends Controller
             ]);
         }
 
+        // Check verification status BEFORE authentication for non-admin users
+        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            if (!$this->isUserVerified($user)) {
+                session(['email' => $user->email]);
+                return redirect()->route('verification.code')
+                    ->withErrors('Please verify your email before logging in.');
+            }
+        }
+
+        // Attempt login only after all checks
         if (!Auth::attempt($credentials)) {
             throw ValidationException::withMessages([
                 'password' => ['Password is incorrect.'],
             ]);
         }
 
-        // After successful login
+        // Final redirect based on role
         $user = Auth::user();
-
-        if ($user->status == 0) {
-            return redirect()->route('verify.code')->withErrors('Verify your account first.');
-        }
-
-        if (is_null($user->email_verified_at)) {
-            return redirect()->route('verification.code')
-                            ->withErrors('Please verify your email before logging in.')
-                            ->with('email', $request->email);
-
+        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            return redirect()->route('admin.index');
         }
 
         return redirect()->intended(route('profile'));
     }
 
-    /**
-     * Check if an email exists in the database (AJAX).
-     */
     public function checkEmail(Request $request)
     {
         $email = $request->input('email');

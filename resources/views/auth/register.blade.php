@@ -122,7 +122,7 @@
             <p class="email-text">You're setting up an account for {{ request()->get('email') }}</p>
 
             <!-- Signup Form -->
-            <form method="POST" action="{{ route('register.user') }}">
+            <form method="POST" action="{{ route('register') }}">
             @csrf
                 <input type="hidden" name="email" value="{{ request()->get('email') }}">
 

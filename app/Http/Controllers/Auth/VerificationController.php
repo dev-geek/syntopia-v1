@@ -7,37 +7,19 @@ use App\Mail\VerifyEmail;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Foundation\Auth\VerifiesEmails;
 
 class VerificationController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Email Verification Controller
-    |--------------------------------------------------------------------------
-    |
-    | This controller is responsible for handling email verification for any
-    | user that recently registered with the application. Emails may also
-    | be re-sent if the user didn't receive the original email message.
-    |
-    */
+    use VerifiesEmails;
 
-    /**
-     * Where to redirect users after verification.
-     *
-     * @var string
-     */
     protected $redirectTo = '/home';
 
-    /**
-     * Create a new controller instance.
-     *
-     * @return void
-     */
     public function __construct()
     {
         $this->middleware('web');
-        $this->middleware('signed')->only('verify');
-        $this->middleware('throttle:6,1')->only('verify', 'resend');
+        // Removed 'signed' middleware as we're using custom verification codes, not signed URLs
+        $this->middleware('throttle:6,1')->only('verifyCode', 'resend');
     }
 
     public function show()
@@ -46,21 +28,63 @@ class VerificationController extends Controller
         $email = session('email');
 
         if (!$email) {
-            return redirect()->route('login');
+            return redirect()->route('login')->withErrors('Session expired. Please login again.');
+        }
+
+        // Check if user exists
+        $user = User::where('email', $email)->first();
+        if (!$user) {
+            return redirect()->route('login')->withErrors('User not found. Please register again.');
+        }
+
+        // Check if already verified
+        if ($user->status == 1 && !is_null($user->email_verified_at)) {
+            return redirect()->route('login')->with('success', 'Email already verified. Please login.');
         }
 
         return view('auth.verify-code', ['email' => $email]);
     }
 
-    public function verify(Request $request)
+    public function verifyCode(Request $request)
     {
-        \Log::info('Verification attempt', [
-            'headers' => $request->headers->all(),
-            'token_from_form' => $request->_token,
-            'token_from_session' => session('_token'),
+        // Removed dd() - this was stopping execution
+        $request->validate([
+            'verification_code' => 'required|string|size:6'
         ]);
 
-        return response()->json(['message' => 'Check logs'], 403);
+        $email = session('email');
+
+        if (!$email) {
+            return redirect()->route('login')->withErrors('Session expired. Please login again.');
+        }
+
+        $user = User::where('email', $email)->first();
+
+        if (!$user) {
+            return redirect()->route('login')->withErrors('User not found. Please register again.');
+        }
+
+        // Check if already verified
+        if ($user->status == 1 && !is_null($user->email_verified_at)) {
+            return redirect()->route('login')->with('success', 'Email already verified. Please login.');
+        }
+
+        // Verify the code
+        if ($user->verification_code !== $request->verification_code) {
+            return back()->withErrors(['verification_code' => 'Invalid verification code.']);
+        }
+
+        // Update user verification status
+        $user->update([
+            'email_verified_at' => now(),
+            'status' => 1,
+            'verification_code' => null // Clear the code after use
+        ]);
+
+        // Clear email from session
+        session()->forget('email');
+
+        return redirect()->route('login')->with('success', 'Email verified successfully! You can now login.');
     }
 
     public function resend()

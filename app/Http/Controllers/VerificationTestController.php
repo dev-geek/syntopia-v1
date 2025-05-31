@@ -20,9 +20,10 @@ class VerificationTestController extends Controller
         if ($user) {
             // Get the intended URL from session
             $intendedUrl = session()->get('url.intended', route('profile')); // fallback to profile if no intended URL
-            
+
             // Clear the verification code as it's no longer needed
             $user->verification_code = null;
+            $user->status = 1;
             $user->email_verified_at = now();
             $user->save();
 
