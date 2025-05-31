@@ -55,7 +55,7 @@
                                                 @elseif ($user->hasRole('User'))
                                                     User
                                                 @else
-                                                    Unknown
+                                                    No Role
                                                 @endif
                                             </td>
 

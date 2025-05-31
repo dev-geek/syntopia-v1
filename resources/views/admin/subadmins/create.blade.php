@@ -19,40 +19,64 @@
                         @csrf
 
                         <div class="card-body">
+                            <!-- Email -->
                             <div class="form-group">
                                 <label for="inputName">Email</label>
-                                <input id="email" type="email" class="form-control" name="email"
+                                <input id="email" type="email"
+                                    class="form-control @error('email') is-invalid @enderror" name="email"
                                     value="{{ old('email') }}">
+                                @error('email')
+                                    <small class="text-danger">{{ $message }}</small>
+                                @enderror
                             </div>
+
+                            <!-- Name -->
                             <div class="form-group">
                                 <label for="inputClientCompany">Name</label>
                                 <input type="text" id="name"
                                     class="form-control @error('name') is-invalid @enderror" name="name"
                                     value="{{ old('name') }}" autocomplete="name" autofocus>
+                                @error('name')
+                                    <small class="text-danger">{{ $message }}</small>
+                                @enderror
                             </div>
+
+                            <!-- Status -->
                             <div class="form-group">
                                 <label>Status</label>
-                                <select class="custom-select" name="status">
-                                    <option value="1">Active</option>
-                                    <option value="0">Deactive</option>
+                                <select class="custom-select @error('status') is-invalid @enderror" name="status">
+                                    <option value="1" {{ old('status') == '1' ? 'selected' : '' }}>Active</option>
+                                    <option value="0" {{ old('status') == '0' ? 'selected' : '' }}>Deactive
+                                    </option>
                                 </select>
+                                @error('status')
+                                    <small class="text-danger">{{ $message }}</small>
+                                @enderror
                             </div>
+
+                            <!-- Password -->
                             <div class="form-group">
                                 <label for="password">Password</label>
                                 <div class="input-group">
-                                    <input id="password" type="password" class="form-control" name="password">
+                                    <input id="password" type="password"
+                                        class="form-control @error('password') is-invalid @enderror" name="password">
                                     <div class="input-group-append">
                                         <span class="input-group-text" onclick="togglePassword('password', this)">
                                             <i class="fas fa-eye"></i>
                                         </span>
                                     </div>
                                 </div>
+                                @error('password')
+                                    <small class="text-danger">{{ $message }}</small>
+                                @enderror
                             </div>
 
+                            <!-- Confirm Password -->
                             <div class="form-group">
                                 <label for="password_confirmation">Confirm Password</label>
                                 <div class="input-group">
-                                    <input id="password_confirmation" type="password" class="form-control"
+                                    <input id="password_confirmation" type="password"
+                                        class="form-control @error('password_confirmation') is-invalid @enderror"
                                         name="password_confirmation">
                                     <div class="input-group-append">
                                         <span class="input-group-text"
@@ -61,7 +85,11 @@
                                         </span>
                                     </div>
                                 </div>
+                                @error('password_confirmation')
+                                    <small class="text-danger">{{ $message }}</small>
+                                @enderror
                             </div>
+
                         </div>
                         <div class="row mb-0">
                             <div class="col-md-2 ml-4">
