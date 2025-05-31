@@ -7,7 +7,7 @@
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-                    {{--                    <h1>Users</h1> --}}
+                    {{-- <h1>Users</h1> --}}
                 </div>
             </div>
         </div><!-- /.container-fluid -->
@@ -37,11 +37,10 @@
                                         <th>Email</th>
                                         <th>Role</th>
                                         <th>Status</th>
-                                        @if (Auth::check() && Auth::user()->role == 1)
-                                            <th>
-                                                Action
+                                        @if (Auth::check() && Auth::user()->hasAnyRole(['Super Admin', 'Sub Admin']))
+                                            <th>Action</th>
                                         @endif
-                                        </th>
+
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -50,19 +49,24 @@
                                             <td>{{ $loop->iteration }}</td>
                                             <td>{{ $user->name }}</td>
                                             <td>{{ $user->email }} </td>
-                                            @if ($user->role == 1)
-                                                <td>Admin</td>
-                                            @elseif($user->role == 2)
-                                                <td>Editor</td>
-                                            @else
-                                                <td>Subscriber</td>
-                                            @endif
+                                            <td>
+                                                @role('Super Admin')
+                                                    Super Admin
+                                                    @elserole('Sub Admin')
+                                                    Sub Admin
+                                                    @elserole('User')
+                                                    User
+                                                @else
+                                                    No Role
+                                                @endrole
+                                            </td>
+
                                             @if ($user->status == 1)
                                                 <td>Active</td>
                                             @else
                                                 <td>Deactive</td>
                                             @endif
-                                            @if (Auth::check() && Auth::user()->role == 1)
+                                            @if (Auth::check() && Auth::user()->hasAnyRole(['Super Admin', 'Sub Admin']))
                                                 <td class="d-flex align-items-center gap-2">
                                                     <!-- Edit Button -->
                                                     <a href="{{ route('sub-admins.edit', $user->id) }}"
@@ -71,8 +75,7 @@
                                                     </a>
 
                                                     <!-- Delete Button -->
-                                                    <button type="button"
-                                                        class="btn btn-sm btn-danger"
+                                                    <button type="button" class="btn btn-sm btn-danger"
                                                         onclick="confirmDelete({{ $user->id }}, '{{ route('sub-admins.destroy', $user->id) }}')"
                                                         title="Delete">
                                                         <i class="fas fa-trash-alt"></i>
@@ -134,8 +137,7 @@
                 <button class="btn btn-sm btn-danger mt-2" onclick="deleteRecord('${deleteUrl}')">Yes</button>
                 <button class="btn btn-sm btn-secondary mt-2 ml-2" onclick="toastr.clear()">No</button>
             </div>`,
-            'Confirm Deletion',
-            {
+            'Confirm Deletion', {
                 timeOut: 0, // Keeps the toast open until action
                 closeButton: true,
                 tapToDismiss: false,

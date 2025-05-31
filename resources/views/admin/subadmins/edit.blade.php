@@ -25,25 +25,31 @@
                                 <input type="email" class="form-control" value="{{ $subadmin->email }}" readonly>
                             </div>
 
+                            <!-- Name with validation -->
                             <div class="form-group">
                                 <label>Name</label>
-                                <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
-                                       value="{{ old('name', $subadmin->name) }}" required>
+                                <input type="text" name="name"
+                                    class="form-control @error('name') is-invalid @enderror"
+                                    value="{{ old('name', $subadmin->name) }}" required>
                                 @error('name')
-                                    <div class="invalid-feedback">{{ $message }}</div>
+                                    <small class="text-danger">{{ $message }}</small>
                                 @enderror
                             </div>
 
+                            <!-- Status with validation -->
                             <div class="form-group">
                                 <label>Status</label>
                                 <select name="status" class="custom-select @error('status') is-invalid @enderror">
-                                    <option value="1" {{ $subadmin->status == 1 ? 'selected' : '' }}>Active</option>
-                                    <option value="0" {{ $subadmin->status == 0 ? 'selected' : '' }}>Deactive</option>
+                                    <option value="1"
+                                        {{ old('status', $subadmin->status) == 1 ? 'selected' : '' }}>Active</option>
+                                    <option value="0"
+                                        {{ old('status', $subadmin->status) == 0 ? 'selected' : '' }}>Deactive</option>
                                 </select>
                                 @error('status')
-                                    <div class="invalid-feedback">{{ $message }}</div>
+                                    <small class="text-danger">{{ $message }}</small>
                                 @enderror
                             </div>
+
                         </div>
 
                         <div class="card-footer text-right">
