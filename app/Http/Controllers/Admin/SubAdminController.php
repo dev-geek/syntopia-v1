@@ -49,7 +49,7 @@ class SubAdminController extends Controller
             $subadmin = User::findOrFail($id);
 
             // Check if the user has the correct role
-            if ($subadmin->role != 2) {
+            if (!$subadmin->hasRole('Sub Admin')) {
                 return redirect()
                     ->route('subadmins')
                     ->with('error', 'Invalid subadmin access attempt.');

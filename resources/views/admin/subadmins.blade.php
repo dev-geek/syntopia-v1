@@ -50,15 +50,7 @@
                                             <td>{{ $user->name }}</td>
                                             <td>{{ $user->email }} </td>
                                             <td>
-                                                @role('Super Admin')
-                                                    Super Admin
-                                                    @elserole('Sub Admin')
-                                                    Sub Admin
-                                                    @elserole('User')
-                                                    User
-                                                @else
-                                                    No Role
-                                                @endrole
+                                                Sub Admin
                                             </td>
 
                                             @if ($user->status == 1)
@@ -124,27 +116,24 @@
         });
     });
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
     function confirmDelete(id, deleteUrl) {
-        toastr.clear(); // Remove existing toasts
-
-        toastr.warning(
-            `<div class="text-center">
-                <p>Are you sure you want to delete this record?</p>
-                <button class="btn btn-sm btn-danger mt-2" onclick="deleteRecord('${deleteUrl}')">Yes</button>
-                <button class="btn btn-sm btn-secondary mt-2 ml-2" onclick="toastr.clear()">No</button>
-            </div>`,
-            'Confirm Deletion', {
-                timeOut: 0, // Keeps the toast open until action
-                closeButton: true,
-                tapToDismiss: false,
-                allowHtml: true,
-                positionClass: 'toast-top-center' // Centers the toast
+        Swal.fire({
+            title: 'Are you sure?',
+            text: 'You will not be able to recover this record!',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                deleteRecord(deleteUrl);
             }
-        );
+        });
     }
 
     function deleteRecord(url) {

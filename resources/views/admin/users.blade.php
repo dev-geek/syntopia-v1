@@ -21,11 +21,9 @@
                         <div class="card-header">
                             <h3 class="card-title">Users</h3>
                         </div>
-                        @if (session('success'))
-                            <div class="alert alert-success mt-3">
-                                {{ session('success') }}
-                            </div>
-                        @endif
+
+                        {{-- Component --}}
+                        @include('components.alert-messages')
                         <!-- /.card-header -->
                         <div class="card-body">
                             <table id="example1" class="table table-bordered table-striped">
@@ -48,11 +46,7 @@
                                             <td>{{ $user->name }}</td>
                                             <td>{{ $user->email }} </td>
                                             <td>
-                                                @if ($user->hasRole('Super Admin'))
-                                                    Super Admin
-                                                @elseif ($user->hasRole('Sub Admin'))
-                                                    Sub Admin
-                                                @elseif ($user->hasRole('User'))
+                                                @if ($user->hasRole('User'))
                                                     User
                                                 @else
                                                     No Role
@@ -142,16 +136,6 @@
             });
         });
     });
-
-    @if (session('success'))
-        Swal.fire({
-            icon: 'success',
-            title: 'Deleted!',
-            text: '{{ session('success') }}',
-            timer: 2500,
-            showConfirmButton: false
-        });
-    @endif
 </script>
 
 </body>

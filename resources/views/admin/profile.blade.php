@@ -17,11 +17,8 @@
                             </button>
                         </div>
                     </div>
-                    @if (session('success'))
-                    <div class="alert alert-success mt-3">
-                        {{ session('success') }}
-                    </div>
-                @endif
+                    {{-- Component --}}
+                    @include('components.alert-messages')
                     <form method="POST" action="{{ route('profile.update') }}">
                         @csrf
 
@@ -39,13 +36,14 @@
                             </div>
                             <div class="form-group">
                                 <label for="inputProjectLeader">Password</label>
-                                <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" 
-                                name="password" autocomplete="new-password">
+                                <input id="password" type="password"
+                                    class="form-control @error('password') is-invalid @enderror" name="password"
+                                    autocomplete="new-password">
                                 @error('password')
-                                <span class="invalid-feedback" role="alert">
-                                    <strong>{{ $message }}</strong>
-                                </span>
-                            @enderror
+                                    <span class="invalid-feedback" role="alert">
+                                        <strong>{{ $message }}</strong>
+                                    </span>
+                                @enderror
                             </div>
                         </div>
                         <div class="row mb-0">
@@ -73,23 +71,23 @@
 <!-- /.control-sidebar -->
 </div>
 <script>
-$(function() {
-    $("#example1").DataTable({
-        "responsive": true,
-        "lengthChange": false,
-        "autoWidth": false,
-        "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-    }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-    $('#example2').DataTable({
-        "paging": true,
-        "lengthChange": false,
-        "searching": false,
-        "ordering": true,
-        "info": true,
-        "autoWidth": false,
-        "responsive": true,
+    $(function() {
+        $("#example1").DataTable({
+            "responsive": true,
+            "lengthChange": false,
+            "autoWidth": false,
+            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
+        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
+        $('#example2').DataTable({
+            "paging": true,
+            "lengthChange": false,
+            "searching": false,
+            "ordering": true,
+            "info": true,
+            "autoWidth": false,
+            "responsive": true,
+        });
     });
-});
 </script>
 </body>
 

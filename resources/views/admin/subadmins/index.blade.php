@@ -21,11 +21,8 @@
                         <div class="card-header">
                             <h3 class="card-title">Sub Admins</h3>
                         </div>
-                        @if (session('success'))
-                            <div class="alert alert-success mt-3">
-                                {{ session('success') }}
-                            </div>
-                        @endif
+                        {{-- Component --}}
+                        @include('components.alert-messages')
                         <!-- /.card-header -->
                         <div class="card-body">
                             <a href="{{ route('sub-admins.create') }}" class="btn btn-success mb-3 float-right"><i

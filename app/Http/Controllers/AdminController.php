@@ -33,7 +33,10 @@ class AdminController extends Controller
     public function users()
     {
         // $users = User::whereNotNull('role')->where('role', '!=', 1 )->get();
-        $users = User::all();
+        $users = User::role('User')
+                    ->with('roles')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
         return view('admin.users', compact('users'));
     }
    public function destroy(User $user)
@@ -45,9 +48,10 @@ class AdminController extends Controller
 
     public function subadmins()
     {
-        $users = User::role('Sub Admin')
-        ->orderBy('created_at', 'desc')
-        ->paginate(10);
+       $users = User::role('Sub Admin')
+                    ->with('roles')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
 
         return view('admin.subadmins', compact('users'));
     }
