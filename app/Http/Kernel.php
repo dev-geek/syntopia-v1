@@ -60,6 +60,13 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'check.admin' => \App\Http\Middleware\CheckAdminRole::class, // Register the custom middleware
         'check.login' => \App\Http\Middleware\RedirectIfNotAuthenticated::class,
-        'role' => \App\Http\Middleware\CheckUserRole::class,
+
+
+        // Custom Middlewares
+        'verified.custom' => \App\Http\Middleware\EnsureEmailIsVerifiedCustom::class,
+        'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+        'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+        'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+        'check.login' => \App\Http\Middleware\CheckLogin::class,
     ];
 }

@@ -46,10 +46,10 @@ class RegisterController extends Controller
         }
 
         // Default redirection
-        return $this->redirectTo;
+        return '/email/verify';
     }
 
-    protected $redirectTo = '/home';
+    protected $redirectTo = '/email/verify';
 
     /**
      * Create a new controller instance.
@@ -73,11 +73,10 @@ class RegisterController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => [''],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
-            'status' => ['nullable', 'integer'], // Allow status to be nullable
-            'subscriber_password' => ['nullable', 'string'], // Allow subscriber_password to be nullable
+            'status' => ['nullable', 'integer'],
+            'subscriber_password' => ['nullable', 'string'],
         ]);
     }
 
@@ -89,14 +88,17 @@ class RegisterController extends Controller
      */
     protected function create(array $data)
     {
-        return User::create([
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
-            'role' => $data['role'] ?? 3,
-            'status' => 1,
+            'status' => 0,
             'subscriber_password' => $data['password'] ?? null,
         ]);
+
+        $user->assignRole('User');
+
+        return $user;
     }
 
     public function showRegistrationForm(Request $request)
@@ -130,8 +132,11 @@ class RegisterController extends Controller
             'name' => $full_name,
             'password' => Hash::make($request->password),
             'verification_code' => $verification_code,
-            'email_verified_at' => null
+            'email_verified_at' => null,
+            'status' => 0
         ]);
+
+        $user->assignRole('User');
 
         // Send verification email
         try {
@@ -142,6 +147,17 @@ class RegisterController extends Controller
 
         // Log in the user
         auth()->login($user);
+
+        // Store email in session
+        session(['email' => $user->email]);
+
+        return redirect('/email/verify');
+    }
+
+    protected function registered(Request $request, $user)
+    {
+        // Don't auto-login after registration
+        Auth::logout();
 
         // Store email in session
         session(['email' => $user->email]);
