@@ -1,21 +1,33 @@
-@foreach (['success', 'error', 'warning', 'info'] as $msg)
-    @if (session($msg))
-        <div class="alert alert-{{ $msg }} alert-dismissible fade show mt-2 mx-3" role="alert">
-            {{ session($msg) }}
-            <button type="button" class="close text-white" data-dismiss="alert" aria-label="Close">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>
-    @endif
-@endforeach
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-<!-- Auto-dismiss script -->
 <script>
-    setTimeout(() => {
-        document.querySelectorAll('.alert-dismissible').forEach(el => {
-            el.classList.remove('show');
-            el.classList.add('fade');
-            setTimeout(() => el.remove(), 300); // smoothly remove from DOM
+    @if (session('success'))
+        Swal.fire({
+            icon: 'success',
+            title: 'Success',
+            text: '{{ session('success') }}',
+            confirmButtonText: 'OK'
         });
-    }, 30000); // 30 seconds
+    @elseif (session('error'))
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: '{{ session('error') }}',
+            confirmButtonText: 'OK'
+        });
+    @elseif (session('warning'))
+        Swal.fire({
+            icon: 'warning',
+            title: 'Warning',
+            text: '{{ session('warning') }}',
+            confirmButtonText: 'OK'
+        });
+    @elseif (session('info'))
+        Swal.fire({
+            icon: 'info',
+            title: 'Note',
+            text: '{{ session('info') }}',
+            confirmButtonText: 'OK'
+        });
+    @endif
 </script>
