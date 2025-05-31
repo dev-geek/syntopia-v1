@@ -113,7 +113,7 @@ Route::middleware(['auth', 'role:Sub Admin|Super Admin'])->group(function () {
 });
 
 // Super Admin Only Routes
-Route::middleware(['auth', 'role:Super Admin'])->group(function () {
+Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
     Route::get('/manage-profile/{id}', [AdminController::class, 'manageProfile'])->name('manage.profile');
     Route::get('/manage-admin-profile/{id}', [AdminController::class, 'manageAdminProfile'])->name('manage.admin.profile');
     Route::post('/manage-profile/update/{id}', [AdminController::class, 'manageProfileUpdate'])->name('manage-profile.update');

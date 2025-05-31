@@ -10,8 +10,7 @@ class PaymentGatewaysController extends Controller
 {
     public function index()
     {
-        // Allow only Admin
-        if (auth()->user()->role != 1) {
+        if (!auth()->user()->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             abort(403, 'Unauthorized access');
         }
 
