@@ -28,17 +28,29 @@ class SocialController extends Controller
             if ($user) {
                 // Log in the existing user
                 Auth::login($user);
+                if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+                    return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                }
+
                 return redirect()->route('profile')->with('login_success', 'User Login Successfully');
-                
+
             } else {
                 // Check if a user with the same email exists
                 $existingUser = User::where('email', $googleUser->email)->first();
 
                 if ($existingUser) {
                     // Associate the Google ID with the existing user
-                    $existingUser->update(['google_id' => $googleUser->id]);
+                    $existingUser->update([
+                        'google_id' => $googleUser->id,
+                        'email_verified_at' => Carbon::now(),
+                        'status' => 1 // Ensure user is activated
+                    ]);
                     Auth::login($existingUser);
-                    return redirect()->route('/');
+                    if ($existingUser->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+                        return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                    }
+
+                    return redirect()->route('profile')->with('login_success', 'Account linked with Google successfully');
                 } else {
                     // Create a new user
                     $userData = User::create([
@@ -46,14 +58,16 @@ class SocialController extends Controller
                         'email' => $googleUser->email,
                         'google_id' => $googleUser->id,
                         'password' => Hash::make('12345678'), // Default password for the new user
-                        'email_verified_at' => Carbon::now(), // Set email verification timestamp with Carbon
-
-                        
+                        'email_verified_at' => Carbon::now(),
+                        'status' => 1,
+                        'verification_code' => null
                     ]);
-                   
+
+                    $userData->assignRole('User');
+
                     if ($userData) {
                         Auth::login($userData);
-                        return redirect()->route('/');
+                        return redirect()->route('profile')->with('login_success', 'Welcome! Account created successfully with Google');
                     }
                 }
             }
@@ -72,28 +86,63 @@ class SocialController extends Controller
     public function handleFacebookCallback()
     {
         try {
-            $user = Socialite::driver('facebook')->user();
-            $finduser = User::where('facebook_id', $user->id)->first();
+            $facebookUser = Socialite::driver('facebook')->user();
 
-            if ($finduser) {
-                Auth::login($finduser);
-                return redirect()->intended('home');
+            // Check if user with Facebook ID exists
+            $user = User::where('facebook_id', $facebookUser->id)->first();
+
+            if ($user) {
+                Auth::login($user);
+
+                // Redirect based on role
+                if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+                    return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                }
+
+                return redirect()->route('profile')->with('login_success', 'User Login Successfully');
             } else {
-                $newUser = User::create([
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'facebook_id'=> $user->id,
-                    'password' => encrypt('123456dummy'),
-                    'email_verified_at' => now() // Set email verification timestamp
+                // Check if user with same email exists
+                $existingUser = User::where('email', $facebookUser->email)->first();
 
-                ]);
+                if ($existingUser) {
+                    // Link Facebook account to existing user
+                    $existingUser->update([
+                        'facebook_id' => $facebookUser->id,
+                        'email_verified_at' => Carbon::now(),
+                        'status' => 1
+                    ]);
 
-                Auth::login($newUser);
-                return redirect()->intended('home');
+                    Auth::login($existingUser);
+
+                    // Redirect based on role
+                    if ($existingUser->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+                        return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                    }
+
+                    return redirect()->route('profile')->with('login_success', 'Account linked with Facebook successfully');
+                } else {
+                    // Create new user
+                    $newUser = User::create([
+                        'name' => $facebookUser->name,
+                        'email' => $facebookUser->email,
+                        'facebook_id' => $facebookUser->id,
+                        'password' => Hash::make('12345678'),
+                        'email_verified_at' => Carbon::now(),
+                        'status' => 1,
+                        'verification_code' => null
+                    ]);
+
+                    // Assign default role
+                    $newUser->assignRole('User');
+
+                    Auth::login($newUser);
+
+                    return redirect()->route('profile')->with('login_success', 'Welcome! Account created successfully with Facebook');
+                }
             }
         } catch (\Exception $e) {
             // dd($e->getMessage());
-            return redirect()->intended('home');
+            return redirect()->route('login')->withErrors('Failed to authenticate with Facebook. Please try again.');
         }
 
     }
