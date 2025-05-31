@@ -32,8 +32,9 @@ class SubAdminController extends Controller
                 'email'    => $validated['email'],
                 'password' => Hash::make($validated['password']),
                 'status' => $validated['status'],
-                'role' => 2,
             ]);
+
+            $user->assignRole('Sub Admin');
 
             return redirect()->route('subadmins')->with('success', 'Sub Admin created successfully.');
         } catch (\Exception $e) {
@@ -73,7 +74,7 @@ class SubAdminController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            $subadmin = User::where('role', 2)->findOrFail($id);
+            $subadmin = User::role('Sub Admin')->findOrFail($id);
 
             $validated = $request->validate([
                 'name'  => 'required|string|max:255',
@@ -94,7 +95,7 @@ class SubAdminController extends Controller
     public function destroy($id)
     {
         try {
-            $subadmin = User::where('role', 2)->findOrFail($id);
+            $subadmin = User::role('Sub Admin')->findOrFail($id);
             $subadmin->delete();
 
             return redirect()->route('subadmins')->with('success', 'Sub Admin deleted successfully.');
