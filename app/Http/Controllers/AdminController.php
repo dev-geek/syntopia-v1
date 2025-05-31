@@ -45,9 +45,9 @@ class AdminController extends Controller
 
     public function subadmins()
     {
-        $users = User::where('role', 2)
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+        $users = User::role('Sub Admin')
+        ->orderBy('created_at', 'desc')
+        ->paginate(10);
 
         return view('admin.subadmins', compact('users'));
     }
