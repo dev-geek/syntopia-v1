@@ -6,9 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
-        content="frame-ancestors 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com http://127.0.0.1 http://localhost; frame-src 'self' https://*.paddle.com https://*.sandbox-buy.paddle.com;">
-    {{--
-    <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;"> --}}
+        content="
+    default-src 'self' data: gap: https://ssl.gstatic.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com;
+    font-src 'self' https://fonts.gstatic.com;
+    script-src 'self' https://somedomain.com/ https://sbl.onfastspring.com https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval';
+    img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
+    connect-src 'self' https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com;
+    frame-src 'self' https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com;
+    media-src *;
+">
+
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -408,10 +417,10 @@
     @php
         $activeGateways = $payment_gateways->pluck('name')->toArray();
     @endphp
-    @if (in_array('FastSpring', $activeGateways))
+    @if ($activeGateway && $activeGateway->name === 'FastSpring')
         <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-check-paymet" data-popup-closed="onFSPopupClosed">
-        </script>
+            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
+            data-debug="true"></script>
         <script>
             function onFSPopupClosed(orderData) {
                 try {
@@ -430,7 +439,7 @@
     @endif
 
     <!-- Paddle Integration -->
-    @if (in_array('Paddle', $activeGateways))
+    @if ($activeGateway && $activeGateway->name === 'Paddle')
         <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
         <script>
             Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment') }}');
@@ -452,7 +461,7 @@
     @endif
 
     <!-- PayProGlobal Integration -->
-    @if (in_array('Pay Pro Global', $activeGateways))
+    @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
         <script src="{{ config('payment.gateways.PayProGlobal.script_url') }}"></script>
     @endif
 
@@ -679,7 +688,8 @@
             const userGateway = "{{ $currentLoggedInUserPaymentGateway }}";
             const activeGatewaysByAdmin = @json($activeGatewaysByAdmin);
 
-            const selectedGateway = userGateway && userGateway.trim() !== "" ? userGateway : (activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null);
+            const selectedGateway = userGateway && userGateway.trim() !== "" ? userGateway : (activeGatewaysByAdmin
+                .length > 0 ? activeGatewaysByAdmin[0] : null);
 
             if (packageFromURL && packageFromURL !== '' && packageFromURL !== currentPackage) {
                 processCheckout(packageFromURL.toLowerCase() + "-plan");
@@ -734,7 +744,7 @@
                     throw new Error('FastSpring is not properly initialized');
                 }
 
-                const packageName = productPath.replace('-plan', '');
+                const packageName = productPath.replace('-plan', '').toLowerCase();
 
                 fastspring.builder.add(packageName);
 

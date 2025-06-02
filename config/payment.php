@@ -65,7 +65,8 @@ return [
                 'enterprise' => (int)env('PPG_PRODUCT_ENTERPRISE', 4),
             ],
             'merchant_id' => env('MERCHANT_ID', ''),
-            'product_id_pro' => env('PPG_PRODUCT_PRO_ID', '112701')
+            'product_id_pro' => env('PPG_PRODUCT_PRO_ID', '112701'),
+            'test_mode' => env('PAYPROGLOBAL_TEST_MODE', true),
         ],
     ],
 ];
