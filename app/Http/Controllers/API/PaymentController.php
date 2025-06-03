@@ -155,7 +155,8 @@ class PaymentController extends Controller
             // Standard headers for all Paddle API requests
             $headers = [
                 'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json'
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
             ];
 
             // Handle customer creation or lookup
@@ -606,7 +607,7 @@ class PaymentController extends Controller
                     'features' => is_string($packageData->features)
                         ? json_decode($packageData->features)
                         : $packageData->features
-                ]
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error("PayProGlobal checkout failed for {$processedPackage}: " . $e->getMessage());

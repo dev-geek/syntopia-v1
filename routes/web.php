@@ -99,7 +99,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
 
     // Payment routes
     Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handlePaymentWebhook'])->name('payment.webhook');
-    Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');
+    // Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');
 });
 
 // Admin Routes (bypass verification for admins)

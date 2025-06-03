@@ -9,10 +9,9 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
-    Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('api.paddle.checkout');
-    // Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout']);
-    Route::post('/fastspring/checkout/{package}', [PaymentController::class, 'fastspringCheckout']);
-    Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout']);
+    Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');
+    Route::post('/fastspring/checkout/{packageName}', [PaymentController::class, 'fastspringCheckout']);
+    Route::post('/payproglobal/checkout/{packageName}', [PaymentController::class, 'payProGlobalCheckout'])->name('payproglobal.checkout');
     Route::get('/payment/success', [PaymentController::class, 'handleSuccess'])->name('payment.success');
     Route::get('/payment/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
 });
