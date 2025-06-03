@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -411,6 +412,22 @@
             }
         }
     </style>
+    <!-- Payment Gateway Scripts -->
+    @php
+        $activeGateways = $payment_gateways->pluck('name')->toArray();
+    @endphp
+    @if(in_array('FastSpring', $activeGateways))
+        <script src="https://sbl.onfastspring.com/js/checkout/button.js" data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+    @endif
+    @if(in_array('Paddle', $activeGateways))
+        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
+        <script>
+            Paddle.Setup({ vendor: 127136 });
+        </script>
+    @endif
+    @if(in_array('PayPro Global', $activeGateways))
+        <script src="https://cdn.jsdelivr.net/npm/payproglobal@1.1.1/dist/payproglobal.min.js"></script>
+    @endif
 
     <!-- Payment Gateway Scripts -->
     @php
@@ -443,16 +460,18 @@
         <script>
             Paddle.Initialize({
                 token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
-                environment: "{{ config('payment.gateways.Paddle.environment') }}",
                 eventCallback: function(event) {
-                    // Handle successful payment
+                    console.log('Paddle event:', event);
+                    
                     if (event.name === 'checkout.completed') {
-                        window.location.href = '/all-subscriptions';
+                        window.location.href = '/payment/success?gateway=paddle&transaction=' + event.data.transaction_id;
                     }
-
-                    // Handle checkout closure
+                    
                     if (event.name === 'checkout.closed') {
-                        window.location.href = '/all-subscriptions';
+                        // Only redirect if no successful payment
+                        if (!event.data || !event.data.transaction_id) {
+                            window.location.href = '/payment/cancel?gateway=paddle';
+                        }
                     }
                 }
             });
@@ -489,167 +508,29 @@
                 businesses and individuals connect with their audiences. Our avatars can:</p>
             <div class="pricing-grid">
                 <!-- Free Plan -->
-                <div class="card card-light">
-                    <h3>Free</h3>
-                    <p class="price">$0 <span class="per-month">/month</span></p>
-                    <button class="btn dark checkout-button" data-package="free-plan"
-                        {{ $currentPackage == 'Free' ? 'disabled' : '' }}>
-                        {{ $currentPackage == 'Free' ? 'Activated' : 'Get Started' }}
-                    </button>
+                @foreach ($packages as $package)
+                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                        <h3>{{ $package->name }}</h3>
+                        <p class="price">${{ number_format($package->price, 0) }} <span class="per-month">/{{ $package->duration }}</span></p>
+                        <button class="btn dark checkout-button" 
+                            data-package="{{ $package->name }}"
+                            {{ $currentPackage == $package->name ? 'disabled' : '' }}>
+                            {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ? 'Activated' : 'Get Started') }}
+                        </button>
 
-                    <p class="included-title">What's included</p>
-                    <ul class="features">
-                        <li><span class="icon"></span> 1 user</li>
-                        <li><span class="icon"></span> 1 livestream room</li>
-                        <li><span class="icon"></span> 1 live broadcast (single anchor)</li>
-                        <li><span class="icon"></span> <strong>Lite Live Stream (one anchor)</strong></li>
-                        <li><span class="icon"></span> 1 Q&A base</li>
-                        <li><span class="icon"></span> 10 min live stream duration</li>
-                        <li><span class="icon"></span> 5MB storage</li>
-                        <li><span class="icon"></span> 5 min video synthesis</li>
-                    </ul>
-                </div>
-
-                <!-- Starter Plan -->
-                <div class="card card-light">
-                    <h3>Starter</h3>
-                    <p class="price">$390 <span class="per-month">/60hrs a month</span></p>
-                    <button class="btn dark checkout-button" data-package="starter-plan"
-                        {{ $currentPackage == 'Starter' ? 'disabled' : '' }}>
-                        {{ $currentPackage == 'Starter' ? 'Activated' : 'Get Started' }}
-                    </button>
-
-
-                    <p class="included-title">What's included</p>
-                    <ul class="features">
-                        <li><span class="icon"></span> 1 user</li>
-                        <li><span class="icon"></span> 1 livestream room</li>
-                        <li><span class="icon"></span> 1 live broadcast (single anchor)</li>
-                        <li><span class="icon"></span> <strong>Lite Live Stream (one anchor)</strong></li>
-                        <li><span class="icon"></span> 1 livestream account</li>
-                        <li><span class="icon"></span> 1 Q&A base</li>
-                        <li><span class="icon"></span> 60 hrs streaming</li>
-                        <li><span class="icon"></span> 5MB storage</li>
-                        <li><span class="icon"></span> AI: 10 creations, 10 rewrites</li>
-                        <li><span class="icon"></span> 5 min video synthesis</li>
-                    </ul>
-                </div>
-
-                <!-- Pro Plan -->
-                <div class="card card-dark">
-                    <h3>Pro</h3>
-                    <p class="price">$780 <span class="per-month">/120hrs a month</span></p>
-                    <button class="btn dark checkout-button" data-package="Pro-plan"
-                        {{ $currentPackage == 'Pro' ? 'disabled' : '' }}>
-                        {{ $currentPackage == 'Pro' ? 'Activated' : 'Get Started' }}
-                    </button>
-
-
-                    <p class="included-title">What's included</p>
-                    <ul class="features">
-                        <li><span class="icon"></span> 2 users</li>
-                        <li><span class="icon"></span> 3 livestream rooms</li>
-                        <li><span class="icon"></span> 3 live broadcasts (single anchor)</li>
-                        <li><span class="icon"></span> <strong>Dual Live Stream (two anchor in one live room)</strong>
-                        </li>
-                        <li><span class="icon"></span> Pro Live Stream</li>
-                        <li><span class="icon"></span> 3 livestream accounts</li>
-                        <li><span class="icon"></span> 3 Q&A base</li>
-                        <li><span class="icon"></span> 120 hrs streaming</li>
-                        <li><span class="icon"></span> 5MB storage</li>
-                        <li><span class="icon"></span> AI: 30 creations, 30 rewrites</li>
-                        <li><span class="icon"></span> 20 min video synthesis</li>
-                    </ul>
-                </div>
-
-                <!-- Business Plan -->
-                <div class="card card-light">
-                    <h3>Business</h3>
-                    <p class="price">$2800 <span class="per-month">/unlimited</span></p>
-                    <button class="btn dark checkout-button" data-package="business-plan"
-                        {{ $currentPackage == 'Business' ? 'disabled' : '' }}>
-                        {{ $currentPackage == 'Business' ? 'Activated' : 'Get Started' }}
-                    </button>
-                    <p class="included-title">What's included</p>
-                    <ul class="features">
-                        <li><span class="icon"></span> 3 users</li>
-                        <li><span class="icon"></span> 1 livestream room</li>
-                        <li><span class="icon"></span> 1 live broadcast</li>
-                        <li><span class="icon"></span> <strong>Dual Live Stream (two anchor in one live room)</strong>
-                        </li>
-                        <li><span class="icon"></span> Pro Live Stream</li>
-                        <li><span class="icon"></span> Video Live Stream</li>
-                        <li><span class="icon"></span> 3 livestream accounts</li>
-                        <li><span class="icon"></span> 3 Q&A base</li>
-                        <li><span class="icon"></span> Unlimited streaming</li>
-                        <li><span class="icon"></span> 5MB storage</li>
-                        <li><span class="icon"></span> AI: 90 creations, 90 rewrites</li>
-                        <li><span class="icon"></span> 60 min video synthesis</li>
-                    </ul>
-                </div>
-
-                <!-- Enterprise Plan -->
-                <div class="card card-dark last">
-                    <h3>Enterprise</h3>
-                    <p class="price">Custom</p>
-                    <button class="btn white">Get in Touch</button>
-                    <p class="included-title">What's included</p>
-                    <ul class="features">
-                        <li><span class="icon"></span> Custom users & rooms</li>
-                        <li><span class="icon"></span> Custom livestream features</li>
-                        <li><span class="icon"></span> Custom Q&A bases</li>
-                        <li><span class="icon"></span> Custom AI & video tools</li>
-                        <li><span class="icon"></span> Unlimited resources</li>
-                        <li><span class="icon"></span> Tailored support & solutions</li>
-                    </ul>
-                </div>
+                        <p class="included-title">What's included</p>
+                        <ul class="features">
+                            @foreach($package->features as $feature)
+                                <li><span class="icon"></span> {{ $feature }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endforeach
             </div>
         </div>
     </div>
 
-    <div class="addons-wrapper">
-        <div class="container">
-            <div class="badge-wrapper">
-                <div class="pricing-badge">Addons</div>
-            </div>
-            <h2 class="section-title">Customized Addons</h2>
-            <div class="addons-grid-wrapper">
-                <div class="addons-grid">
-                    <!-- Avatar Customization -->
-                    <div class="addon-card">
-                        <h3>Avatar Customization</h3>
-                        <p class="addon-price">$2800</p>
-                        <button class="btn dark">Get Started</button>
-                        <p class="included-title">What's included</p>
-                        <ul class="features">
-                            <li><span class="icon"></span> 30+ min of training video recorded</li>
-                            <li><span class="icon"></span> Digital avatar: 1 hairstyle, outfit</li>
-                            <li><span class="icon"></span> Guide provided for video recording</li>
-                            <li><span class="icon"></span> Customer handles processing & upload</li>
-                            <li><span class="icon"></span> 1 optimization pass included</li>
-                            <li><span class="icon"></span> Minor imperfections may remain</li>
-                            <li><span class="icon"></span> One-time setup, no annual fee</li>
-                        </ul>
-                    </div>
-
-                    <!-- Voice Customization -->
-                    <div class="addon-card">
-                        <h3>Voice Customization</h3>
-                        <p class="addon-price">$2200</p>
-                        <button class="btn dark">Get Started</button>
-                        <p class="included-title">What's included</p>
-                        <ul class="features">
-                            <li><span class="icon"></span> 30+ min of valid audio recorded</li>
-                            <li><span class="icon"></span> Customer handles voice processing</li>
-                            <li><span class="icon"></span> Guide provided for best results</li>
-                            <li><span class="icon"></span> Natural flaws may occur (noise, tone)</li>
-                            <li><span class="icon"></span> One-time setup, no usage fee</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('subscription.includes._addons')
 
     <footer>
         Having trouble? Contact us at
@@ -744,62 +625,78 @@
 
             // Paddle-specific processing
             function processPaddle(productPath) {
-                const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/paddle/checkout/${packageName}`;
+    const packageName = productPath.replace('-plan', '');
+    const apiUrl = `/api/paddle/checkout/${packageName}`;
 
-                fetch(apiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN': csrfToken
-                        },
-                        credentials: 'same-origin'
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log(data.checkout_url);
-                        if (!data.success) {
-                            throw new Error(data.message || data.error || 'Unknown error occurred');
-                        }
+    // Show loading state
+    Swal.fire({
+        title: 'Processing...',
+        text: 'Setting up your checkout',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
 
-                        if (data.checkout_url) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Opening Checkout',
-                                text: 'Payment window is loading...',
-                                timer: 2000,
-                                showConfirmButton: false
-                            });
-
-                            setTimeout(() => {
-                                window.location.href = data.checkout_url;
-                            }, 2000);
-                        } else if (data.transaction_id && typeof Paddle !== 'undefined') {
-                            Paddle.Checkout.open({
-                                transactionId: data.transaction_id
-                            });
-                        } else {
-                            throw new Error('No transaction ID or checkout URL provided');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Checkout error:', error);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Checkout Failed',
-                            text: error.message ||
-                                'An error occurred while processing your checkout. Please try again later.',
-                            confirmButtonText: 'OK'
-                        });
-                    });
+    fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+            return response.json();
+        })
+        .then(data => {
+            Swal.close(); // Close loading dialog
+            
+            if (!data.success) {
+                throw new Error(data.message || data.error || 'Unknown error occurred');
+            }
+
+            // Check if checkout_url exists
+            if (!data.checkout_url) {
+                throw new Error('No checkout URL received from server');
+            }
+
+            // Option 1: Redirect to Paddle checkout page
+            window.location.href = data.checkout_url;
+            
+            // Option 2: Open in new window/popup (alternative)
+            // const width = 800;
+            // const height = 600;
+            // const left = (screen.width - width) / 2;
+            // const top = (screen.height - height) / 2;
+            // 
+            // const checkoutWindow = window.open(
+            //     data.checkout_url,
+            //     'PaddleCheckout',
+            //     `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+            // );
+            // 
+            // if (!checkoutWindow) {
+            //     // Fallback to redirect if popup is blocked
+            //     window.location.href = data.checkout_url;
+            // }
+        })
+        .catch(error => {
+            Swal.close(); // Close loading dialog
+            console.error('Checkout error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Checkout Failed',
+                text: error.message || 'An error occurred while processing your checkout. Please try again later.',
+                confirmButtonText: 'OK'
+            });
+        });
+}
 
             // PayProGlobal-specific processing
             function processPayProGlobal(productPath) {
@@ -831,8 +728,6 @@
 
                         const paymentWindow = window.open(
                             data.checkoutUrl,
-                            'PayProGlobalCheckout',
-                            `width=${width},height=${height},top=${top},left=${left}`
                         );
 
                         if (!paymentWindow) {

@@ -14,35 +14,32 @@ use Illuminate\Support\Facades\Http;
 
 class PaymentController extends Controller
 {
-    /**
-     * Validate the package name and get the user and package data
-     *
-     * @param string $package
-     * @return array|response
-     */
     private function validatePackageAndGetUser($package)
-    {
-        // Get package data from database
-        $packageModel = Package::where('name', $package)->first();
-
-        // Check if package exists
-        if (!$packageModel) {
-            return response()->json(['error' => 'Invalid package'], 400);
-        }
-
-        // Get the authenticated user
-        $user = Auth::user();
-
-        if (!$user) {
-            return response()->json(['error' => 'User not authenticated'], 401);
-        }
-
-        return [
-            'user' => $user,
-            'package' => $package,
-            'packageData' => $packageModel
-        ];
+{
+    // Get the authenticated user
+    $user = Auth::user();
+    if (!$user) {
+        return response()->json(['error' => 'User not authenticated'], 401);
     }
+
+    // Get package data from database (case-insensitive)
+    $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
+
+    // Check if package exists
+    if (!$packageModel) {
+        return response()->json([
+            'error' => 'Invalid package',
+            'message' => 'Package not found: ' . $package,
+            'available_packages' => Package::pluck('name')->toArray()
+        ], 400);
+    }
+
+    return [
+        'user' => $user,
+        'package' => $package,
+        'packageData' => $packageModel
+    ];
+}
 
     /**
      * Get the product IDs for the specified gateway
@@ -89,28 +86,21 @@ class PaymentController extends Controller
         return $productMappings;
     }
 
-    /**
-     * Get payment gateway ID by name
-     *
-     * @param string $gatewayName
-     * @return int|null
-     */
     private function getPaymentGatewayId($gatewayName)
-    {
-        // Normalize gateway names to match database records
-        $gatewayMappings = [
-            'paddle' => 'Paddle',
-            'fastspring' => 'FastSpring',
-            'payproglobal' => 'Pay Pro Global',
-            'payproGlobal' => 'Pay Pro Global'
-        ];
+{
+    $gatewayMappings = [
+        'paddle' => 'Paddle',
+        'fastspring' => 'FastSpring',
+        'payproglobal' => 'Pay Pro Global',
+        'payproGlobal' => 'Pay Pro Global'
+    ];
 
-        $normalizedName = $gatewayMappings[strtolower($gatewayName)] ?? $gatewayName;
+    $normalizedName = $gatewayMappings[strtolower($gatewayName)] ?? $gatewayName;
 
-        return DB::table('payment_gateways')
-            ->where('name', $normalizedName)
-            ->value('id');
-    }
+    return DB::table('payment_gateways')
+        ->where('name', $normalizedName)
+        ->value('id');
+}
 
     /**
      * Generate a checkout URL for Paddle
@@ -220,8 +210,6 @@ class PaymentController extends Controller
                 }
             }
 
-
-
             if (!$matchingProduct) {
 
                 return response()->json([
@@ -297,62 +285,64 @@ class PaymentController extends Controller
         }
     }
 
-    /**
-     * Get existing customer or create new one
-     */
-    private function getOrCreatePaddleCustomer($user, $headers)
-    {
-        try {
+private function getOrCreatePaddleCustomer($user, $headers)
+{
+    try {
+        // First, try to find existing customer by email
+        $searchResponse = Http::withHeaders($headers)
+            ->get('https://sandbox-api.paddle.com/customers', [
+                'email' => $user->email
+            ]);
 
-            // First, try to find existing customer by email
-            $searchResponse = Http::withHeaders($headers)
-                ->get('https://sandbox-api.paddle.com/customers', [
-                    'email' => $user->email
-                ]);
-
-            if ($searchResponse->successful()) {
-                $customers = $searchResponse->json()['data'] ?? [];
-
-                if (!empty($customers)) {
-                    $existingCustomer = $customers[0];
-                    return $existingCustomer['id'];
-                }
+        if ($searchResponse->successful()) {
+            $customers = $searchResponse->json()['data'] ?? [];
+            if (!empty($customers)) {
+                return $customers[0]['id'];
             }
-
-            $customerResponse = Http::withHeaders($headers)
-                ->post('https://sandbox-api.paddle.com/customers', [
-                    'email' => $user->email,
-                    'name' => $user->name,
-                    'custom_data' => [
-                        'customer_reference_id' => (string) $user->id
-                    ],
-                    'locale' => 'en'
-                ]);
-
-            if ($customerResponse->successful()) {
-                $customerData = $customerResponse->json();
-                $customerId = $customerData['data']['id'];
-                return $customerId;
-            } else {
-                $errorBody = $customerResponse->body();
-                $errorData = json_decode($errorBody, true);
-
-                // If customer already exists error, try to extract the customer ID from the error
-                if (isset($errorData['error']['code']) && $errorData['error']['code'] === 'customer_already_exists') {
-
-                    // Extract customer ID from error message if possible
-                    $detail = $errorData['error']['detail'] ?? '';
-                    if (preg_match('/customer of id (ctm_[a-zA-Z0-9]+)/', $detail, $matches)) {
-                        $existingCustomerId = $matches[1];
-                        return $existingCustomerId;
-                    }
-                }
-                return null;
-            }
-        } catch (\Exception $e) {
-            return null;
         }
+
+        // Create new customer
+        $customerResponse = Http::withHeaders($headers)
+            ->post('https://sandbox-api.paddle.com/customers', [
+                'email' => $user->email,
+                'name' => $user->name,
+                'custom_data' => [
+                    'customer_reference_id' => (string) $user->id
+                ],
+                'locale' => 'en'
+            ]);
+
+        if ($customerResponse->successful()) {
+            $customerData = $customerResponse->json();
+            return $customerData['data']['id'];
+        }
+
+        // Handle customer already exists error
+        $errorBody = $customerResponse->body();
+        $errorData = json_decode($errorBody, true);
+
+        if (isset($errorData['error']['code']) && $errorData['error']['code'] === 'customer_already_exists') {
+            $detail = $errorData['error']['detail'] ?? '';
+            if (preg_match('/customer of id (ctm_[a-zA-Z0-9]+)/', $detail, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        \Log::error('Failed to create Paddle customer', [
+            'user_id' => $user->id,
+            'error' => $errorData
+        ]);
+
+        return null;
+
+    } catch (\Exception $e) {
+        \Log::error('Exception in getOrCreatePaddleCustomer', [
+            'user_id' => $user->id,
+            'message' => $e->getMessage()
+        ]);
+        return null;
     }
+}
 
     public function fastspringCheckout(Request $request, $package)
     {

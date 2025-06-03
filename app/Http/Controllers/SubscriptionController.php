@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\PaymentGateways;
+use App\Models\Package;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -56,12 +57,15 @@ class SubscriptionController extends Controller
                             ->filter() // Removes nulls, empty strings
                             ->values();
 
+        $packages = Package::select('name', 'price', 'duration', 'features')->get();
+
         return view('subscription.index', [
             'payment_gateways' => $filteredGateways,
             'currentPackage' => $user->package->name ?? null,
             'activeGateway' => $activeGateway,
             'currentLoggedInUserPaymentGateway' => $currentLoggedInUserPaymentGateway,
             'activeGatewaysByAdmin' => $activeGatewaysByAdmin,
+            'packages' => $packages,
         ]);
 
     }
