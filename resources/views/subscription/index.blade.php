@@ -747,13 +747,6 @@
                             throw new Error(data.message || data.error || 'Unknown error occurred');
                         }
                         if (data.checkout_url) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Opening Checkout',
-                                text: 'Payment window is loading...',
-                                timer: 2000,
-                                showConfirmButton: false
-                            });
                             setTimeout(() => {
                                 window.location.href = data.checkout_url;
                             }, 2000);
