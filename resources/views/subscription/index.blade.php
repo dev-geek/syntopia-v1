@@ -5,8 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta http-equiv="Content-Security-Policy"
-        content="
+    <meta http-equiv="Content-Security-Policy" content="
         default-src 'self' data: gap: https://ssl.gstatic.com http://livebuzzstudio.test https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
         font-src 'self' https://fonts.gstatic.com;
@@ -20,26 +19,26 @@
 
     <!-- Payment Gateway Scripts -->
     @php
-        $activeGateways = $payment_gateways->pluck('name')->toArray();
+    $activeGateways = $payment_gateways->pluck('name')->toArray();
     @endphp
     @if (in_array('FastSpring', $activeGateways))
-        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
-            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+    <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+        data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('PayPro Global', $activeGateways))
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
-        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-            data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
-        <script>
-            let currentProductPath = ''; // Store productPath globally
+    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+        data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment"
+        data-popup-closed="onFSPopupClosed" data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+    <script>
+        let currentProductPath = ''; // Store productPath globally
 
             function processFastSpring(productPath) {
                 try {
@@ -126,14 +125,14 @@
                     });
                 }
             }
-        </script>
+    </script>
     @endif
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
-        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
+    <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
                 try {
                     // Set the Paddle environment (sandbox or production)
                     Paddle.Environment.set('{{ config('paddle.env', 'sandbox') }}');
@@ -197,12 +196,12 @@
                     });
                 }
             });
-        </script>
+    </script>
     @endif
 
     <!-- PayProGlobal Integration -->
     @if ($activeGateway && $activeGateway->name === 'PayPro Global')
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
     <style>
         .ppg-checkout-modal {
@@ -619,21 +618,22 @@
                 businesses and individuals connect with their audiences. Our avatars can:</p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
-                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
-                        <h3>{{ $package->name }}</h3>
-                        <p class="price">${{ number_format($package->price, 0) }} <span
-                                class="per-month">/{{ $package->duration }}</span></p>
-                        <button class="btn dark checkout-button" data-package="{{ $package->name }}"
-                            {{ $currentPackage == $package->name ? 'disabled' : '' }}>
-                            {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ? 'Activated' : 'Get Started') }}
-                        </button>
-                        <p class="included-title">What's included</p>
-                        <ul class="features">
-                            @foreach ($package->features as $feature)
-                                <li><span class="icon"></span> {{ $feature }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
+                <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                    <h3>{{ $package->name }}</h3>
+                    <p class="price">${{ number_format($package->price, 0) }} <span class="per-month">/{{
+                            $package->duration }}</span></p>
+                    <button class="btn dark checkout-button" data-package="{{ $package->name }}" {{
+                        $currentPackage==$package->name ? 'disabled' : '' }}>
+                        {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ?
+                        'Activated' : 'Get Started') }}
+                    </button>
+                    <p class="included-title">What's included</p>
+                    <ul class="features">
+                        @foreach ($package->features as $feature)
+                        <li><span class="icon"></span> {{ $feature }}</li>
+                        @endforeach
+                    </ul>
+                </div>
                 @endforeach
             </div>
         </div>
@@ -690,9 +690,7 @@
                             processPayProGlobal(productPath);
                             break;
                         default:
-                            throw new Error(Unsupported payment gateway: $ {
-                                selectedGateway
-                            });
+                            throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
@@ -727,9 +725,7 @@
 
             function processPaddle(productPath) {
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = /api/paddle / checkout / $ {
-                    packageName
-                };
+                const apiUrl = `/api/paddle/checkout/${packageName}`;
                 fetch(apiUrl, {
                         method: 'POST',
                         headers: {
@@ -742,11 +738,7 @@
                     })
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error(HTTP $ {
-                                response.status
-                            }: $ {
-                                response.statusText
-                            });
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
                         return response.json();
                     })
@@ -787,9 +779,7 @@
 
             function processPayProGlobal(productPath) {
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = /api/payproglobal / checkout / $ {
-                    packageName
-                };
+                const apiUrl = `/api/payproglobal/checkout/${packageName}`;
 
                 // Open a blank popup synchronously to avoid popup blocker
                 const width = 1000;
@@ -797,18 +787,10 @@
                 const left = (screen.width - width) / 2;
                 const top = (screen.height - height) / 2;
                 const paymentWindow = window.open(
-                    'about:blank',
-                    'PayProGlobalCheckout',
-                    width = $ {
-                        width
-                    }, height = $ {
-                        height
-                    }, top = $ {
-                        top
-                    }, left = $ {
-                        left
-                    }
-                );
+                                            'about:blank',
+                                            'PayProGlobalCheckout',
+                                            `width=${width},height=${height},top=${top},left=${left}`
+                                        );
 
                 if (!paymentWindow) {
                     Swal.fire({
@@ -859,7 +841,7 @@
                                     'X-CSRF-TOKEN': csrfToken
                                 },
                                 body: JSON.stringify({
-                                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}", // Ensure this is the correct ID
+                                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
                                     package_id: 3
                                 })
                             }).then(response => {
