@@ -167,7 +167,7 @@ class SubscriptionController extends Controller
         }
 
         // Redirect
-        return redirect()->route('pricing');
+        return redirect()->route('subscriptions.index');
     }
 
     /**
@@ -186,6 +186,6 @@ class SubscriptionController extends Controller
         session()->flash('error', 'Your payment was cancelled. Please try again or contact support if you need assistance.');
 
         // Redirect back to subscription page
-        return redirect()->route('subscription.index');
+        return redirect()->route('subscriptions.index');
     }
 }

@@ -30,7 +30,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'pet',
         'verification_code',
-        'payment_gateway',
+        'payment_gateway_id',
+        'subscription_starts_at',
         'package_id'
     ];
 

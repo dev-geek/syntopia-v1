@@ -2,24 +2,208 @@
 <html lang="en">
 
 <head>
-    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
         content="
-    default-src 'self' data: gap: https://ssl.gstatic.com;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
-    font-src 'self' https://fonts.gstatic.com;
-    script-src 'self' https://somedomain.com/ https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com 'unsafe-inline' 'unsafe-eval';
-    img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
-    connect-src 'self' https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com;
-    frame-src 'self' https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
-    media-src *;">
-
-    <meta http-equiv="Content-Security-Policy" content="frame-ancestors *; frame-src *;">
+        default-src 'self' data: gap: https://ssl.gstatic.com http://livebuzzstudio.test https://livebuzzstudio.test;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
+        font-src 'self' https://fonts.gstatic.com;
+        script-src 'self' http://livebuzzstudio.test https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
+        img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
+        connect-src 'self' http://livebuzzstudio.test https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
+        frame-src 'self' http://livebuzzstudio.test https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
+        media-src 'self' data: https://sbl.onfastspring.com;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Payment Gateway Scripts -->
+    @php
+        $activeGateways = $payment_gateways->pluck('name')->toArray();
+    @endphp
+    @if (in_array('FastSpring', $activeGateways))
+        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+    @endif
+    @if (in_array('Paddle', $activeGateways))
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    @endif
+    @if (in_array('PayPro Global', $activeGateways))
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    @endif
+
+    <!-- FastSpring Integration -->
+    @if ($activeGateway && $activeGateway->name === 'FastSpring')
+        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
+            data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+        <script>
+            let currentProductPath = ''; // Store productPath globally
+
+            function processFastSpring(productPath) {
+                try {
+                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                        throw new Error('FastSpring is not properly initialized');
+                    }
+                    fastspring.builder.reset();
+                    const packageName = productPath.replace('-plan', '').toLowerCase();
+                    console.log('Adding FastSpring product:', packageName);
+                    currentProductPath = productPath; // Store productPath
+                    fastspring.builder.add(packageName);
+                    setTimeout(() => {
+                        console.log('Opening FastSpring checkout...');
+                        fastspring.builder.checkout();
+                    }, 500);
+                } catch (error) {
+                    console.error('FastSpring processing error:', error);
+                    throw error;
+                }
+            }
+
+            function onFSPopupClosed(orderData) {
+                try {
+                    console.log('FastSpring popup closed with data:', orderData);
+                    if (orderData && (orderData.reference || orderData.id)) {
+                        const orderId = orderData.reference || orderData.id;
+
+                        if (typeof fastspring !== 'undefined' && fastspring.builder) {
+                            fastspring.builder.reset();
+                        }
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/api/payment/success';
+                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                        if (csrfToken) {
+                            const csrfInput = document.createElement('input');
+                            csrfInput.type = 'hidden';
+                            csrfInput.name = '_token';
+                            csrfInput.value = csrfToken;
+                            form.appendChild(csrfInput);
+                        }
+                        const gatewayInput = document.createElement('input');
+                        gatewayInput.type = 'hidden';
+                        gatewayInput.name = 'gateway';
+                        gatewayInput.value = 'fastspring';
+                        form.appendChild(gatewayInput);
+                        const orderIdInput = document.createElement('input');
+                        orderIdInput.type = 'hidden';
+                        orderIdInput.name = 'orderId';
+                        orderIdInput.value = orderId;
+                        form.appendChild(orderIdInput);
+                        const packageIdInput = document.createElement('input');
+                        packageIdInput.type = 'hidden';
+                        packageIdInput.name = 'package_id';
+                        packageIdInput.value = 3;
+                        form.appendChild(packageIdInput);
+                        const paymentGatewayIdInput = document.createElement('input');
+                        paymentGatewayIdInput.type = 'hidden';
+                        paymentGatewayIdInput.name = 'payment_gateway_id';
+                        paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
+                        form.appendChild(paymentGatewayIdInput);
+                        document.body.appendChild(form);
+                        form.submit();
+                    } else {
+                        console.warn("FastSpring popup closed without order data");
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Payment Cancelled',
+                            text: 'Your payment was cancelled. You can try again anytime.',
+                            confirmButtonText: 'OK'
+                        }).then(() => {
+                            window.location.href = "/all-subscriptions";
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error in onFSPopupClosed:", err);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Processing Error',
+                        text: 'There was an error processing your payment. Please contact support if your payment was charged.',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.href = "/all-subscriptions";
+                    });
+                }
+            }
+        </script>
+    @endif
+
+    <!-- Paddle Integration -->
+    @if ($activeGateway && $activeGateway->name === 'Paddle')
+        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                try {
+                    // Set the Paddle environment (sandbox or production)
+                    Paddle.Environment.set('{{ config('paddle.env', 'sandbox') }}');
+
+                    // Initialize Paddle with your vendor ID
+                    Paddle.Setup({
+                        vendor: 31861,
+                        eventCallback: function(event) {
+                            console.log('Paddle Event:', event);
+
+                            // Handle specific events
+                            switch (event.name) {
+                                case 'checkout.completed':
+                                    // Redirect or show success message
+                                    window.location.href = '{{ route('subscriptions.index') }}';
+                                    break;
+                                case 'checkout.closed':
+                                    // Optional: Handle when user closes checkout
+                                    console.log('Checkout was closed by user');
+                                    break;
+                                case 'checkout.loaded':
+                                    console.log('Checkout loaded successfully');
+                                    break;
+                                case 'checkout.error':
+                                    console.error('Checkout error:', event.error);
+                                    Swal.fire({
+                                        icon: 'error',
+                                        title: 'Payment Error',
+                                        text: 'An error occurred during checkout. Please try again or contact support.',
+                                        confirmButtonText: 'OK'
+                                    });
+                                    break;
+                            }
+                        }
+                    });
+
+
+                    console.log('Paddle initialized successfully for vendor: 31861');
+                } catch (error) {
+                    console.error('Paddle initialization error:', error);
+
+                    // Fallback UI for Paddle loading failure
+                    const paddleContainer = document.getElementById('paddle-checkout-container');
+                    if (paddleContainer) {
+                        paddleContainer.innerHTML = `
+                            <div class="alert alert-danger">
+                                <h5>Payment System Unavailable</h5>
+                                <p>We're experiencing issues with our payment processor. Please try again later or contact support.</p>
+                                <a href="" class="btn btn-outline-danger">
+                                    Contact Support
+                                </a>
+                            </div>
+                        `;
+                    }
+
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment System Error',
+                        text: 'We cannot process payments at this moment. Our team has been notified. Please try again later.',
+                        confirmButtonText: 'OK'
+                    });
+                }
+            });
+        </script>
+    @endif
+
+    <!-- PayProGlobal Integration -->
+    @if ($activeGateway && $activeGateway->name === 'PayPro Global')
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    @endif
     <style>
         .ppg-checkout-modal {
             z-index: 99999;
@@ -412,87 +596,14 @@
             }
         }
     </style>
-    <!-- Payment Gateway Scripts -->
-    @php
-        $activeGateways = $payment_gateways->pluck('name')->toArray();
-    @endphp
-    @if(in_array('FastSpring', $activeGateways))
-        <script src="https://sbl.onfastspring.com/js/checkout/button.js" data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
-    @endif
-    @if(in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
-        <script>
-            Paddle.Setup({ vendor: 127136 });
-        </script>
-    @endif
-    @if(in_array('PayPro Global', $activeGateways))
-        <script src="https://cdn.jsdelivr.net/npm/payproglobal@1.1.1/dist/payproglobal.min.js"></script>
-    @endif
-
-    <!-- Payment Gateway Scripts -->
-    @php
-        $activeGateways = $payment_gateways->pluck('name')->toArray();
-    @endphp
-    @if ($activeGateway && $activeGateway->name === 'FastSpring')
-        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-            data-debug="true"></script>
-        <script>
-            function onFSPopupClosed(orderData) {
-                try {
-                    if (orderData?.reference) {
-                        // Handle successful purchase
-                        window.location.href = "/payment/success?gateway=fastspring&order=" + orderData.reference;
-                    } else {
-                        console.warn("Popup closed, but no order data returned.");
-                        window.location.href = "/payment/cancel?gateway=fastspring";
-                    }
-                } catch (err) {
-                    console.error("Error in onFSPopupClosed:", err);
-                }
-            }
-        </script>
-    @endif
-
-    <!-- Paddle Integration -->
-    @if ($activeGateway && $activeGateway->name === 'Paddle')
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-        <script>
-            Paddle.Initialize({
-                token: "{{ config('payment.gateways.Paddle.client_side_token') }}",
-                eventCallback: function(event) {
-                    console.log('Paddle event:', event);
-                    
-                    if (event.name === 'checkout.completed') {
-                        window.location.href = '/payment/success?gateway=paddle&transaction=' + event.data.transaction_id;
-                    }
-                    
-                    if (event.name === 'checkout.closed') {
-                        // Only redirect if no successful payment
-                        if (!event.data || !event.data.transaction_id) {
-                            window.location.href = '/payment/cancel?gateway=paddle';
-                        }
-                    }
-                }
-            });
-        </script>
-    @endif
-
-    <!-- PayProGlobal Integration -->
-    @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
-        <script src="{{ config('payment.gateways.PayProGlobal.script_url') }}"></script>
-    @endif
-
 </head>
 
 <body>
-
     <div class="pricing-header">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
         <button type="button" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
             Log out
         </button>
-
         <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
             @csrf
         </form>
@@ -502,25 +613,23 @@
             <div class="badge-wrapper">
                 <div class="pricing-badge">PRICING PLANS</div>
             </div>
-
+            @include('components.alert-messages')
             <h2 class="section-title">Plans For Every Type of Business</h2>
             <p class="section-subtitle">SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how
                 businesses and individuals connect with their audiences. Our avatars can:</p>
             <div class="pricing-grid">
-                <!-- Free Plan -->
                 @foreach ($packages as $package)
                     <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
                         <h3>{{ $package->name }}</h3>
-                        <p class="price">${{ number_format($package->price, 0) }} <span class="per-month">/{{ $package->duration }}</span></p>
-                        <button class="btn dark checkout-button" 
-                            data-package="{{ $package->name }}"
+                        <p class="price">${{ number_format($package->price, 0) }} <span
+                                class="per-month">/{{ $package->duration }}</span></p>
+                        <button class="btn dark checkout-button" data-package="{{ $package->name }}"
                             {{ $currentPackage == $package->name ? 'disabled' : '' }}>
                             {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ? 'Activated' : 'Get Started') }}
                         </button>
-
                         <p class="included-title">What's included</p>
                         <ul class="features">
-                            @foreach($package->features as $feature)
+                            @foreach ($package->features as $feature)
                                 <li><span class="icon"></span> {{ $feature }}</li>
                             @endforeach
                         </ul>
@@ -529,9 +638,7 @@
             </div>
         </div>
     </div>
-
     @include('subscription.includes._addons')
-
     <footer>
         Having trouble? Contact us at
         <a href="mailto:support@syntopia.ai">support@syntopia.ai</a>
@@ -552,38 +659,26 @@
 
             document.querySelectorAll('.checkout-button').forEach(button => {
                 button.addEventListener('click', function() {
-                    // Don't proceed if button is disabled (current plan)
                     if (this.disabled) return;
-
-                    // Disable button temporarily to prevent double-clicks
                     this.disabled = true;
-
-                    // Get product package from button's data attribute
                     const productPath = this.getAttribute('data-package');
-
-                    // Process checkout with the selected package
                     processCheckout(productPath);
-
-                    // Re-enable button after delay
                     setTimeout(() => {
                         this.disabled = false;
                     }, 3000);
                 });
             });
 
-            // Check if a package was specified in the URL
             const packageFromURL = "{{ $currentPackage ?? '' }}";
             if (packageFromURL && packageFromURL !== '' && packageFromURL !== currentPackage) {
                 processCheckout(packageFromURL.toLowerCase() + "-plan");
             }
 
-            // Main checkout processing function
             function processCheckout(productPath) {
                 try {
                     if (!selectedGateway) {
                         throw new Error('No payment gateway selected');
                     }
-
                     switch (selectedGateway) {
                         case 'FastSpring':
                             processFastSpring(productPath);
@@ -595,7 +690,9 @@
                             processPayProGlobal(productPath);
                             break;
                         default:
-                            throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
+                            throw new Error(Unsupported payment gateway: $ {
+                                selectedGateway
+                            });
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
@@ -609,147 +706,206 @@
                 }
             }
 
-            // FastSpring-specific processing
             function processFastSpring(productPath) {
-                if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                    throw new Error('FastSpring is not properly initialized');
+                try {
+                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                        throw new Error('FastSpring is not properly initialized');
+                    }
+                    fastspring.builder.reset();
+                    const packageName = productPath.replace('-plan', '').toLowerCase();
+                    console.log('Adding FastSpring product:', packageName);
+                    fastspring.builder.add(packageName);
+                    setTimeout(() => {
+                        console.log('Opening FastSpring checkout...');
+                        fastspring.builder.checkout();
+                    }, 500);
+                } catch (error) {
+                    console.error('FastSpring processing error:', error);
+                    throw error;
                 }
-
-                const packageName = productPath.replace('-plan', '').toLowerCase();
-                fastspring.builder.add(packageName);
-                
-                setTimeout(() => {
-                    fastspring.builder.checkout();
-                }, 100);
             }
 
-            // Paddle-specific processing
             function processPaddle(productPath) {
-    const packageName = productPath.replace('-plan', '');
-    const apiUrl = `/api/paddle/checkout/${packageName}`;
-
-    // Show loading state
-    Swal.fire({
-        title: 'Processing...',
-        text: 'Setting up your checkout',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrfToken
-            },
-            credentials: 'same-origin'
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            Swal.close(); // Close loading dialog
-            
-            if (!data.success) {
-                throw new Error(data.message || data.error || 'Unknown error occurred');
-            }
-
-            // Check if checkout_url exists
-            if (!data.checkout_url) {
-                throw new Error('No checkout URL received from server');
-            }
-
-            // Option 1: Redirect to Paddle checkout page
-            window.location.href = data.checkout_url;
-            
-            // Option 2: Open in new window/popup (alternative)
-            // const width = 800;
-            // const height = 600;
-            // const left = (screen.width - width) / 2;
-            // const top = (screen.height - height) / 2;
-            // 
-            // const checkoutWindow = window.open(
-            //     data.checkout_url,
-            //     'PaddleCheckout',
-            //     `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
-            // );
-            // 
-            // if (!checkoutWindow) {
-            //     // Fallback to redirect if popup is blocked
-            //     window.location.href = data.checkout_url;
-            // }
-        })
-        .catch(error => {
-            Swal.close(); // Close loading dialog
-            console.error('Checkout error:', error);
-            Swal.fire({
-                icon: 'error',
-                title: 'Checkout Failed',
-                text: error.message || 'An error occurred while processing your checkout. Please try again later.',
-                confirmButtonText: 'OK'
-            });
-        });
-}
-
-            // PayProGlobal-specific processing
-            function processPayProGlobal(productPath) {
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/payproglobal/checkout/${packageName}`;
-
+                const apiUrl = /api/paddle / checkout / $ {
+                    packageName
+                };
                 fetch(apiUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': csrfToken
-                        }
+                        },
+                        credentials: 'same-origin'
                     })
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error('Network response was not ok');
+                            throw new Error(HTTP $ {
+                                response.status
+                            }: $ {
+                                response.statusText
+                            });
                         }
                         return response.json();
                     })
                     .then(data => {
-                        if (!data.checkoutUrl) {
-                            throw new Error('Invalid checkout URL received from server');
+                        if (!data.success) {
+                            throw new Error(data.message || data.error || 'Unknown error occurred');
                         }
-
-                        const width = 1000;
-                        const height = 700;
-                        const left = (screen.width - width) / 2;
-                        const top = (screen.height - height) / 2;
-
-                        const paymentWindow = window.open(
-                            data.checkoutUrl,
-                        );
-
-                        if (!paymentWindow) {
-                            throw new Error('Popup window was blocked by the browser');
+                        if (data.checkout_url) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Opening Checkout',
+                                text: 'Payment window is loading...',
+                                timer: 2000,
+                                showConfirmButton: false
+                            });
+                            setTimeout(() => {
+                                window.location.href = data.checkout_url;
+                            }, 2000);
+                        } else if (data.transaction_id && typeof Paddle !== 'undefined') {
+                            Paddle.Checkout.open({
+                                transactionId: data.transaction_id
+                            });
+                        } else {
+                            throw new Error('No transaction ID or checkout URL provided');
                         }
-
-                        const checkWindowClosed = setInterval(() => {
-                            if (paymentWindow.closed) {
-                                clearInterval(checkWindowClosed);
-                                window.location.href = '/';
-                            }
-                        }, 500);
                     })
                     .catch(error => {
-                        console.error('PayProGlobal checkout error:', error);
+                        console.error('Checkout error:', error);
                         Swal.fire({
                             icon: 'error',
-                            title: 'Payment Processing Error',
-                            text: 'Payment processing error. Please try again or contact support.',
+                            title: 'Checkout Failed',
+                            text: error.message ||
+                                'An error occurred while processing your checkout. Please try again later.',
                             confirmButtonText: 'OK'
                         });
                     });
+            }
+
+            function processPayProGlobal(productPath) {
+                const packageName = productPath.replace('-plan', '');
+                const apiUrl = /api/payproglobal / checkout / $ {
+                    packageName
+                };
+
+                // Open a blank popup synchronously to avoid popup blocker
+                const width = 1000;
+                const height = 700;
+                const left = (screen.width - width) / 2;
+                const top = (screen.height - height) / 2;
+                const paymentWindow = window.open(
+                    'about:blank',
+                    'PayProGlobalCheckout',
+                    width = $ {
+                        width
+                    }, height = $ {
+                        height
+                    }, top = $ {
+                        top
+                    }, left = $ {
+                        left
+                    }
+                );
+
+                if (!paymentWindow) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Popup Blocked',
+                        text: 'Please allow popups for this site in your browser settings and try again.',
+                        confirmButtonText: 'OK'
+                    });
+                    return;
+                }
+
+                // Show a loading message in the popup
+                paymentWindow.document.write('<html><body><p>Loading payment page...</p></body></html>');
+
+                fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    }
+                }).then(response => {
+                    if (!response.ok) {
+                        paymentWindow.close();
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                }).then(data => {
+                    console.log('PayProGlobal checkout URL:', data.checkoutUrl);
+                    if (!data.checkoutUrl) {
+                        paymentWindow.close();
+                        throw new Error('Invalid checkout URL received from server');
+                    }
+                    // Redirect the popup to the checkout URL
+                    paymentWindow.location.href = data.checkoutUrl;
+
+                    // Monitor if the popup is closed
+                    const checkWindowClosed = setInterval(() => {
+                        if (paymentWindow.closed) {
+                            clearInterval(checkWindowClosed);
+                            console.log(
+                                'PayProGlobal payment window closed. Calling save-details API.');
+
+                            // Call the save-details API
+                            fetch('/api/payment/save-details', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken
+                                },
+                                body: JSON.stringify({
+                                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}", // Ensure this is the correct ID
+                                    package_id: 3
+                                })
+                            }).then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Failed to save payment details');
+                                }
+                                return response.json();
+                            }).then(data => {
+                                if (data.success) {
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Payment Details Saved',
+                                        text: data.message ||
+                                            'Your payment details have been saved successfully.',
+                                        confirmButtonText: 'OK'
+                                    }).then(() => {
+                                        window.location
+                                    .reload(); // Reload the page after success
+                                    });
+                                } else {
+                                    throw new Error(data.error ||
+                                        'Failed to save payment details');
+                                }
+                            }).catch(error => {
+                                console.error('Error saving payment details:', error);
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error',
+                                    text: error.message ||
+                                        'An error occurred while saving payment details. Please try again or contact support.',
+                                    confirmButtonText: 'OK'
+                                });
+                            });
+                        }
+                    }, 500);
+                }).catch(error => {
+                    console.error('PayProGlobal checkout error:', error);
+                    paymentWindow.close();
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment Processing Error',
+                        text: error.message ||
+                            'Payment processing error. Please try again or contact support.',
+                        confirmButtonText: 'OK'
+                    });
+                });
             }
         });
     </script>
