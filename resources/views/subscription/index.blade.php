@@ -1,6 +1,3 @@
-index.blade.php
-
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -759,7 +756,7 @@ index.blade.php
                             processPayProGlobal(productPath);
                             break;
                         default:
-                            throw new Error(Unsupported payment gateway: ${selectedGateway});
+                            throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
@@ -793,7 +790,7 @@ index.blade.php
 
             function processPaddle(productPath) {
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = /api/paddle/checkout/${packageName};
+                const apiUrl = `/api/paddle/checkout/${packageName}`;
                 fetch(apiUrl, {
                     method: 'POST',
                     headers: {
@@ -806,7 +803,7 @@ index.blade.php
                 })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(HTTP ${response.status}: ${response.statusText});
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     return response.json();
                 })
@@ -846,7 +843,7 @@ index.blade.php
 
         function processPayProGlobal(productPath) {
             const packageName = productPath.replace('-plan', '');
-            const apiUrl = /api/payproglobal/checkout/${packageName};
+            const apiUrl = `/api/payproglobal/checkout/${packageName}`;
 
             // Open a blank popup synchronously to avoid popup blocker
             const width = 1000;
@@ -856,7 +853,7 @@ index.blade.php
             const paymentWindow = window.open(
                 'about:blank',
                 'PayProGlobalCheckout',
-                width=${width},height=${height},top=${top},left=${left}
+                `width=${width},height=${height},top=${top},left=${left}`
             );
 
             if (!paymentWindow) {
