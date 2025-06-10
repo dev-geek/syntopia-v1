@@ -136,11 +136,11 @@
             document.addEventListener('DOMContentLoaded', function() {
                 try {
                     // Set the Paddle environment (sandbox or production)
-                    Paddle.Environment.set('{{ config('paddle.env', 'sandbox') }}');
+                    Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
 
                     // Initialize Paddle with your vendor ID
                     Paddle.Setup({
-                        vendor: 31861,
+                        vendor: {{ config('payment.gateways.Paddle.vendor_id') }},
                         eventCallback: function(event) {
                             console.log('Paddle Event:', event);
                             switch(event.name) {
