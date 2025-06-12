@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,26 +19,26 @@
 
     <!-- Payment Gateway Scripts -->
     @php
-        $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
+    $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
     @endphp
     @if (in_array('FastSpring', $activeGateways))
-        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
-            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+    <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+        data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('PayPro Global', $activeGateways))
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
-        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-            data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
-        <script>
-            let currentProductPath = '';
+    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+        data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment"
+        data-popup-closed="onFSPopupClosed" data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+    <script>
+        let currentProductPath = '';
 
             function processFastSpring(productPath) {
                 try {
@@ -134,14 +135,14 @@
                     }
                 }
             }
-        </script>
+    </script>
     @endif
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
                 try {
                     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
                     Paddle.Setup({
@@ -157,12 +158,12 @@
                     });
                 }
             });
-        </script>
+    </script>
     @endif
 
     <!-- PayProGlobal Integration -->
     @if ($activeGateway && $activeGateway->name === 'PayPro Global')
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <style>
@@ -234,8 +235,13 @@
         }
 
         @keyframes ppg-rotation {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         * {
@@ -549,6 +555,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="pricing-header">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
@@ -570,21 +577,22 @@
                 businesses and individuals connect with their audiences. Our avatars can:</p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
-                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
-                        <h3>{{ $package->name }}</h3>
-                        <p class="price">${{ number_format($package->price, 0) }} <span
-                                class="per-month">/{{ $package->duration }}</span></p>
-                        <button class="btn dark checkout-button" data-package="{{ $package->name }}"
-                            {{ $currentPackage == $package->name ? 'disabled' : '' }}>
-                            {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ? 'Activated' : 'Get Started') }}
-                        </button>
-                        <p class="included-title">What's included</p>
-                        <ul class="features">
-                            @foreach ($package->features as $feature)
-                                <li><span class="icon"></span> {{ $feature }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
+                <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                    <h3>{{ $package->name }}</h3>
+                    <p class="price">${{ number_format($package->price, 0) }} <span class="per-month">/{{
+                            $package->duration }}</span></p>
+                    <button class="btn dark checkout-button" data-package="{{ $package->name }}" {{
+                        $currentPackage==$package->name ? 'disabled' : '' }}>
+                        {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ?
+                        'Activated' : 'Get Started') }}
+                    </button>
+                    <p class="included-title">What's included</p>
+                    <ul class="features">
+                        @foreach ($package->features as $feature)
+                        <li><span class="icon"></span> {{ $feature }}</li>
+                        @endforeach
+                    </ul>
+                </div>
                 @endforeach
             </div>
         </div>
@@ -647,11 +655,13 @@
                         Swal.fire({
                             icon: 'error',
                             title: 'Payment Gateway Error',
-                            text: error.message || 'Payment gateway error. Please try again later or contact support.',
+                            text: error.message ||
+                                'Payment gateway error. Please try again later or contact support.',
                             confirmButtonText: 'OK'
                         });
                     } else {
-                        alert('Payment Gateway Error: ' + (error.message || 'Payment gateway error. Please try again later or contact support.'));
+                        alert('Payment Gateway Error: ' + (error.message ||
+                            'Payment gateway error. Please try again later or contact support.'));
                     }
                 }
             }
@@ -680,47 +690,66 @@
                 const apiUrl = `/api/paddle/checkout/${packageName}`;
 
                 fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'same-origin'
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (!data.success) {
-                        throw new Error(data.message || data.error || 'Unknown error occurred');
-                    }
-                    if (data.transaction_id && typeof Paddle !== 'undefined') {
-                        Paddle.Checkout.open({
-                            transactionId: data.transaction_id
-                        });
-                    } else {
-                        throw new Error('No transaction ID provided');
-                    }
-                })
-                .catch(error => {
-                    console.error('Checkout error:', error);
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Checkout Failed',
-                            text: error.message || 'An error occurred while processing your checkout. Please try again later.',
-                            confirmButtonText: 'OK'
-                        });
-                    } else {
-                        alert('Checkout Failed: ' + (error.message || 'An error occurred while processing your checkout. Please try again later.'));
-                    }
-                });
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data.success) {
+                            throw new Error(data.message || data.error || 'Unknown error occurred');
+                        }
+                        if (data.transaction_id && typeof Paddle !== 'undefined') {
+                            Paddle.Checkout.open({
+                                transactionId: data.transaction_id,
+                                eventCallback: function(eventData) {
+                                    if (eventData.event === 'Checkout.Complete') {
+                                        // Redirect to /all-subscriptions on successful checkout
+                                        window.location.href = '/all-subscriptions';
+                                    } else if (eventData.event === 'Checkout.Close' && !eventData
+                                        .data.success) {
+                                        Swal.fire({
+                                            icon: 'info',
+                                            title: 'Payment Cancelled',
+                                            text: 'Your payment was cancelled. You can try again anytime.',
+                                            confirmButtonText: 'OK'
+                                        }).then(() => {
+                                            window.location.href = '/all-subscriptions';
+                                        });
+                                    }
+                                }
+                            });
+                        } else {
+                            throw new Error('No transaction ID provided');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Checkout error:', error);
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Checkout Failed',
+                                text: error.message ||
+                                    'An error occurred while processing your checkout. Please try again later.',
+                                confirmButtonText: 'OK'
+                            });
+                        } else {
+                            alert('Checkout Failed: ' + (error.message ||
+                                'An error occurred while processing your checkout. Please try again later.'
+                                ));
+                        }
+                    });
             }
 
             function processPayProGlobal(productPath) {
@@ -738,16 +767,12 @@
                 );
 
                 if (!paymentWindow) {
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Popup Blocked',
-                            text: 'Please allow popups for this site in your browser settings and try again.',
-                            confirmButtonText: 'OK'
-                        });
-                    } else {
-                        alert('Popup Blocked: Please allow popups for this site in your browser settings and try again.');
-                    }
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Popup Blocked',
+                        text: 'Please allow popups for this site in your browser settings and try again.',
+                        confirmButtonText: 'OK'
+                    });
                     return;
                 }
 
@@ -762,21 +787,23 @@
                 }).then(response => {
                     if (!response.ok) {
                         paymentWindow.close();
-                        throw new Error('Network response was not ok');
+                        return response.json().then(errData => {
+                            throw new Error(errData.message || 'Network response was not ok');
+                        });
                     }
                     return response.json();
                 }).then(data => {
-                    console.log('PayProGlobal checkout URL:', data.checkoutUrl);
-                    if (!data.checkoutUrl) {
+                    if (!data.checkoutUrl || !data.package_id) {
                         paymentWindow.close();
-                        throw new Error('Invalid checkout URL received from server');
+                        throw new Error('Invalid response from server: missing checkoutUrl or package_id');
                     }
                     paymentWindow.location.href = data.checkoutUrl;
 
                     const checkWindowClosed = setInterval(() => {
                         if (paymentWindow.closed) {
                             clearInterval(checkWindowClosed);
-                            console.log('PayProGlobal payment window closed. Calling save-details API.');
+                            console.log(
+                                'PayProGlobal payment window closed. Calling save-details API.');
 
                             fetch('/api/payment/save-details', {
                                 method: 'POST',
@@ -786,62 +813,58 @@
                                 },
                                 body: JSON.stringify({
                                     payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
-                                    package_id: 3 // TODO: Replace with dynamic package_id
+                                    package_id: data
+                                        .package_id // Use package_id from the response
                                 })
                             }).then(response => {
                                 if (!response.ok) {
-                                    throw new Error('Failed to save payment details');
+                                    return response.json().then(errData => {
+                                        throw new Error(errData.error ||
+                                            'Failed to save payment details');
+                                    });
                                 }
                                 return response.json();
                             }).then(data => {
                                 if (data.success) {
-                                    if (typeof Swal !== 'undefined') {
-                                        Swal.fire({
-                                            icon: 'success',
-                                            title: 'Payment Details Saved',
-                                            text: data.message || 'Your payment details have been saved successfully.',
-                                            confirmButtonText: 'OK'
-                                        }).then(() => {
-                                            window.location.reload();
-                                        });
-                                    } else {
-                                        alert('Payment Details Saved: Your payment details have been saved successfully.');
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Payment Details Saved',
+                                        text: data.message ||
+                                            'Your payment details have been saved successfully.',
+                                        confirmButtonText: 'OK'
+                                    }).then(() => {
                                         window.location.reload();
-                                    }
+                                    });
                                 } else {
-                                    throw new Error(data.error || 'Failed to save payment details');
+                                    throw new Error(data.error ||
+                                        'Failed to save payment details');
                                 }
                             }).catch(error => {
                                 console.error('Error saving payment details:', error);
-                                if (typeof Swal !== 'undefined') {
-                                    Swal.fire({
-                                        icon: 'error',
-                                        title: 'Error',
-                                        text: error.message || 'An error occurred while saving payment details. Please try again or contact support.',
-                                        confirmButtonText: 'OK'
-                                    });
-                                } else {
-                                    alert('Error: ' + (error.message || 'An error occurred while saving payment details. Please try again or contact support.'));
-                                }
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error',
+                                    text: error.message ||
+                                        'An error occurred while saving payment details. Please try again or contact support.',
+                                    confirmButtonText: 'OK'
+                                });
                             });
                         }
                     }, 500);
                 }).catch(error => {
                     console.error('PayProGlobal checkout error:', error);
                     paymentWindow.close();
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Processing Error',
-                            text: error.message || 'Payment processing error. Please try again or contact support.',
-                            confirmButtonText: 'OK'
-                        });
-                    } else {
-                        alert('Payment Processing Error: ' + (error.message || 'Payment processing error. Please try again or contact support.'));
-                    }
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment Processing Error',
+                        text: error.message ||
+                            'Payment processing error. Please try again or contact support.',
+                        confirmButtonText: 'OK'
+                    });
                 });
             }
         });
     </script>
 </body>
+
 </html>
