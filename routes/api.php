@@ -16,4 +16,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/payment/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
 
     Route::post('/payment/save-details', [PaymentController::class, 'savePaymentDetails']);
+    Route::post('/paddle/webhook', [PaymentController::class, 'handlePaddleWebhook'])->name('paddle.webhook');
 });

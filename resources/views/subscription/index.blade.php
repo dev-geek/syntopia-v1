@@ -1,25 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy" content="
-        default-src 'self' data: gap: https://ssl.gstatic.com http://livebuzzstudio.test https://livebuzzstudio.test;
+        default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
         font-src 'self' https://fonts.gstatic.com;
-        script-src 'self' http://livebuzzstudio.test https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
+        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
         img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
-        connect-src 'self' http://livebuzzstudio.test https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
-        frame-src 'self' http://livebuzzstudio.test https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
+        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
+        frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
         media-src 'self' data: https://sbl.onfastspring.com;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Payment Gateway Scripts -->
     @php
-        $activeGateways = $payment_gateways->pluck('name')->toArray();
+        $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
     @endphp
     @if (in_array('FastSpring', $activeGateways))
         <script src="https://sbl.onfastspring.com/js/checkout/button.js"
@@ -27,7 +26,6 @@
     @endif
     @if (in_array('Paddle', $activeGateways))
         <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-
     @endif
     @if (in_array('PayPro Global', $activeGateways))
         <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
@@ -39,7 +37,7 @@
             data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
             data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
         <script>
-            let currentProductPath = ''; // Store productPath globally
+            let currentProductPath = '';
 
             function processFastSpring(productPath) {
                 try {
@@ -49,7 +47,7 @@
                     fastspring.builder.reset();
                     const packageName = productPath.replace('-plan', '').toLowerCase();
                     console.log('Adding FastSpring product:', packageName);
-                    currentProductPath = productPath; // Store productPath
+                    currentProductPath = productPath;
                     fastspring.builder.add(packageName);
                     setTimeout(() => {
                         console.log('Opening FastSpring checkout...');
@@ -94,7 +92,7 @@
                         const packageIdInput = document.createElement('input');
                         packageIdInput.type = 'hidden';
                         packageIdInput.name = 'package_id';
-                        packageIdInput.value = 3;
+                        packageIdInput.value = 3; // TODO: Replace with dynamic package_id
                         form.appendChild(packageIdInput);
                         const paymentGatewayIdInput = document.createElement('input');
                         paymentGatewayIdInput.type = 'hidden';
@@ -105,156 +103,52 @@
                         form.submit();
                     } else {
                         console.warn("FastSpring popup closed without order data");
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'info',
+                                title: 'Payment Cancelled',
+                                text: 'Your payment was cancelled. You can try again anytime.',
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                window.location.href = "/all-subscriptions";
+                            });
+                        } else {
+                            alert('Payment Cancelled: Your payment was cancelled. You can try again anytime.');
+                            window.location.href = "/all-subscriptions";
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error in onFSPopupClosed:", err);
+                    if (typeof Swal !== 'undefined') {
                         Swal.fire({
-                            icon: 'info',
-                            title: 'Payment Cancelled',
-                            text: 'Your payment was cancelled. You can try again anytime.',
+                            icon: 'error',
+                            title: 'Processing Error',
+                            text: 'There was an error processing your payment. Please contact support if your payment was charged.',
                             confirmButtonText: 'OK'
                         }).then(() => {
                             window.location.href = "/all-subscriptions";
                         });
-                    }
-                } catch (err) {
-                    console.error("Error in onFSPopupClosed:", err);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Processing Error',
-                        text: 'There was an error processing your payment. Please contact support if your payment was charged.',
-                        confirmButtonText: 'OK'
-                        }).then(() => {
-                            window.location.href = "/all-subscriptions";
-                        });
+                    } else {
+                        alert('Processing Error: There was an error processing your payment. Please contact support.');
+                        window.location.href = "/all-subscriptions";
                     }
                 }
-            </script>
-        @endif
+            }
+        </script>
+    @endif
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
-        <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
         <script>
             document.addEventListener('DOMContentLoaded', function() {
                 try {
-                    // Set the Paddle environment (sandbox or production)
                     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
-
-                    // Initialize Paddle with your vendor ID
                     Paddle.Setup({
-                        vendor: {{ config('payment.gateways.Paddle.vendor_id') }},
-                        eventCallback: function(event) {
-                            console.log('Paddle Event:', event);
-                            switch(event.name) {
-                                case 'checkout.completed':
-                                    // Handle successful checkout
-                                    handlePaddleSuccess(event.data);
-                                    break;
-                                case 'checkout.closed':
-                                    console.log('Checkout was closed by user');
-                                    break;
-                                case 'checkout.loaded':
-                                    console.log('Checkout loaded successfully');
-                                    break;
-                                case 'checkout.error':
-                                    console.error('Checkout error:', event.error);
-                                    Swal.fire({
-                                        icon: 'error',
-                                        title: 'Payment Error',
-                                        text: 'An error occurred during checkout. Please try again or contact support.',
-                                        confirmButtonText: 'OK'
-                                    });
-                                    break;
-                            }
-                        }
+                        token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
                     });
 
-                    // Check for Paddle callback URL parameters
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const ptxn = urlParams.get('_ptxn');
-                    const callback = urlParams.get('callback');
-                    const status = urlParams.get('status');
-                    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
-
-                    if (ptxn && callback === 'paddle' && status === 'true') {
-                        // Handle Paddle success callback from URL
-                        handlePaddleSuccess({ transactionId: ptxn });
-                    }
-
-                    // Function to handle Paddle success and save payment details
-                    function handlePaddleSuccess(data) {
-                        if (!data.transactionId) {
-                            console.error('No transaction ID provided');
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Payment Error',
-                                text: 'Transaction ID missing. Please contact support.',
-                                confirmButtonText: 'OK'
-                            }).then(() => {
-                                window.location.href = '/all-subscriptions';
-                            });
-                            return;
-                        }
-
-                        // Call save-details API
-                        fetch('/api/payment/save-details', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: JSON.stringify({
-                                payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
-                                package_id: 3, // Adjust based on your logic to determine package_id
-                                transaction_id: data.transactionId
-                            })
-                        })
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error('Failed to save payment details');
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            if (data.success) {
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Payment Successful',
-                                    text: data.message || 'Your payment has been processed successfully.',
-                                    confirmButtonText: 'OK'
-                                }).then(() => {
-                                    window.location.href = '/all-subscriptions'; // Redirect to base URL
-                                });
-                            } else {
-                                throw new Error(data.error || 'Failed to save payment details');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error saving payment details:', error);
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Error',
-                                text: error.message || 'An error occurred while saving payment details. Please contact support.',
-                                confirmButtonText: 'OK'
-                            }).then(() => {
-                                window.location.href = '/all-subscriptions';
-                            });
-                        });
-                    }
-
-                    console.log('Paddle initialized successfully for vendor: 31861');
                 } catch (error) {
-                    console.error('Paddle initialization error:', error);
-                    const paddleContainer = document.getElementById('paddle-checkout-container');
-                    if (paddleContainer) {
-                        paddleContainer.innerHTML = `
-                            <div class="alert alert-danger">
-                                <h5>Payment System Unavailable</h5>
-                                <p>We're experiencing issues with our payment processor. Please try again later or contact support.</p>
-                                <a href="mailto:support@syntopia.ai" class="btn btn-outline-danger">
-                                    Contact Support
-                                </a>
-                            </div>
-                        `;
-                    }
                     Swal.fire({
                         icon: 'error',
                         title: 'Payment System Error',
@@ -270,7 +164,8 @@
     @if ($activeGateway && $activeGateway->name === 'PayPro Global')
         <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
-<style>
+
+    <style>
         .ppg-checkout-modal {
             z-index: 99999;
             display: none;
@@ -339,13 +234,8 @@
         }
 
         @keyframes ppg-rotation {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         * {
@@ -426,7 +316,6 @@
 
         .pricing-wrapper h2 {
             font-size: 65px;
-
         }
 
         .card {
@@ -607,8 +496,6 @@
             text-decoration: underline;
         }
 
-        /* addons style  */
-
         .addons-wrapper {
             width: 100%;
             padding: 0px;
@@ -658,12 +545,10 @@
 
             .pricing-wrapper h2 {
                 font-size: 40px;
-
             }
         }
     </style>
 </head>
-
 <body>
     <div class="pricing-header">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
@@ -711,10 +596,8 @@
     </footer>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
-        // Get CSRF token
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
-        // Payment Gateway Processing
         document.addEventListener("DOMContentLoaded", function() {
             const currentPackage = "{{ $currentPackage ?? '' }}";
             const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
@@ -760,12 +643,16 @@
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment Gateway Error',
-                        text: error.message || 'Payment gateway error. Please try again later or contact support.',
-                        confirmButtonText: 'OK'
-                    });
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Payment Gateway Error',
+                            text: error.message || 'Payment gateway error. Please try again later or contact support.',
+                            confirmButtonText: 'OK'
+                        });
+                    } else {
+                        alert('Payment Gateway Error: ' + (error.message || 'Payment gateway error. Please try again later or contact support.'));
+                    }
                 }
             }
 
@@ -791,13 +678,15 @@
             function processPaddle(productPath) {
                 const packageName = productPath.replace('-plan', '');
                 const apiUrl = `/api/paddle/checkout/${packageName}`;
+
                 fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': csrfToken
+                        'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     credentials: 'same-origin'
                 })
@@ -811,144 +700,148 @@
                     if (!data.success) {
                         throw new Error(data.message || data.error || 'Unknown error occurred');
                     }
-                    if (data.checkout_url) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Opening Checkout',
-                            text: 'Payment window is loading...',
-                            timer: 2000,
-                            showConfirmButton: false
-                        });
-                        setTimeout(() => {
-                            window.location.href = data.checkout_url;
-                        }, 2000);
-                    } else if (data.transaction_id && typeof Paddle !== 'undefined') {
+                    if (data.transaction_id && typeof Paddle !== 'undefined') {
                         Paddle.Checkout.open({
                             transactionId: data.transaction_id
                         });
                     } else {
-                        throw new Error('No transaction ID or checkout URL provided');
+                        throw new Error('No transaction ID provided');
                     }
                 })
                 .catch(error => {
                     console.error('Checkout error:', error);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Checkout Failed',
-                        text: error.message || 'An error occurred while processing your checkout. Please try again later.',
-                        confirmButtonText: 'OK'
-                    });
-                });
-            }
-
-        function processPayProGlobal(productPath) {
-            const packageName = productPath.replace('-plan', '');
-            const apiUrl = `/api/payproglobal/checkout/${packageName}`;
-
-            // Open a blank popup synchronously to avoid popup blocker
-            const width = 1000;
-            const height = 700;
-            const left = (screen.width - width) / 2;
-            const top = (screen.height - height) / 2;
-            const paymentWindow = window.open(
-                'about:blank',
-                'PayProGlobalCheckout',
-                `width=${width},height=${height},top=${top},left=${left}`
-            );
-
-            if (!paymentWindow) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Popup Blocked',
-                    text: 'Please allow popups for this site in your browser settings and try again.',
-                    confirmButtonText: 'OK'
-                });
-                return;
-            }
-
-            // Show a loading message in the popup
-            paymentWindow.document.write('<html><body><p>Loading payment page...</p></body></html>');
-
-            fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken
-                }
-            }).then(response => {
-                if (!response.ok) {
-                    paymentWindow.close();
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            }).then(data => {
-                console.log('PayProGlobal checkout URL:', data.checkoutUrl);
-                if (!data.checkoutUrl) {
-                    paymentWindow.close();
-                    throw new Error('Invalid checkout URL received from server');
-                }
-                // Redirect the popup to the checkout URL
-                paymentWindow.location.href = data.checkoutUrl;
-
-                // Monitor if the popup is closed
-                const checkWindowClosed = setInterval(() => {
-                    if (paymentWindow.closed) {
-                        clearInterval(checkWindowClosed);
-                        console.log('PayProGlobal payment window closed. Calling save-details API.');
-
-                        // Call the save-details API
-                        fetch('/api/payment/save-details', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: JSON.stringify({
-                                payment_gateway_id: "{{ $activeGateway->id ?? '' }}", // Ensure this is the correct ID
-                                package_id: 3
-                            })
-                        }).then(response => {
-                            if (!response.ok) {
-                                throw new Error('Failed to save payment details');
-                            }
-                            return response.json();
-                        }).then(data => {
-                            if (data.success) {
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Payment Details Saved',
-                                    text: data.message || 'Your payment details have been saved successfully.',
-                                    confirmButtonText: 'OK'
-                                }).then(() => {
-                                    window.location.reload(); // Reload the page after success
-                                });
-                            } else {
-                                throw new Error(data.error || 'Failed to save payment details');
-                            }
-                        }).catch(error => {
-                            console.error('Error saving payment details:', error);
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Error',
-                                text: error.message || 'An error occurred while saving payment details. Please try again or contact support.',
-                                confirmButtonText: 'OK'
-                            });
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Checkout Failed',
+                            text: error.message || 'An error occurred while processing your checkout. Please try again later.',
+                            confirmButtonText: 'OK'
                         });
+                    } else {
+                        alert('Checkout Failed: ' + (error.message || 'An error occurred while processing your checkout. Please try again later.'));
                     }
-                }, 500);
-            }).catch(error => {
-                console.error('PayProGlobal checkout error:', error);
-                paymentWindow.close();
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Payment Processing Error',
-                    text: error.message || 'Payment processing error. Please try again or contact support.',
-                    confirmButtonText: 'OK'
                 });
-            });
-        }
+            }
+
+            function processPayProGlobal(productPath) {
+                const packageName = productPath.replace('-plan', '');
+                const apiUrl = `/api/payproglobal/checkout/${packageName}`;
+
+                const width = 1000;
+                const height = 700;
+                const left = (screen.width - width) / 2;
+                const top = (screen.height - height) / 2;
+                const paymentWindow = window.open(
+                    'about:blank',
+                    'PayProGlobalCheckout',
+                    `width=${width},height=${height},top=${top},left=${left}`
+                );
+
+                if (!paymentWindow) {
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Popup Blocked',
+                            text: 'Please allow popups for this site in your browser settings and try again.',
+                            confirmButtonText: 'OK'
+                        });
+                    } else {
+                        alert('Popup Blocked: Please allow popups for this site in your browser settings and try again.');
+                    }
+                    return;
+                }
+
+                paymentWindow.document.write('<html><body><p>Loading payment page...</p></body></html>');
+
+                fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    }
+                }).then(response => {
+                    if (!response.ok) {
+                        paymentWindow.close();
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                }).then(data => {
+                    console.log('PayProGlobal checkout URL:', data.checkoutUrl);
+                    if (!data.checkoutUrl) {
+                        paymentWindow.close();
+                        throw new Error('Invalid checkout URL received from server');
+                    }
+                    paymentWindow.location.href = data.checkoutUrl;
+
+                    const checkWindowClosed = setInterval(() => {
+                        if (paymentWindow.closed) {
+                            clearInterval(checkWindowClosed);
+                            console.log('PayProGlobal payment window closed. Calling save-details API.');
+
+                            fetch('/api/payment/save-details', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken
+                                },
+                                body: JSON.stringify({
+                                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
+                                    package_id: 3 // TODO: Replace with dynamic package_id
+                                })
+                            }).then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Failed to save payment details');
+                                }
+                                return response.json();
+                            }).then(data => {
+                                if (data.success) {
+                                    if (typeof Swal !== 'undefined') {
+                                        Swal.fire({
+                                            icon: 'success',
+                                            title: 'Payment Details Saved',
+                                            text: data.message || 'Your payment details have been saved successfully.',
+                                            confirmButtonText: 'OK'
+                                        }).then(() => {
+                                            window.location.reload();
+                                        });
+                                    } else {
+                                        alert('Payment Details Saved: Your payment details have been saved successfully.');
+                                        window.location.reload();
+                                    }
+                                } else {
+                                    throw new Error(data.error || 'Failed to save payment details');
+                                }
+                            }).catch(error => {
+                                console.error('Error saving payment details:', error);
+                                if (typeof Swal !== 'undefined') {
+                                    Swal.fire({
+                                        icon: 'error',
+                                        title: 'Error',
+                                        text: error.message || 'An error occurred while saving payment details. Please try again or contact support.',
+                                        confirmButtonText: 'OK'
+                                    });
+                                } else {
+                                    alert('Error: ' + (error.message || 'An error occurred while saving payment details. Please try again or contact support.'));
+                                }
+                            });
+                        }
+                    }, 500);
+                }).catch(error => {
+                    console.error('PayProGlobal checkout error:', error);
+                    paymentWindow.close();
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Payment Processing Error',
+                            text: error.message || 'Payment processing error. Please try again or contact support.',
+                            confirmButtonText: 'OK'
+                        });
+                    } else {
+                        alert('Payment Processing Error: ' + (error.message || 'Payment processing error. Please try again or contact support.'));
+                    }
+                });
+            }
         });
     </script>
 </body>
-
 </html>

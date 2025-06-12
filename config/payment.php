@@ -52,6 +52,7 @@ return [
             'client_side_token' => env('CLIENT_SIDE_TOKEN', 'test_dab715bb779c31552d5b22561f0'),
             'pro_plan_price_id' => 'pri_01jvyvt5hs48d5gd85m54nv0a6',
             'vendor_id' => env('PADDLE_VENDOR_ID', ''),
+            'webhook_secret' => env('WEBHOOK_SECRET', '')
         ],
 
         'PayProGlobal' => [

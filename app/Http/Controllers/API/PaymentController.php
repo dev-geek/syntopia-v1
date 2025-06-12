@@ -11,22 +11,17 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
-use function Laravel\Prompts\alert;
-
 class PaymentController extends Controller
 {
     private function validatePackageAndGetUser($package)
     {
-        // Get the authenticated user
         $user = Auth::user();
         if (!$user) {
             return response()->json(['error' => 'User not authenticated'], 401);
         }
 
-        // Get package data from database (case-insensitive)
         $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
 
-        // Check if package exists
         if (!$packageModel) {
             return response()->json([
                 'error' => 'Invalid package',
@@ -42,20 +37,12 @@ class PaymentController extends Controller
         ];
     }
 
-    /**
-     * Get the product IDs for the specified gateway
-     *
-     * @param string $gateway
-     * @return array
-     */
     private function getProductIds($gateway)
     {
-        // First get all packages from database
         $packages = Package::all()->keyBy(function ($item) {
             return strtolower($item->name);
         });
 
-        // Initialize the result array with all possible packages
         $productMappings = [
             'free' => null,
             'starter' => null,
@@ -64,22 +51,18 @@ class PaymentController extends Controller
             'enterprise' => null,
         ];
 
-        // Merge with configured product IDs from config
         $configuredIds = config("payment.gateways.{$gateway}.product_ids", []);
 
         foreach ($productMappings as $packageName => &$value) {
-            // Skip free and enterprise packages as they don't need product IDs
             if ($packageName === 'free' || $packageName === 'enterprise') {
                 continue;
             }
 
-            // First try to get from package model if available
             if (isset($packages[$packageName])) {
                 $value = $packages[$packageName]->{"{$gateway}_product_id"}
                     ?? $configuredIds[$packageName]
                     ?? null;
             } else {
-                // Fallback to config only if package doesn't exist in DB
                 $value = $configuredIds[$packageName] ?? null;
             }
         }
@@ -103,17 +86,11 @@ class PaymentController extends Controller
             ->value('id');
     }
 
-    /**
-     * Generate a checkout URL for Paddle
-     *
-     * @param Request $request
-     * @param string $package
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function paddleCheckout(Request $request, string $package)
     {
         try {
             $apiKey = config('payment.gateways.Paddle.api_key');
+            Log::info('Paddle API Key Loaded', ['api_key' => $apiKey]);
 
             if (empty($apiKey)) {
                 return response()->json([
@@ -123,17 +100,16 @@ class PaymentController extends Controller
                 ], 500);
             }
 
-            // Process package name
             $processedPackage = str_replace('-plan', '', strtolower($package));
 
-            // Validate package and user
             $validation = $this->validatePackageAndGetUser($processedPackage);
-            if (!is_array($validation))
+            if (!is_array($validation)) {
                 return $validation;
+            }
 
-            [$user, $packageData] = [$validation['user'], $validation['packageData']];
+            $user = $validation['user'];
+            $packageData = $validation['packageData'];
 
-            // Validate user name
             $userName = trim($user->name);
             if (empty($userName)) {
                 return response()->json([
@@ -143,14 +119,12 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            // Standard headers for all Paddle API requests
             $headers = [
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
             ];
 
-            // Handle customer creation or lookup
             if (!$user->paddle_customer_id) {
                 $customerId = $this->getOrCreatePaddleCustomer($user, $headers);
                 if (!$customerId) {
@@ -180,7 +154,6 @@ class PaymentController extends Controller
 
             $products = $productsResponse->json()['data'];
 
-            // Find matching product by name
             $matchingProduct = null;
             foreach ($products as $product) {
                 if (strtolower($product['name']) === $processedPackage) {
@@ -198,7 +171,6 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            // Check for active prices
             $prices = $matchingProduct['prices'] ?? [];
             $activePrices = array_filter($prices, function ($price) {
                 return ($price['status'] ?? '') === 'active';
@@ -212,9 +184,7 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            $priceId = $activePrices[0]['id'];
-
-            // Prepare transaction data
+            $priceId = reset($activePrices)['id'];
             $transactionData = [
                 'items' => [
                     [
@@ -226,12 +196,20 @@ class PaymentController extends Controller
                 'currency_code' => 'USD',
                 'collection_mode' => 'automatic',
                 'billing_details' => null,
+                'custom_data' => [
+                    'user_id' => (string) $user->id,
+                    'package' => $processedPackage
+                ]
             ];
 
             $response = Http::withHeaders($headers)
                 ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
 
-            // Handle response
+            Log::info('Paddle Transaction Response', [
+                'status' => $response->status(),
+                'body' => $response->json()
+            ]);
+
             if (!$response->successful()) {
                 $errorBody = $response->body();
                 $errorData = json_decode($errorBody, true);
@@ -250,7 +228,18 @@ class PaymentController extends Controller
 
             $transaction = $response->json()['data'];
 
-            // Only update user data after successful payment
+            // Process transaction data directly
+            if (isset($transaction['checkout']['url'])) {
+                // Store transaction details if needed
+                $this->savePaymentDetails($request->merge([
+                    'transaction_id' => $transaction['id'],
+                    'checkout_url' => $transaction['checkout']['url'],
+                    'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                    'package_id' => $packageData->id,
+                    'status' => 'pending'
+                ]));
+            }
+
             return response()->json([
                 'success' => true,
                 'checkout_url' => $transaction['checkout']['url'] ?? null,
@@ -268,23 +257,23 @@ class PaymentController extends Controller
     private function getOrCreatePaddleCustomer($user, $headers)
     {
         try {
-            // Use the incoming headers if they exist, otherwise fall back to config
             $apiHeaders = $headers ?: [
-                'Authorization' => 'Bearer '.config('payment.gateways.Paddle.api_key'),
+                'Authorization' => 'Bearer ' . config('payment.gateways.Paddle.api_key'),
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json'
             ];
 
-            // Determine base URL based on key prefix
-            $baseUrl = str_starts_with($apiHeaders['Authorization'], 'Bearer pdl_sdbx_')
-                ? 'https://sandbox-api.paddle.com'
-                : 'https://api.paddle.com';
+            $baseUrl = 'https://sandbox-api.paddle.com';
 
-            // Search for customer
             $searchResponse = Http::withHeaders($apiHeaders)
-                ->get($baseUrl.'/customers', [
+                ->get($baseUrl . '/customers', [
                     'email' => $user->email
                 ]);
+
+            Log::info('Paddle Customer Search', [
+                'email' => $user->email,
+                'response' => $searchResponse->json()
+            ]);
 
             if ($searchResponse->successful()) {
                 $customers = $searchResponse->json()['data'] ?? [];
@@ -293,9 +282,8 @@ class PaymentController extends Controller
                 }
             }
 
-            // Create new customer
             $customerResponse = Http::withHeaders($apiHeaders)
-                ->post($baseUrl.'/customers', [
+                ->post($baseUrl . '/customers', [
                     'email' => $user->email,
                     'name' => $user->name,
                     'custom_data' => [
@@ -308,7 +296,6 @@ class PaymentController extends Controller
                 return $customerResponse->json()['data']['id'];
             }
 
-            // Handle specific error cases
             $errorData = $customerResponse->json();
             if (isset($errorData['error']['code']) && $errorData['error']['code'] === 'customer_already_exists') {
                 if (preg_match('/customer of id (ctm_[a-zA-Z0-9]+)/', $errorData['error']['detail'] ?? '', $matches)) {
@@ -316,8 +303,7 @@ class PaymentController extends Controller
                 }
             }
 
-            throw new \Exception('Paddle API error: '.($errorData['error']['detail'] ?? $customerResponse->body()));
-
+            throw new \Exception('Paddle API error: ' . ($errorData['error']['detail'] ?? $customerResponse->body()));
         } catch (\Exception $e) {
             Log::error('Paddle customer error', [
                 'user_id' => $user->id,
@@ -328,31 +314,133 @@ class PaymentController extends Controller
             return null;
         }
     }
+
     private function validateCustomerId(string $id): bool
     {
         return preg_match('/^ctm_[a-zA-Z0-9]+$/', $id) === 1;
     }
+
+    public function handlePaddleWebhook(Request $request)
+    {
+        $payload = $request->all();
+        Log::info('Paddle webhook received', ['event_type' => $payload['event_type'] ?? 'unknown']);
+
+        // Verify webhook signature
+        $secret = config('payment.gateways.Paddle.webhook_secret');
+        $signature = $request->header('Paddle-Signature');
+
+        if ($secret && $signature) {
+            [$timestamp, $hmac] = explode(';', str_replace('ts=', '', $signature));
+            $computedHmac = hash_hmac('sha256', $timestamp . ':' . $request->getContent(), $secret);
+            if (!hash_equals($hmac, $computedHmac)) {
+                Log::error('Invalid Paddle webhook signature');
+                return response()->json(['error' => 'Invalid signature'], 403);
+            }
+        }
+
+        switch ($payload['event_type'] ?? null) {
+            case 'checkout.completed':
+                return $this->handlePaddleTransactionCompleted($payload);
+            case 'checkout.payment_failed':
+                return $this->handlePaddleTransactionFailed($payload);
+            default:
+                Log::info('Paddle webhook ignored', ['event_type' => $payload['event_type'] ?? 'unknown']);
+                return response()->json(['status' => 'ignored']);
+        }
+    }
+
+    private function handlePaddleTransactionCompleted($payload)
+{
+    try {
+        $transactionId = $payload['data']['id'] ?? null;
+        $userId = $payload['data']['custom_data']['user_id'] ?? null;
+        $package = $payload['data']['custom_data']['package'] ?? null;
+
+        if (!$transactionId || !$userId || !$package) {
+            Log::error('Missing required data in Paddle webhook', [
+                'transaction_id' => $transactionId,
+                'user_id' => $userId,
+                'package' => $package
+            ]);
+            return response()->json(['error' => 'Missing required data'], 400);
+        }
+
+        $user = User::find($userId);
+        if (!$user) {
+            Log::error('User not found in Paddle webhook', ['user_id' => $userId]);
+            return response()->json(['error' => 'User not found'], 404);
+        }
+
+        $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
+        if (!$packageModel) {
+            Log::error('Package not found in Paddle webhook', ['package' => $package]);
+            return response()->json(['error' => 'Package not found'], 404);
+        }
+
+        $this->activateUserSubscription($user, $package, 'Paddle');
+
+        Log::info('Paddle payment processed and subscription activated', [
+            'user_id' => $userId,
+            'package' => $package,
+            'transaction_id' => $transactionId
+        ]);
+
+        return response()->json(['status' => 'processed']);
+    } catch (\Exception $e) {
+        Log::error('Paddle webhook processing failed: ' . $e->getMessage(), [
+            'payload' => $payload
+        ]);
+        return response()->json(['error' => 'Processing failed'], 500);
+    }
+}
+
+    private function handlePaddleTransactionFailed($payload)
+    {
+        try {
+            $transactionId = $payload['data']['id'] ?? null;
+            $userId = $payload['data']['custom_data']['user_id'] ?? null;
+            $package = $payload['data']['custom_data']['package'] ?? null;
+
+            Log::warning('Paddle payment failed', [
+                'transaction_id' => $transactionId,
+                'user_id' => $userId,
+                'package' => $package
+            ]);
+
+            if ($userId) {
+                $user = User::find($userId);
+                if ($user) {
+                    Log::info('Notified user of failed payment attempt', ['user_id' => $userId]);
+                }
+            }
+
+            return response()->json(['status' => 'processed_failed']);
+        } catch (\Exception $e) {
+            Log::error('Paddle failed transaction webhook processing failed: ' . $e->getMessage(), [
+                'payload' => $payload
+            ]);
+            return response()->json(['error' => 'Processing failed'], 500);
+        }
+    }
+
     public function fastspringCheckout(Request $request, $package)
     {
         try {
-            // Remove "-plan" suffix if present
             $processedPackage = str_replace('-plan', '', strtolower($package));
 
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
-                return $validation; // Returns the error response
+                return $validation;
             }
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Get product ID from config
             $productId = config("payment.gateways.FastSpring.product_ids.{$processedPackage}");
 
             if ($productId === null) {
                 if ($processedPackage === 'free') {
                     try {
-                        // Only update user data for free plan after confirmation
                         return response()->json([
                             'success' => true,
                             'message' => 'Free plan can be activated',
@@ -360,7 +448,9 @@ class PaymentController extends Controller
                                 'name' => $packageData->name,
                                 'price' => $packageData->price,
                                 'duration' => $packageData->duration,
-                                'features' => json_decode($packageData->features)
+                                'features' => is_string($packageData->features)
+                                    ? json_decode($packageData->features, true) ?? []
+                                    : (array) $packageData->features
                             ]
                         ]);
                     } catch (\Exception $e) {
@@ -374,7 +464,9 @@ class PaymentController extends Controller
                             'name' => $packageData->name,
                             'price' => $packageData->price,
                             'duration' => $packageData->duration,
-                            'features' => json_decode($packageData->features)
+                            'features' => is_string($packageData->features)
+                                ? json_decode($packageData->features, true) ?? []
+                                : (array) $packageData->features
                         ]
                     ]);
                 }
@@ -386,23 +478,19 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            // Get FastSpring storefront configuration
             $storefront = config('payment.gateways.FastSpring.storefront');
             if (!$storefront) {
                 throw new \Exception('FastSpring storefront not configured');
             }
 
-            // Create a secure hash for validating the order if your implementation requires it
             $secureHash = hash_hmac(
                 'sha256',
                 $user->id . $processedPackage . time(),
                 config('payment.gateways.FastSpring.webhook_secret', '')
             );
 
-            // Prepare the checkout URL
             $checkoutUrl = "https://{$storefront}/{$productId}";
 
-            // Add query parameters
             $queryParams = [
                 'referrer' => $user->id,
                 'contactEmail' => $user->email,
@@ -426,7 +514,9 @@ class PaymentController extends Controller
                     'name' => $packageData->name,
                     'price' => $packageData->price,
                     'duration' => $packageData->duration,
-                    'features' => json_decode($packageData->features)
+                    'features' => is_string($packageData->features)
+                        ? json_decode($packageData->features, true) ?? []
+                        : (array) $packageData->features
                 ]
             ]);
         } catch (\Exception $e) {
@@ -441,20 +531,11 @@ class PaymentController extends Controller
         }
     }
 
-    /**
-     * Generate a checkout URL for PayProGlobal
-     *
-     * @param Request $request
-     * @param string $package
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function payProGlobalCheckout(Request $request, $package)
     {
-        // try {
-            // Normalize package name
+        try {
             $processedPackage = str_replace('-plan', '', strtolower($package));
 
-            // Validate package and user
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
                 return $validation;
@@ -463,7 +544,6 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Handle free plan
             if ($processedPackage === 'free') {
                 return response()->json([
                     'success' => true,
@@ -473,13 +553,12 @@ class PaymentController extends Controller
                         'price' => $packageData->price,
                         'duration' => $packageData->duration,
                         'features' => is_string($packageData->features)
-                            ? json_decode($packageData->features)
-                            : $packageData->features
+                            ? json_decode($packageData->features, true) ?? []
+                            : (array) $packageData->features
                     ]
                 ]);
             }
 
-            // Handle enterprise plan
             if ($processedPackage === 'enterprise') {
                 return response()->json([
                     'checkoutUrl' => url('/contact/enterprise'),
@@ -488,18 +567,16 @@ class PaymentController extends Controller
                         'price' => $packageData->price,
                         'duration' => $packageData->duration,
                         'features' => is_string($packageData->features)
-                            ? json_decode($packageData->features)
-                            : $packageData->features
+                            ? json_decode($packageData->features, true) ?? []
+                            : (array) $packageData->features
                     ]
                 ]);
             }
 
-            // Get product ID for paid plans using the centralized method
             $productIds = $this->getProductIds('PayProGlobal');
             $productId = $productIds[$processedPackage] ?? null;
 
             if (!$productId) {
-                // Fallback to legacy config method
                 $legacyProductIds = [
                     'starter' => Config::get('payment.gateways.PayProGlobal.product_id_starter'),
                     'pro' => Config::get('payment.gateways.PayProGlobal.product_id_pro'),
@@ -515,7 +592,6 @@ class PaymentController extends Controller
             $secretKey = Config::get('payment.gateways.PayProGlobal.webhook_secret');
             $testMode = Config::get('payment.gateways.PayProGlobal.test_mode', true);
 
-            // Generate PayProGlobal checkout URL with popup support
             $successUrl = url("/api/payment/success?gateway=payproglobal&order_id={order_id}");
             $cancelUrl = url("/subscriptions");
             $checkoutUrl = "https://store.payproglobal.com/checkout?products[1][id]={$productId}";
@@ -541,23 +617,17 @@ class PaymentController extends Controller
                     'price' => $packageData->price,
                     'duration' => $packageData->duration,
                     'features' => is_string($packageData->features)
-                        ? json_decode($packageData->features)
-                        : $packageData->features
+                        ? json_decode($packageData->features, true) ?? []
+                        : (array) $packageData->features
                 ]
             ]);
-
-
-            $this->activateUserSubscription($user, $package, 'PayProGlobal');
-
-
-
-        // } catch (\Exception $e) {
-        //     Log::error("PayProGlobal checkout failed for {$processedPackage}: " . $e->getMessage());
-        //     return response()->json([
-        //         'error' => 'Checkout processing failed',
-        //         'message' => $e->getMessage()
-        //     ], 500);
-        // }
+        } catch (\Exception $e) {
+            Log::error("PayProGlobal checkout failed for {$processedPackage}: " . $e->getMessage());
+            return response()->json([
+                'error' => 'Checkout processing failed',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function handleSuccess(Request $request)
@@ -568,15 +638,9 @@ class PaymentController extends Controller
                 'orderId' => 'required|string'
             ]);
 
-            // If validation passes, continue with your logic
             $gateway = $validated['gateway'];
             $orderId = $validated['orderId'];
 
-            if (!$gateway || !$orderId) {
-                return redirect()->route('subscriptions.index')->with('error', 'Invalid payment confirmation');
-            }
-
-            // Log successful payment
             Log::info("Payment successful", [
                 'gateway' => $gateway,
                 'order_id' => $orderId,
@@ -584,31 +648,23 @@ class PaymentController extends Controller
                 'user_agent' => $request->userAgent()
             ]);
 
-            // Different handling based on gateway
             switch (strtolower($gateway)) {
                 case 'fastspring':
                     return $this->handleFastSpringSuccess($request, $orderId);
-                    // Add cases for other gateways as needed
                 case 'payproglobal':
                     Log::info("PayProGlobal success redirect handling.", ['order_id' => $orderId, 'ip' => $request->ip()]);
-                    // Attempt to find the user by the orderId, assuming webhook has/will process it.
-                    // Ensure you are using the correct field that your webhook sets as the 'orderId'.
                     $user = User::where('last_payment_id', $orderId)->first();
 
                     if ($user && $user->package_id && $user->subscription_ends_at && $user->subscription_ends_at->isFuture()) {
-                        // User found and subscription seems active
                         Log::info("PayProGlobal success redirect: Subscription found active for order.", ['order_id' => $orderId, 'user_id' => $user->id]);
                         return redirect()->route('subscriptions.index')->with('success', 'Your payment was successful and your subscription is active!');
                     } elseif ($user) {
-                        // User found, but subscription might not be fully active yet or an issue occurred
-                        Log::warning("PayProGlobal success redirect: User found for order, but subscription not fully active. Webhook may be pending or there was an issue during activation.", ['order_id' => $orderId, 'user_id' => $user->id, 'package_id' => $user->package_id, 'sub_ends_at' => $user->subscription_ends_at]);
-                        return redirect()->route('subscriptions.index')->with('info', 'Your payment is being processed. Your subscription will be activated shortly. Please refresh in a few moments or check your email.');
+                        Log::warning("PayProGlobal success redirect: User found for order, but subscription not fully active.", ['order_id' => $orderId, 'user_id' => $user->id, 'package_id' => $user->package_id, 'sub_ends_at' => $user->subscription_ends_at]);
+                        return redirect()->route('subscriptions.index')->with('info', 'Your payment is being processed. Your subscription will be activated shortly.');
                     } else {
-                        // No user found with this orderId yet. Webhook might be delayed or an issue.
-                        Log::warning("PayProGlobal success redirect: No user found yet for order. Webhook may be pending or orderId mismatch.", ['order_id' => $orderId]);
-                        return redirect()->route('subscriptions.index')->with('info', 'Your payment is being processed. Your subscription will be activated shortly. Please check your email or contact support if it does not update soon.');
+                        Log::warning("PayProGlobal success redirect: No user found yet for order.", ['order_id' => $orderId]);
+                        return redirect()->route('subscriptions.index')->with('info', 'Your payment is being processed. Your subscription will be activated shortly.');
                     }
-                    // No break needed due to return statements
                 default:
                     return redirect()->route('subscriptions.index')->with('success', 'Payment completed successfully');
             }
@@ -629,19 +685,18 @@ class PaymentController extends Controller
         }
 
         try {
-        $user = Auth::user();
-        if (!$user) {
-            return response()->json(['error' => 'User not authenticated'], 401);
-        }
-        // Update user's payment_gateway_id and package_id
-        $user->update([
-            'payment_gateway_id' => $request->payment_gateway_id,
-            'package_id' => $request->package_id,
-            'subscription_starts_at' => now()
-        ]);
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
 
-        return redirect()->route('subscriptions.index')->with('success', 'Payment completed successfully! Your account has been upgraded.');
+            $user->update([
+                'payment_gateway_id' => $request->payment_gateway_id,
+                'package_id' => $request->package_id,
+                'subscription_starts_at' => now()
+            ]);
 
+            return redirect()->route('subscriptions.index')->with('success', 'Payment completed successfully! Your account has been upgraded.');
         } catch (\Exception $e) {
             Log::error('FastSpring success handling failed: ' . $e->getMessage());
             return redirect()->route('subscriptions.index')->with('error', 'Payment completed but verification failed');
@@ -651,7 +706,6 @@ class PaymentController extends Controller
     public function handleCancel(Request $request)
     {
         try {
-            // 1. Log cancellation with context
             $passthrough = json_decode($request->passthrough ?? '{}', true);
 
             Log::info('Checkout cancelled', [
@@ -663,17 +717,14 @@ class PaymentController extends Controller
                 'referrer' => $request->header('referer')
             ]);
 
-            // 2. Prepare cancellation data
             $cancellationData = [
                 'checkout_id' => $request->checkout_id,
                 'package' => $passthrough['package'] ?? null,
                 'retry_url' => $passthrough['checkout_url'] ?? route('subscriptions.index')
             ];
 
-            // 3. If logged in user, offer personalized options
             $user = auth()->user() ?? User::find($passthrough['user_id'] ?? null);
 
-            // 4. Show cancellation page with helpful options
             return view('payment.cancel', [
                 'reason' => $request->reason ?? 'payment_cancelled',
                 'options' => [
@@ -693,70 +744,55 @@ class PaymentController extends Controller
     }
 
     private function activateUserSubscription($user, $package, $gatewayName)
-    {
-        Log::info('[DEBUG] activateUserSubscription: Method called.', ['user_id' => $user->id, 'package' => $package, 'orderId' => $orderId, 'gatewayName' => $gatewayName]);
-        // dd('[DEBUG] activateUserSubscription: Entry point', ['user_object' => $user, 'package' => $package, 'orderId' => $orderId, 'gatewayName' => $gatewayName]); // UNCOMMENT TO DEBUG HERE
+{
+    Log::info('[DEBUG] activateUserSubscription: Method called.', ['user_id' => $user->id, 'package' => $package, 'gatewayName' => $gatewayName]);
 
-        DB::transaction(function () use ($user, $package, $gatewayName) {
-            // Get payment gateway ID
-            $paymentGatewayId = $this->getPaymentGatewayId($gatewayName);
-            Log::info('[DEBUG] activateUserSubscription: Fetched paymentGatewayId.', ['paymentGatewayId' => $paymentGatewayId, 'gatewayName_passed' => $gatewayName]);
-            // dd('[DEBUG] activateUserSubscription: paymentGatewayId', ['paymentGatewayId' => $paymentGatewayId, 'gatewayName_passed' => $gatewayName]); // UNCOMMENT TO DEBUG HERE
+    DB::transaction(function () use ($user, $package, $gatewayName) {
+        $paymentGatewayId = $this->getPaymentGatewayId($gatewayName);
+        Log::info('[DEBUG] activateUserSubscription: Fetched paymentGatewayId.', ['paymentGatewayId' => $paymentGatewayId]);
 
-            // Get package model (handle case variations)
-            $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
+        $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
+        if (!$packageModel) {
+            Log::error('[DEBUG] activateUserSubscription: Package model not found.', ['package_name_searched' => $package]);
+            throw new \Exception("Package not found: {$package}");
+        }
 
-            if (!$packageModel) {
-                Log::error('[DEBUG] activateUserSubscription: Package model not found.', ['package_name_searched' => $package]);
-                // dd('[DEBUG] activateUserSubscription: Package model not found', ['package_name_searched' => $package, 'packageModel' => $packageModel]); // UNCOMMENT TO DEBUG HERE
-                throw new \Exception("Package not found: {$package}");
-            }
-            Log::info('[DEBUG] activateUserSubscription: Fetched packageModel.', ['packageModel_id' => $packageModel->id, 'packageModel_name' => $packageModel->name]);
+        $subscriptionEndsAt = now();
+        switch (strtolower($packageModel->duration)) {
+            case 'month':
+            case 'monthly':
+                $subscriptionEndsAt = now()->addMonth();
+                break;
+            case 'year':
+            case 'yearly':
+            case 'annual':
+                $subscriptionEndsAt = now()->addYear();
+                break;
+            default:
+                $subscriptionEndsAt = now()->addMonth();
+        }
 
-            // Calculate subscription end date based on package duration
-            $subscriptionEndsAt = now();
-            switch (strtolower($packageModel->duration)) {
-                case 'month':
-                case 'monthly':
-                    $subscriptionEndsAt = now()->addMonth();
-                    break;
-                case 'year':
-                case 'yearly':
-                case 'annual':
-                    $subscriptionEndsAt = now()->addYear();
-                    break;
-                default:
-                    $subscriptionEndsAt = now()->addMonth(); // Default to monthly
-            }
+        $updateData = [
+            'package_id' => $packageModel->id,
+            'payment_gateway_id' => $paymentGatewayId,
+            'subscription_starts_at' => now(),
+            'subscription_ends_at' => $subscriptionEndsAt,
+        ];
 
-            // Update user's subscription
-            $updateData = [
-                'package_id' => $packageModel->id,
-                'payment_gateway_id' => $paymentGatewayId,
-                'subscription_starts_at' => now(),
-                'subscription_ends_at' => $subscriptionEndsAt,
-            ];
-            Log::info('[DEBUG] activateUserSubscription: Data prepared for user update.', ['user_id' => $user->id, 'updateData' => $updateData]);
-            // dd('[DEBUG] activateUserSubscription: Data for user update', ['user_id' => $user->id, 'updateData' => $updateData, 'user_before_update' => $user->toArray()]); // UNCOMMENT TO DEBUG HERE
-
-            $user->update($updateData);
-            Log::info('[DEBUG] activateUserSubscription: User update executed.', ['user_id' => $user->id, 'wasChanged' => $user->wasChanged()]);
-            // dd('[DEBUG] activateUserSubscription: User after update attempt', ['user_object_after_update' => $user->fresh()->toArray(), 'wasChanged' => $user->wasChanged()]); // UNCOMMENT TO DEBUG HERE
-
-            Log::info('User subscription activated', [
-                'user_id' => $user->id,
-                'package' => $package,
-                'expires_at' => $subscriptionEndsAt
-            ]);
-        });
-    }
+        $user->update($updateData);
+        Log::info('User subscription activated', [
+            'user_id' => $user->id,
+            'package' => $package,
+            'expires_at' => $subscriptionEndsAt
+        ]);
+    });
+}
 
     public function handleFastSpringWebhook(Request $request)
     {
         $payload = $request->all();
         Log::info('FastSpring webhook received', ['type' => $payload['type'] ?? 'unknown']);
 
-        // Verify the webhook signature if secret is configured
         $secret = config('payment.gateways.FastSpring.webhook_secret');
         $signature = $request->header('X-FS-Signature');
 
@@ -768,10 +804,8 @@ class PaymentController extends Controller
             }
         }
 
-        // Handle different webhook events
         switch ($payload['type'] ?? null) {
             case 'order.completed':
-                return $this->handleFastSpringOrderCompleted($payload);
             case 'subscription.activated':
             case 'subscription.charge.completed':
                 return $this->handleFastSpringOrderCompleted($payload);
@@ -781,30 +815,25 @@ class PaymentController extends Controller
         }
     }
 
-
     private function handleFastSpringOrderCompleted($payload)
     {
         try {
             $orderId = $payload['id'] ?? $payload['order'] ?? null;
 
-            // Extract user and package info from various possible locations
             $userId = null;
             $package = null;
 
-            // Check tags
             if (isset($payload['tags'])) {
                 $tags = is_string($payload['tags']) ? json_decode($payload['tags'], true) : $payload['tags'];
                 $userId = $tags['user_id'] ?? null;
                 $package = $tags['package'] ?? null;
             }
 
-            // Check contact email as fallback
             if (!$userId && isset($payload['contact']['email'])) {
                 $user = User::where('email', $payload['contact']['email'])->first();
                 $userId = $user ? $user->id : null;
             }
 
-            // Extract package from items if not in tags
             if (!$package && isset($payload['items'][0]['product'])) {
                 $package = strtolower($payload['items'][0]['product']);
             }
@@ -826,7 +855,6 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'User not found'], 404);
             }
 
-            // Reuse existing activation method
             $this->activateUserSubscription($user, $package, 'fastspring');
 
             return response()->json(['status' => 'processed']);
@@ -842,43 +870,20 @@ class PaymentController extends Controller
     {
         $payload = $request->all();
         Log::info('[DEBUG] PayProGlobalWebhook: Received payload.', ['payload' => $payload]);
-        // dd('[DEBUG] PayProGlobalWebhook: Initial payload', $payload); // UNCOMMENT TO DEBUG HERE
 
-        // 1. Verify the webhook signature
         $secretKey = Config::get('payment.gateways.PayProGlobal.webhook_secret');
-        $signature = $request->header('X-PayPro-Signature'); // Placeholder header
-        Log::info('[DEBUG] PayProGlobalWebhook: Signature details.', ['secretKey_exists' => !empty($secretKey), 'signature_received' => $signature]);
-        // dd('[DEBUG] PayProGlobalWebhook: Signature details', ['secretKey_exists' => !empty($secretKey), 'signature_received' => $signature, 'secretKey_value_for_manual_check' => $secretKey]); // UNCOMMENT TO DEBUG HERE
-
-        // 1. Verify the webhook signature
-        $secretKey = Config::get('payment.gateways.PayProGlobal.webhook_secret');
-        // IMPORTANT: Replace 'X-PayPro-Signature' with the actual header PayProGlobal uses.
-        // IMPORTANT: You'll need to implement the actual signature verification logic
-        // based on PayProGlobal's documentation. This often involves hashing the
-        // raw request body with the secret key.
         $signature = $request->header('X-PayPro-Signature'); // Placeholder header
 
         if ($secretKey && $signature) {
-            // Example: $computedSignature = hash_hmac('sha256', $request->getContent(), $secretKey);
-            // if (!hash_equals($signature, $computedSignature)) {
-            //     Log::error('Invalid PayProGlobal webhook signature');
-            //     return response()->json(['error' => 'Invalid signature'], 403);
-            // }
-            Log::info('[DEBUG] PayProGlobalWebhook: Signature verification placeholder. Implement actual verification.');
-            // dd('[DEBUG] PayProGlobalWebhook: After signature check (assuming valid or no secret)', $payload); // UNCOMMENT TO DEBUG HERE
+            // TODO: Implement actual signature verification based on PayProGlobal's documentation
+            Log::info('[DEBUG] PayProGlobalWebhook: Signature verification placeholder.');
         } elseif ($secretKey) {
             Log::warning('PayProGlobal webhook signature missing, but secret key is configured.');
-            // Depending on your security policy, you might want to reject unsigned webhooks
-            // return response()->json(['error' => 'Signature missing'], 403);
         }
 
-
-        // 2. Determine payment success
-        // IMPORTANT: Replace 'payment_status' with the actual field from PayProGlobal's payload
-        // and 'completed' with the actual value indicating a successful payment.
         $paymentSuccessful = false;
-        $paymentStatusField = 'payment_status'; // Placeholder - Confirm with PayProGlobal docs
-        $successStatusValue = 'completed';    // Placeholder - Confirm with PayProGlobal docs
+        $paymentStatusField = 'payment_status'; // Placeholder
+        $successStatusValue = 'completed'; // Placeholder
         Log::info('[DEBUG] PayProGlobalWebhook: Checking payment status.', ['field_to_check' => $paymentStatusField, 'expected_value_for_success' => $successStatusValue, 'actual_value_in_payload' => $payload[$paymentStatusField] ?? 'NOT_SET']);
 
         if (isset($payload[$paymentStatusField]) && $payload[$paymentStatusField] === $successStatusValue) {
@@ -893,18 +898,16 @@ class PaymentController extends Controller
 
         if ($paymentSuccessful) {
             try {
-                // 3. Extract necessary data
-                // Assuming 'custom' field contains JSON string with user_id, package, package_id
                 $customData = null;
                 if (isset($payload['custom']) && is_string($payload['custom'])) {
                     $customData = json_decode($payload['custom'], true);
-                } elseif (isset($payload['custom'])) { // if it's already an array/object
+                } elseif (isset($payload['custom'])) {
                     $customData = (array) $payload['custom'];
                 }
                 Log::info('[DEBUG] PayProGlobalWebhook: Extracted customData.', ['customData' => $customData]);
 
                 $userId = $customData['user_id'] ?? null;
-                $package = $customData['package'] ?? null; // package name e.g. "pro"
+                $package = $customData['package'] ?? null;
 
                 if (!$userId || !$package) {
                     Log::error('Missing required data in PayProGlobal webhook for successful payment', [
@@ -922,16 +925,14 @@ class PaymentController extends Controller
                     return response()->json(['error' => 'User not found'], 404);
                 }
 
-
                 $this->activateUserSubscription($user, $package, 'PayProGlobal');
 
                 Log::info('PayProGlobal payment processed and subscription activated.', [
                     'user_id' => $userId,
                     'package' => $package,
-                    'order_id' => $orderId
+                    'order_id' => $payload['order_id'] ?? 'N/A'
                 ]);
                 return response()->json(['status' => 'processed']);
-
             } catch (\Exception $e) {
                 Log::error('PayProGlobal webhook processing failed for successful payment: ' . $e->getMessage(), [
                     'payload' => $payload,
@@ -940,13 +941,13 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Processing failed internally'], 500);
             }
         } else {
-            // Handle other statuses if needed (e.g., failed, refunded)
             Log::info('PayProGlobal webhook received for non-successful or unrecognized payment status.', [
                 'payload' => $payload
             ]);
             return response()->json(['status' => 'ignored_unsuccessful_or_unrecognized']);
         }
     }
+
     public function savePaymentDetails(Request $request)
     {
         $request->validate([
@@ -958,7 +959,7 @@ class PaymentController extends Controller
         if (!$user) {
             return response()->json(['error' => 'User not authenticated'], 401);
         }
-        // Update user's payment_gateway_id and package_id
+
         $user->update([
             'payment_gateway_id' => $request->payment_gateway_id,
             'package_id' => $request->package_id,
