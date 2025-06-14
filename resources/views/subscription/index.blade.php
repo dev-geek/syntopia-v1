@@ -47,22 +47,18 @@
                     }
                     fastspring.builder.reset();
                     const packageName = productPath.replace('-plan', '').toLowerCase();
-                    console.log('Adding FastSpring product:', packageName);
                     currentProductPath = productPath;
                     fastspring.builder.add(packageName);
                     setTimeout(() => {
-                        console.log('Opening FastSpring checkout...');
                         fastspring.builder.checkout();
                     }, 500);
                 } catch (error) {
-                    console.error('FastSpring processing error:', error);
                     throw error;
                 }
             }
 
             function onFSPopupClosed(orderData) {
                 try {
-                    console.log('FastSpring popup closed with data:', orderData);
                     if (orderData && (orderData.reference || orderData.id)) {
                         const orderId = orderData.reference || orderData.id;
 
@@ -103,7 +99,6 @@
                         document.body.appendChild(form);
                         form.submit();
                     } else {
-                        console.warn("FastSpring popup closed without order data");
                         if (typeof Swal !== 'undefined') {
                             Swal.fire({
                                 icon: 'info',
@@ -119,7 +114,6 @@
                         }
                     }
                 } catch (err) {
-                    console.error("Error in onFSPopupClosed:", err);
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
                             icon: 'error',
@@ -553,15 +547,56 @@
                 font-size: 40px;
             }
         }
+
+        .dropdown {
+            position: relative;
+        }
+
+        .dropdown-toggle {
+            font-size: 14px;
+            font-weight: 500;
+            color: #2563eb;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+        }
+
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            padding: 10px;
+            z-index: 10;
+        }
+
+        .dropdown-menu a {
+            display: block;
+            padding: 5px 10px;
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        .dropdown-menu a:hover {
+            background: #f0f0f0;
+        }
     </style>
 </head>
 
 <body>
     <div class="pricing-header">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
-        <button type="button" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
-            Log out
-        </button>
+        <div class="dropdown">
+            <button class="dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false">Account</button>
+            <div class="dropdown-menu">
+                <a href="{{ route('dashboard') }}">Dashboard</a>
+                <a href="#"
+                    onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
+            </div>
+        </div>
         <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
             @csrf
         </form>
@@ -583,8 +618,11 @@
                             $package->duration }}</span></p>
                     <button class="btn dark checkout-button" data-package="{{ $package->name }}" {{
                         $currentPackage==$package->name ? 'disabled' : '' }}>
-                        {{ $package->name == 'Enterprise' ? 'Get in Touch' : ($currentPackage == $package->name ?
-                        'Activated' : 'Get Started') }}
+                        {{ $package->name == 'Enterprise'
+                        ? 'Get in Touch'
+                        : ($currentPackage == $package->name
+                        ? 'Activated'
+                        : 'Get Started') }}
                     </button>
                     <p class="included-title">What's included</p>
                     <ul class="features">
@@ -650,7 +688,6 @@
                             throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
                     }
                 } catch (error) {
-                    console.error('Checkout error:', error);
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
                             icon: 'error',
@@ -673,14 +710,11 @@
                     }
                     fastspring.builder.reset();
                     const packageName = productPath.replace('-plan', '').toLowerCase();
-                    console.log('Adding FastSpring product:', packageName);
                     fastspring.builder.add(packageName);
                     setTimeout(() => {
-                        console.log('Opening FastSpring checkout...');
                         fastspring.builder.checkout();
                     }, 500);
                 } catch (error) {
-                    console.error('FastSpring processing error:', error);
                     throw error;
                 }
             }
@@ -714,10 +748,19 @@
                             Paddle.Checkout.open({
                                 transactionId: data.transaction_id,
                                 eventCallback: function(eventData) {
-                                    if (eventData.event === 'Checkout.Complete') {
-                                        // Redirect to /all-subscriptions on successful checkout
-                                        window.location.href = '/all-subscriptions';
-                                    } else if (eventData.event === 'Checkout.Close' && !eventData
+                                    if (eventData.event === 'checkout.completed') {
+                                        window.location.href = '/dashboard';
+                                    } else if (eventData.event === 'checkout.failed') {
+                                        Swal.fire({
+                                            icon: 'error',
+                                            title: 'Payment Failed',
+                                            text: eventData.data.error ||
+                                                'An error occurred during payment. Please try again.',
+                                            confirmButtonText: 'OK'
+                                        }).then(() => {
+                                            window.location.reload();
+                                        });
+                                    } else if (eventData.event === 'checkout.closed' && !eventData
                                         .data.success) {
                                         Swal.fire({
                                             icon: 'info',
@@ -725,7 +768,7 @@
                                             text: 'Your payment was cancelled. You can try again anytime.',
                                             confirmButtonText: 'OK'
                                         }).then(() => {
-                                            window.location.href = '/all-subscriptions';
+                                            window.location.reload();
                                         });
                                     }
                                 }
@@ -735,7 +778,6 @@
                         }
                     })
                     .catch(error => {
-                        console.error('Checkout error:', error);
                         if (typeof Swal !== 'undefined') {
                             Swal.fire({
                                 icon: 'error',
@@ -747,7 +789,7 @@
                         } else {
                             alert('Checkout Failed: ' + (error.message ||
                                 'An error occurred while processing your checkout. Please try again later.'
-                                ));
+                            ));
                         }
                     });
             }
@@ -802,8 +844,6 @@
                     const checkWindowClosed = setInterval(() => {
                         if (paymentWindow.closed) {
                             clearInterval(checkWindowClosed);
-                            console.log(
-                                'PayProGlobal payment window closed. Calling save-details API.');
 
                             fetch('/api/payment/save-details', {
                                 method: 'POST',
@@ -833,14 +873,13 @@
                                             'Your payment details have been saved successfully.',
                                         confirmButtonText: 'OK'
                                     }).then(() => {
-                                        window.location.reload();
+                                        window.location.href = '/dashboard';
                                     });
                                 } else {
                                     throw new Error(data.error ||
                                         'Failed to save payment details');
                                 }
                             }).catch(error => {
-                                console.error('Error saving payment details:', error);
                                 Swal.fire({
                                     icon: 'error',
                                     title: 'Error',
@@ -852,7 +891,6 @@
                         }
                     }, 500);
                 }).catch(error => {
-                    console.error('PayProGlobal checkout error:', error);
                     paymentWindow.close();
                     Swal.fire({
                         icon: 'error',
@@ -864,6 +902,22 @@
                 });
             }
         });
+    </script>
+    <script>
+        document.querySelector('.dropdown-toggle').addEventListener('click', function() {
+        const menu = document.querySelector('.dropdown-menu');
+        const isOpen = menu.style.display === 'block';
+        menu.style.display = isOpen ? 'none' : 'block';
+        this.setAttribute('aria-expanded', !isOpen);
+    });
+
+    document.addEventListener('click', function(event) {
+        const dropdown = document.querySelector('.dropdown');
+        if (!dropdown.contains(event.target)) {
+            document.querySelector('.dropdown-menu').style.display = 'none';
+            document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
+        }
+    });
     </script>
 </body>
 

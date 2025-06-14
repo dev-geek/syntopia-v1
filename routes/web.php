@@ -13,6 +13,7 @@ use App\Http\Controllers\UserLogController;
 use App\Http\Controllers\Auth\AdminForgotPasswordController;
 use App\Http\Controllers\Auth\AdminResetPasswordController;
 use App\Http\Controllers\Auth\VerificationController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\VerificationTestController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentGatewaysController;
@@ -95,11 +96,12 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
 
     // Orders
-    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('orders.index');
 
     // Payment routes
     Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handlePaymentWebhook'])->name('payment.webhook');
     // Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');
+
 });
 
 // Admin Routes (bypass verification for admins)
@@ -135,6 +137,11 @@ Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
     Route::get('payment-gateways-list', [PaymentGatewaysController::class, 'index'])->name('payment-gateways.index');
     Route::post('/payment-gateways/toggle-status', [PaymentGatewaysController::class, 'toggleStatus'])->name('payment-gateways.toggleStatus');
 });
+
+Route::middleware(['auth', 'verified.custom', 'role:User|Sub Admin|Super Admin'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
+});
+
 
 // Keep the default Laravel auth routes but remove verify
 Auth::routes(['verify' => false]);

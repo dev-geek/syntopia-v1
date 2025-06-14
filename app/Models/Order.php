@@ -24,8 +24,12 @@ class Order extends Model
     protected $fillable = [
         'user_id',
         'package_id',
+        'payment_gateway_id',
         'amount',
-        'payment',
+        'transaction_id',
+        'payment_method',
+        'status',
+        'paid_at',
     ];
 
     /**
@@ -45,6 +49,26 @@ class Order extends Model
 
     public function scopeUnpaid(Builder $query): void
     {
-        $query->whereNull('payment');
+        $query->whereNull('paid_at');
+    }
+
+    public function scopePaid(Builder $query): void
+    {
+        $query->whereNotNull('paid_at');
+    }
+
+    public function scopeWithPaymentGateway(Builder $query, int $gatewayId): void
+    {
+        $query->where('payment_gateway_id', $gatewayId);
+    }
+
+    public function scopeWithPackage(Builder $query, int $packageId): void
+    {
+        $query->where('package_id', $packageId);
+    }
+
+    public function scopeRecent(Builder $query, int $limit = 10): void
+    {
+        $query->orderBy('created_at', 'desc')->take($limit);
     }
 }

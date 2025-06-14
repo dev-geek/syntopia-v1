@@ -27,6 +27,128 @@
     <!-- Theme style -->
     <link rel="stylesheet" href="{{ asset('dist/css/adminlte.min.css') }}">
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #fff;
+            color: #000;
+        }
+
+        .overview-wrapper {
+            width: 100%;
+            padding: 0;
+            border-bottom: 1px solid #EFE7FB;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 50px 20px;
+            border-left: 1px solid #EFE7FB;
+            border-right: 1px solid #EFE7FB;
+        }
+
+        .overview-title {
+            font-size: 42px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .overview-card {
+            background: linear-gradient(180deg, white 0%, #F2F2F7 100%);
+            border: 1px solid #EFE7FB;
+            border-radius: 10px;
+            padding: 24px;
+        }
+
+        .overview-card h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .stat-line {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 4px;
+        }
+
+        .stat-line .value {
+            font-size: 50px;
+            font-weight: 700;
+            color: #e11d48;
+        }
+
+        .total-right {
+            text-align: right;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .progress-bar {
+            margin-top: 14px;
+            height: 6px;
+            background-color: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #e11d48;
+            width: 100%;
+        }
+
+        .progress-fill.yellow {
+            background-color: #facc15;
+        }
+
+        .progress-fill.gray {
+            background-color: #c3c3c3;
+        }
+
+        .legend {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #555;
+        }
+
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+
+        .dot.video {
+            background: #facc15;
+        }
+
+        .dot.picture {
+            background: #38bdf8;
+        }
+
+        .dot.audio {
+            background: #a78bfa;
+        }
+
         /* Custom Toast Centering */
         .toast-top-center {
             position: fixed !important;
@@ -66,14 +188,16 @@
                             class="fas fa-bars"></i></a>
                 </li>
                 <li class="nav-item d-none d-sm-inline-block">
-                    <a href="{{ route('admin.index') }}" class="nav-link">Home</a>
+                    <a href="{{ route('dashboard') }}" class="nav-link">Home</a>
                 </li>
-                <li class="nav-item d-none d-sm-inline-block">
-                    <a href="{{ route('admin.users') }}" class="nav-link">Users</a>
-                </li>
-                <li class="nav-item d-none d-sm-inline-block">
-                    <a href="{{ route('admin.orders') }}" class="nav-link">Subscriptions</a>
-                </li>
+                @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
+                    <li class="nav-item d-none d-sm-inline-block">
+                        <a href="{{ route('admin.users') }}" class="nav-link">Users</a>
+                    </li>
+                    <li class="nav-item d-none d-sm-inline-block">
+                        <a href="{{ route('admin.orders') }}" class="nav-link">Subscriptions</a>
+                    </li>
+                @endif
                 @if (Auth::user()->hasRole('Super Admin'))
                     <li class="nav-item d-none d-sm-inline-block">
                         <a href="{{ route('add-users') }}" class="nav-link">Add Users</a>
@@ -85,9 +209,17 @@
                         <a href="{{ route('payment-gateways.index') }}" class="nav-link">Payment Gateways</a>
                     </li>
                 @endif
-                <li class="nav-item d-none d-sm-inline-block">
-                    <a href="{{ route('users.logs') }}" class="nav-link">User Logs</a>
-                </li>
+                @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
+                    <li class="nav-item d-none d-sm-inline-block">
+                        <a href="{{ route('users.logs') }}" class="nav-link">User Logs</a>
+                    </li>
+                @endif
+                @if (Auth::user()->hasRole('User'))
+                    <li class="nav-item d-none d-sm-inline-block">
+                        <a href="{{ route('orders.index') }}" class="nav-link">Orders</a>
+                    </li>
+
+                @endif
             </ul>
 
             {{-- <!-- SEARCH FORM --> --}}
