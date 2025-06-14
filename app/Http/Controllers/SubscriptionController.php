@@ -154,6 +154,7 @@ class SubscriptionController extends Controller
             DB::transaction(function () use ($orderId) {
                 $order = Order::lockForUpdate()->find($orderId);
                 if ($order && $order->status === 'pending') {
+
                     $order->update([
                         'status' => 'completed',
                         'transaction_id' => 'FS-' . Str::random(10),
@@ -166,8 +167,7 @@ class SubscriptionController extends Controller
             }, 3);
         }
 
-        // Redirect
-        return redirect()->route('subscriptions.index');
+        return redirect()->route('dashboard');
     }
 
     /**
@@ -185,7 +185,7 @@ class SubscriptionController extends Controller
         // Flash message
         session()->flash('error', 'Your payment was cancelled. Please try again or contact support if you need assistance.');
 
-        // Redirect back to subscription page
-        return redirect()->route('subscriptions.index');
+        // Redirect back to dashboard
+        return redirect()->route('dashboard');
     }
 }

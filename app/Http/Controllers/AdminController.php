@@ -14,14 +14,6 @@ use Spatie\Permission\Models\Role;
 
 class AdminController extends Controller
 {
-    public function index()
-    {
-        if (!auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            abort(403, 'Unauthorized');
-        }
-
-        return view('admin.index');
-    }
     public function login()
     {
         return view('admin.login');

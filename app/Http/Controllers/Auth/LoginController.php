@@ -18,9 +18,9 @@ class LoginController extends Controller
      */
     protected function authenticated(Request $request, $user)
     {
-        // Admin or Super Admin bypass verification
+        // Admin or Super Admin bypass verification and redirect to dashboard
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin.index');
+            return redirect()->route('dashboard');
         }
 
         // Check verification status for regular users
@@ -50,7 +50,7 @@ class LoginController extends Controller
 
         if ($user) {
             if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                return route('admin.index');
+                return route('dashboard');
             }
 
             if (!$this->isUserVerified($user)) {
@@ -79,7 +79,7 @@ class LoginController extends Controller
 
         // Redirect based on role
         if ($user && $user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin-login');
+            return redirect()->route('dashboard');
         }
 
         return redirect('/');
@@ -134,7 +134,7 @@ class LoginController extends Controller
         // Final redirect based on role
         $user = Auth::user();
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin.index');
+            return redirect()->route('dashboard');
         }
 
         return redirect()->intended(route('profile'));
