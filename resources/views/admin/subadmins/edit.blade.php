@@ -1,5 +1,5 @@
-@include('admin.includes.header')
-@include('admin.includes.sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper ">
@@ -15,7 +15,7 @@
                             </button>
                         </div>
                     </div>
-                    <form method="POST" action="{{ route('sub-admins.update', $subadmin->id) }}">
+                    <form method="POST" action="{{ route('admin.sub-admins.update', $subadmin->id) }}">
                         @csrf
                         @method('PUT')
 
@@ -65,7 +65,7 @@
     </section>
 </div>
 <!-- /.content-wrapper -->
-@include('admin.includes.footer')
+@include('dashboard.includes.footer')
 
 <!-- Control Sidebar -->
 

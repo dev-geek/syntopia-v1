@@ -42,7 +42,7 @@
                                             <td>{{ $loop->iteration }}</td>
                                             <td>{{ $gateway->name }}</td>
                                             <td>
-                                                <form action="{{ route('payment-gateways.toggleStatus') }}"
+                                                <form action="{{ route('admin.payment-gateways.toggleStatus') }}"
                                                     method="POST" onsubmit="return confirm('Set this as active?')">
                                                     @csrf
                                                     <input type="hidden" name="id" value="{{ $gateway->id }}">
@@ -95,7 +95,7 @@
         let gatewayId = $(this).data('id');
 
         $.ajax({
-            url: '{{ route('payment-gateways.toggleStatus') }}',
+            url: '{{ route('admin.payment-gateways.toggleStatus') }}',
             method: 'POST',
             data: {
                 _token: '{{ csrf_token() }}',

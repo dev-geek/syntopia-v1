@@ -188,7 +188,11 @@
                             class="fas fa-bars"></i></a>
                 </li>
                 <li class="nav-item d-none d-sm-inline-block">
-                    <a href="{{ route('dashboard') }}" class="nav-link">Home</a>
+                    @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
+                        <a href="{{ route('admin.dashboard') }}" class="nav-link">Home</a>
+                    @else
+                        <a href="{{ route('user.dashboard') }}" class="nav-link">Home</a>
+                    @endif
                 </li>
                 @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item d-none d-sm-inline-block">
@@ -200,18 +204,15 @@
                 @endif
                 @if (Auth::user()->hasRole('Super Admin'))
                     <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('add-users') }}" class="nav-link">Add Users</a>
+                        <a href="{{ route('admin.subadmins') }}" class="nav-link">Sub Admin</a>
                     </li>
                     <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('subadmins') }}" class="nav-link">Sub Admin</a>
-                    </li>
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('payment-gateways.index') }}" class="nav-link">Payment Gateways</a>
+                        <a href="{{ route('admin.payment-gateways.index') }}" class="nav-link">Payment Gateways</a>
                     </li>
                 @endif
                 @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('users.logs') }}" class="nav-link">User Logs</a>
+                        <a href="{{ route('admin.users-logs') }}" class="nav-link">User Logs</a>
                     </li>
                 @endif
                 @if (Auth::user()->hasRole('User'))
@@ -237,30 +238,32 @@
 
             <!-- Right navbar links -->
             <ul class="navbar-nav ml-auto">
-                <li class="nav-item dropdown">
-                    <a class="nav-link" data-toggle="dropdown" href="#">
-                        <i class="far fa-bell"></i>
-                        <span class="badge badge-danger navbar-badge">{{ $userLogs->count() }}</span>
-                    </a>
-                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
-                        <span class="dropdown-item dropdown-header">{{ $userLogs->count() }} Notifications</span>
-                        <div class="dropdown-divider"></div>
-
-                        @foreach ($userLogs->take(5) as $log)
-                            <!-- Show latest 5 logs -->
-                            <a href="#" class="dropdown-item">
-                                <i class="fas fa-user mr-2"></i> {{ $log->activity }}
-                                <span class="float-right text-muted text-sm">
-                                    {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}
-                                </span>
-                            </a>
+                @if (!Auth::user()->hasRole('Sub Admin'))
+                    <li class="nav-item dropdown">
+                        <a class="nav-link" data-toggle="dropdown" href="#">
+                            <i class="far fa-bell"></i>
+                            <span class="badge badge-danger navbar-badge">{{ $userLogs->count() }}</span>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
+                            <span class="dropdown-item dropdown-header">{{ $userLogs->count() }} Notifications</span>
                             <div class="dropdown-divider"></div>
-                        @endforeach
 
-                        <a href="{{ route('users.logs') }}" class="dropdown-item dropdown-footer">See All
-                            Notifications</a>
-                    </div>
-                </li>
+                            @foreach ($userLogs->take(5) as $log)
+                                <!-- Show latest 5 logs -->
+                                <a href="#" class="dropdown-item">
+                                    <i class="fas fa-user mr-2"></i> {{ $log->activity }}
+                                    <span class="float-right text-muted text-sm">
+                                        {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}
+                                    </span>
+                                </a>
+                                <div class="dropdown-divider"></div>
+                            @endforeach
+
+                            <a href="{{ route('admin.users-logs') }}" class="dropdown-item dropdown-footer">See All
+                                Notifications</a>
+                        </div>
+                    </li>
+                @endif
 
                 <!-- Notifications Dropdown Menu -->
                 <li class="nav-item dropdown">
