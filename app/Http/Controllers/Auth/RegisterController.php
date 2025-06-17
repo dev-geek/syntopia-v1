@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\BusinessEmailValidation;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -15,6 +16,8 @@ use Illuminate\Support\Str;
 
 class RegisterController extends Controller
 {
+    use BusinessEmailValidation;
+    
     /*
     |--------------------------------------------------------------------------
     | Register Controller
@@ -39,13 +42,16 @@ class RegisterController extends Controller
         if (Auth::check()) {
             $user = Auth::user();
 
-            // Redirect based on the user's role
-            if ($user->role == 1 || $user->role == 2) {
-                return route('admin.index'); // Use the named route
+            // Redirect based on the user's role using Spatie
+            if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
+                return route('admin.dashboard');
             }
+            
+            // For regular users, redirect to verification page
+            // After verification, they'll be redirected to subscriptions.index
+            return '/email/verify';
         }
 
-        // Default redirection
         return '/email/verify';
     }
 
@@ -67,17 +73,31 @@ class RegisterController extends Controller
      * @param  array  $data
      * @return \Illuminate\Contracts\Validation\Validator
      */
+
     protected function validator(array $data)
     {
-        return Validator::make($data, [
+        $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email' => [
+                'required', 
+                'string', 
+                'email', 
+                'max:255', 
+                'unique:users',
+                function ($attribute, $value, $fail) {
+                    if (!$this->isBusinessEmail($value)) {
+                        $fail('Please use your business email to register.');
+                    }
+                }
+            ],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'status' => ['nullable', 'integer'],
             'subscriber_password' => ['nullable', 'string'],
         ]);
+        
+        return $validator;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Traits\BusinessEmailValidation;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -11,7 +12,7 @@ use App\Models\User;
 
 class LoginController extends Controller
 {
-    use AuthenticatesUsers;
+    use AuthenticatesUsers, BusinessEmailValidation;
 
     /**
      * Redirect users after login based on role using Spatie roles.
@@ -20,7 +21,14 @@ class LoginController extends Controller
     {
         // Admin or Super Admin bypass verification and redirect to dashboard
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.dashboard');
+        }
+        
+        // Check if user with 'User' role is using a business email
+        if ($user->hasRole('User') && !$this->isBusinessEmail($user->email)) {
+            Auth::logout();
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Please use your business email to login.']);
         }
 
         // Check verification status for regular users
@@ -31,8 +39,8 @@ class LoginController extends Controller
                 ->withErrors('Please verify your email before logging in.');
         }
 
-        // Regular user redirect
-        return redirect()->intended(route('profile'));
+        // Regular user redirect to subscriptions page
+        return redirect()->intended(route('subscriptions.index'));
     }
 
     /**
@@ -43,6 +51,8 @@ class LoginController extends Controller
         // User must have status = 1 AND email_verified_at filled
         return ($user->status == 1) && !is_null($user->email_verified_at);
     }
+    
+
 
     public function redirectTo()
     {
@@ -79,7 +89,7 @@ class LoginController extends Controller
 
         // Redirect based on role
         if ($user && $user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.dashboard');
         }
 
         return redirect('/');
@@ -134,7 +144,7 @@ class LoginController extends Controller
         // Final redirect based on role
         $user = Auth::user();
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.dashboard');
         }
 
         return redirect()->intended(route('profile'));

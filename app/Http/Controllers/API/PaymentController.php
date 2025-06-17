@@ -621,14 +621,14 @@ class PaymentController extends Controller
                     $user = User::where('last_payment_id', $orderId)->first();
 
                     if ($user && $user->package_id && $user->subscription_ends_at && $user->subscription_ends_at->isFuture()) {
-                        return redirect()->route('dashboard')->with('success', 'Your payment was successful and your subscription is active!');
+                        return redirect()->route('user.dashboard')->with('success', 'Your payment was successful and your subscription is active!');
                     } elseif ($user) {
-                        return redirect()->route('dashboard')->with('info', 'Your payment is being processed. Your subscription will be activated shortly.');
+                        return redirect()->route('user.dashboard')->with('info', 'Your payment is being processed. Your subscription will be activated shortly.');
                     } else {
-                        return redirect()->route('dashboard')->with('info', 'Your payment is being processed. Your subscription will be activated shortly.');
+                        return redirect()->route('user.dashboard')->with('info', 'Your payment is being processed. Your subscription will be activated shortly.');
                     }
                 default:
-                    return redirect()->route('dashboard')->with('success', 'Payment completed successfully');
+                    return redirect()->route('user.dashboard')->with('success', 'Payment completed successfully');
             }
         } catch (\Exception $e) {
             return redirect()->route('subscriptions.index')->with('error', 'Payment verification failed');
@@ -656,7 +656,7 @@ class PaymentController extends Controller
                 'subscription_starts_at' => now()
             ]);
 
-            return redirect()->route('subscriptions.index')->with('success', 'Payment completed successfully! Your account has been upgraded.');
+            return redirect()->route('user.dashboard')->with('success', 'Payment completed successfully! Your account has been upgraded.');
         } catch (\Exception $e) {
             return redirect()->route('subscriptions.index')->with('error', 'Payment completed but verification failed');
         }

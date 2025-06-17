@@ -592,7 +592,7 @@
         <div class="dropdown">
             <button class="dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false">Account</button>
             <div class="dropdown-menu">
-                <a href="{{ route('dashboard') }}">Dashboard</a>
+                <a href="{{ route('user.dashboard') }}">Dashboard</a>
                 <a href="#"
                     onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
             </div>

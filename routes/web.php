@@ -73,8 +73,8 @@ Route::post('/check-email', [LoginController::class, 'checkEmail']);
 // Protected Routes for VERIFIED USERS ONLY
 Route::middleware(['auth', 'verified.custom'])->group(function () {
     // Main application routes
-    Route::get('/', [SubscriptionController::class, 'handleSubscription'])->name('home');
-    Route::get('/home', [SubscriptionController::class, 'handleSubscription'])->name('profile');
+    Route::get('/', [SubscriptionController::class, 'index'])->name('home');
+    Route::get('/pricing', [SubscriptionController::class, 'index'])->name('pricing');
 
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');
@@ -87,7 +87,6 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/package/{package_name}', [ProfileController::class, 'package'])->name('package');
     Route::get('/all-subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::get('/subscription', [SubscriptionController::class, 'handleSubscription'])->name('subscription.general');
-    Route::get('/pricing', [SubscriptionController::class, 'pricing'])->name('pricing');
     Route::get('/login-sub', [SubscriptionController::class, 'login'])->name('login-sub');
 
     // Package confirmation routes
