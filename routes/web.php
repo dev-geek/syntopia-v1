@@ -104,16 +104,6 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
 
 });
 
-// Admin Routes (bypass verification for admins)
-Route::middleware(['auth', 'role:Sub Admin|Super Admin'])->group(function () {
-    Route::get('/admin', [AdminController::class, 'index'])->name('admin.index');
-    Route::get('/users', [AdminController::class, 'users'])->name('admin.users');
-    Route::get('/admin-profile', [AdminController::class, 'profile'])->name('admin.profile');
-    Route::get('/admin-orders', [AdminController::class, 'adminOrders'])->name('admin.orders');
-    Route::get('/admin/user-logs', [UserLogController::class, 'index'])->name('users.logs');
-    Route::delete('users/{user}', [AdminController::class, 'destroy'])->name('users.destroy');
-});
-
 // Super Admin Only Routes
 Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
     Route::get('/manage-profile/{id}', [AdminController::class, 'manageProfile'])->name('manage.profile');
@@ -125,22 +115,12 @@ Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
     Route::post('/add-user-excel', [AdminController::class, 'addExcelUsers'])->name('add-user-excel');
     Route::post('store-user', [AdminController::class, 'storeUser'])->name('store.user');
 
-    // Sub Admin Management
-    Route::get('/sub-admins', [AdminController::class, 'subadmins'])->name('subadmins');
-    Route::get('sub-admins/create', [SubAdminController::class, 'create'])->name('sub-admins.create');
-    Route::post('sub-admins', [SubAdminController::class, 'store'])->name('sub-admins.store');
-    Route::get('sub-admins/{sub_admin}/edit', [SubAdminController::class, 'edit'])->name('sub-admins.edit');
-    Route::put('sub-admins/{sub_admin}', [SubAdminController::class, 'update'])->name('sub-admins.update');
-    Route::delete('sub-admins/{sub_admin}', [SubAdminController::class, 'destroy'])->name('sub-admins.destroy');
-
-    // Payment Gateway Management
-    Route::get('payment-gateways-list', [PaymentGatewaysController::class, 'index'])->name('payment-gateways.index');
-    Route::post('/payment-gateways/toggle-status', [PaymentGatewaysController::class, 'toggleStatus'])->name('payment-gateways.toggleStatus');
+    
 });
 
-Route::middleware(['auth', 'verified.custom', 'role:User|Sub Admin|Super Admin'])->group(function () {
-    Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
-});
+// Route::middleware(['auth', 'verified.custom', 'role:User|Sub Admin|Super Admin'])->group(function () {
+//     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
+// });
 
 
 // Keep the default Laravel auth routes but remove verify

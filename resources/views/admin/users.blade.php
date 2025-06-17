@@ -1,5 +1,5 @@
-@include('admin.includes.header')
-@include('admin.includes.sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -26,6 +26,11 @@
                         @include('components.alert-messages')
                         <!-- /.card-header -->
                         <div class="card-body">
+                            @if (Auth::user()->hasRole('Super Admin'))
+                                <a href="{{ route('add-users') }}" class="btn btn-success mb-3">
+                                    <i class="fas fa-plus"></i> Add User
+                                </a>
+                            @endif
                             <table id="example1" class="table table-bordered table-striped">
                                 <thead>
                                     <tr>
@@ -63,7 +68,7 @@
                                                     <a href="{{ route('manage.profile', $user->id) }}"
                                                         class="btn btn-sm btn-primary mx-2" title="Edit">
                                                         <i class="fas fa-edit"></i></a>
-                                                    <form action="{{ route('users.destroy', $user) }}" method="POST"
+                                                    <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
                                                         class="delete-form" style="display:inline-block;">
                                                         @csrf
                                                         @method('DELETE')
@@ -92,7 +97,7 @@
     <!-- /.content -->
 </div>
 <!-- /.content-wrapper -->
-@include('admin.includes.footer')
+@include('dashboard.includes.footer')
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>

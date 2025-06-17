@@ -1,5 +1,5 @@
-@include('admin.includes.header')
-@include('admin.includes.sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -26,7 +26,7 @@
                         @include('components.alert-messages')
                         <!-- /.card-header -->
                         <div class="card-body">
-                            <a href="{{ route('sub-admins.create') }}" class="btn btn-success mb-3"><i
+                            <a href="{{ route('admin.sub-admins.create') }}" class="btn btn-success mb-3"><i
                                     class="fa fa-plus mx-2"></i> Add</a>
 
                             <table id="example1" class="table table-bordered table-striped">
@@ -61,14 +61,14 @@
                                             @if (Auth::check() && Auth::user()->hasAnyRole(['Super Admin', 'Sub Admin']))
                                                 <td class="d-flex align-items-center gap-2">
                                                     <!-- Edit Button -->
-                                                    <a href="{{ route('sub-admins.edit', $user->id) }}"
+                                                    <a href="{{ route('admin.sub-admins.edit', $user->id) }}"
                                                         class="btn btn-sm btn-primary mx-2" title="Edit">
                                                         <i class="fas fa-edit"></i>
                                                     </a>
 
                                                     <!-- Delete Button -->
                                                     <button type="button" class="btn btn-sm btn-danger"
-                                                        onclick="confirmDelete({{ $user->id }}, '{{ route('sub-admins.destroy', $user->id) }}')"
+                                                        onclick="confirmDelete({{ $user->id }}, '{{ route('admin.sub-admins.destroy', $user->id) }}')"
                                                         title="Delete">
                                                         <i class="fas fa-trash-alt"></i>
                                                     </button>
@@ -92,7 +92,7 @@
     <!-- /.content -->
 </div>
 <!-- /.content-wrapper -->
-@include('admin.includes.footer')
+@include('dashboard.includes.footer')
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>

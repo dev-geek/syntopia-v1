@@ -1,5 +1,5 @@
-@include('admin.includes.header')
-@include('admin.includes.sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -25,7 +25,7 @@
                         @include('components.alert-messages')
                         <!-- /.card-header -->
                         <div class="card-body">
-                            <a href="{{ route('sub-admins.create') }}" class="btn btn-success mb-3 float-right"><i
+                            <a href="{{ route('admin.sub-admins.create') }}" class="btn btn-success mb-3 float-right"><i
                                     class="fa fa-plus mx-2"></i> Add</a>
 
                             <table id="example1" class="table table-bordered table-striped">
@@ -88,7 +88,7 @@
     <!-- /.content -->
 </div>
 <!-- /.content-wrapper -->
-@include('admin.includes.footer')
+@include('dashboard.includes.footer')
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>

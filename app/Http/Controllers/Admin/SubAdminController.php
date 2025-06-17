@@ -59,14 +59,14 @@ class SubAdminController extends Controller
 
         } catch (ModelNotFoundException $e) {
             return redirect()
-                ->route('subadmins')
+                ->route('admin.subadmins')
                 ->with('error', 'Subadmin not found.');
 
         } catch (\Exception $e) {
             Log::error('Error editing subadmin: ' . $e->getMessage());
 
             return redirect()
-                ->route('subadmins')
+                ->route('admin.subadmins')
                 ->with('error', 'Something went wrong. Please try again later.');
         }
     }
@@ -83,9 +83,9 @@ class SubAdminController extends Controller
 
             $subadmin->update($validated);
 
-            return redirect()->route('subadmins')->with('success', 'Sub Admin updated successfully.');
+            return redirect()->route('admin.subadmins')->with('success', 'Sub Admin updated successfully.');
         } catch (ModelNotFoundException $e) {
-            return redirect()->route('subadmins')->with('error', 'Sub Admin not found.');
+            return redirect()->route('admin.subadmins')->with('error', 'Sub Admin not found.');
         } catch (\Exception $e) {
             Log::error('Sub Admin update failed: ' . $e->getMessage());
             return back()->withInput()->with('error', 'Failed to update Sub Admin.');
@@ -98,9 +98,9 @@ class SubAdminController extends Controller
             $subadmin = User::role('Sub Admin')->findOrFail($id);
             $subadmin->delete();
 
-            return redirect()->route('subadmins')->with('success', 'Sub Admin deleted successfully.');
+            return redirect()->route('admin.subadmins')->with('success', 'Sub Admin deleted successfully.');
         } catch (ModelNotFoundException $e) {
-            return redirect()->route('subadmins')->with('error', 'Sub Admin not found.');
+            return redirect()->route('admin.subadmins')->with('error', 'Sub Admin not found.');
         } catch (\Exception $e) {
             Log::error('Deletion failed: ' . $e->getMessage());
             return back()->with('error', 'Failed to delete Sub Admin.');
