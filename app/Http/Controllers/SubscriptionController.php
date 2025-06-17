@@ -41,6 +41,11 @@ class SubscriptionController extends Controller
     public function index()
     {
         $user = Auth::user();
+        
+        // Check if user has required role
+        if (!$user->hasRole(['User', 'Sub Admin'])) {
+            return redirect()->route('admin.dashboard');
+        }
 
         $currentLoggedInUserPaymentGateway = optional($user->paymentGateway)->name ?? null;
 
