@@ -272,19 +272,11 @@
                     </a>
                     <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
                         <div class="dropdown-divider"></div>
-                        {{-- <a href="{{route('admin.profile')}}" class="dropdown-item text-center"> Edit Profile --}}
-                        <a href="{{ route('admin.profile') }}" class="dropdown-item"> Edit Profile
-                        </a>
-                        {{-- <div class="dropdown-divider"></div> --}}
-                        {{-- <a href="#" class="dropdown-item"> --}}
-                        {{-- <i class="fas fa-users mr-2"></i> 8 friend requests --}}
-                        {{-- <span class="float-right text-muted text-sm">12 hours</span> --}}
-                        {{-- </a> --}}
-                        {{-- <div class="dropdown-divider"></div> --}}
-                        {{-- <a href="#" class="dropdown-item"> --}}
-                        {{-- <i class="fas fa-file mr-2"></i> 3 new reports --}}
-                        {{-- <span class="float-right text-muted text-sm">2 days</span> --}}
-                        {{-- </a> --}}
+                        @if(auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))
+                            <a href="{{ route('admin.profile') }}" class="dropdown-item">Edit Profile</a>
+                        @else
+                            <a href="{{ route('user.profile') }}" class="dropdown-item">Edit Profile</a>
+                        @endif
                         <div class="dropdown-divider"></div>
                         <a href="{{ route('logout') }}" class="dropdown-item dropdown-footer"
                             onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
@@ -293,7 +285,6 @@
                         </form>
                     </div>
                 </li>
-
             </ul>
         </nav>
         <!-- /.navbar -->

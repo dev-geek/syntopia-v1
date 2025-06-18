@@ -1,7 +1,8 @@
 <?php
 
-use App\Http\Controllers\Admin\SubAdminController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Admin\SubAdminController;
 use App\Http\Controllers\SocialController;
 use App\Models\User;
 use App\Http\Controllers\SubscriptionController;
@@ -28,6 +29,83 @@ use App\Http\Controllers\PaymentGatewaysController;
 Route::get('/test-verification', function () {
     return view('verify-form');
 });
+
+// Test logging route
+Route::get('/test-log', function () {
+    // Test different log levels
+    \Log::emergency('EMERGENCY: Test emergency message');
+    \Log::alert('ALERT: Test alert message');
+    \Log::critical('CRITICAL: Test critical message');
+    \Log::error('ERROR: Test error message');
+    \Log::warning('WARNING: Test warning message');
+    \Log::notice('NOTICE: Test notice message');
+    \Log::info('INFO: Test info message');
+    \Log::debug('DEBUG: Test debug message');
+    
+    // Test writing to a custom log file
+    \Log::channel('single')->info('Test message to single log file');
+    
+    // Check log file path
+    $logPath = storage_path('logs/laravel.log');
+    $logDir = dirname($logPath);
+    $isWritable = is_writable($logDir) && (!file_exists($logPath) || is_writable($logPath));
+    
+    return response()->json([
+        'status' => 'success',
+        'log_file' => $logPath,
+        'log_dir_writable' => is_writable($logDir) ? 'yes' : 'no',
+        'log_file_writable' => !file_exists($logPath) ? 'n/a' : (is_writable($logPath) ? 'yes' : 'no'),
+        'log_dir_exists' => file_exists($logDir) ? 'yes' : 'no',
+        'log_file_exists' => file_exists($logPath) ? 'yes' : 'no',
+        'message' => 'Check laravel.log for test messages'
+    ]);
+});
+
+// Test payment logging
+Route::get('/test-payment-log', function (\Illuminate\Http\Request $request) {
+    // Test payment logging
+    \Log::channel('payment')->info('=== PAYMENT LOG TEST ===');
+    \Log::channel('payment')->info('Test payment log entry', [
+        'time' => now()->toDateTimeString(),
+        'ip' => $request->ip(),
+        'user_agent' => $request->userAgent(),
+        'test_data' => 'This is a test payment log entry'
+    ]);
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Test payment log entry created',
+        'log_file' => storage_path('logs/payment.log'),
+        'log_dir_writable' => is_writable(storage_path('logs')) ? 'yes' : 'no',
+        'log_file_exists' => file_exists(storage_path('logs/payment.log')) ? 'yes' : 'no'
+    ]);
+});
+
+// Test payment callback endpoint
+Route::get('/test-payment-callback', function (\Illuminate\Http\Request $request) {
+    \Log::info('=== TEST PAYMENT CALLBACK RECEIVED ===');
+    \Log::info('Request Method: ' . $request->method());
+    \Log::info('Full URL: ' . $request->fullUrl());
+    \Log::info('Request Headers: ', $request->headers->all());
+    \Log::info('Request All Input: ', $request->all());
+    \Log::info('Request Query Params: ', $request->query());
+    \Log::info('Request IP: ' . $request->ip());
+    \Log::info('User Agent: ' . $request->userAgent());
+    \Log::info('Request Content: ' . $request->getContent());
+    
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Test callback received',
+        'data' => [
+            'method' => $request->method(),
+            'query_params' => $request->query(),
+            'headers' => $request->headers->all(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'timestamp' => now()->toDateTimeString()
+        ]
+    ]);
+})->name('payment.test-callback');
 Route::get('/test-fastspring', [SubscriptionController::class, 'createFastSpringSession']);
 Route::get('/test-paddle', [SubscriptionController::class, 'createPaddleSession']);
 Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
@@ -74,7 +152,6 @@ Route::post('/check-email', [LoginController::class, 'checkEmail']);
 Route::middleware(['auth', 'verified.custom'])->group(function () {
     // Main application routes
     Route::get('/', [SubscriptionController::class, 'index'])->name('home');
-    Route::get('/pricing', [SubscriptionController::class, 'index'])->name('pricing');
 
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');
@@ -85,7 +162,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/select-sub', [SubscriptionController::class, 'selectSub'])->name('select-sub');
     Route::get('/confirm', [SubscriptionController::class, 'confirmSubscription'])->name('confirm');
     Route::get('/package/{package_name}', [ProfileController::class, 'package'])->name('package');
-    Route::get('/all-subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
+    Route::get('/pricing', [SubscriptionController::class, 'index'])->name('subscriptions.index');
     Route::get('/subscription', [SubscriptionController::class, 'handleSubscription'])->name('subscription.general');
     Route::get('/login-sub', [SubscriptionController::class, 'login'])->name('login-sub');
 
@@ -105,14 +182,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
 
 // Super Admin Only Routes
 Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
-    Route::get('/manage-profile/{id}', [AdminController::class, 'manageProfile'])->name('manage.profile');
-    Route::get('/manage-admin-profile/{id}', [AdminController::class, 'manageAdminProfile'])->name('manage.admin.profile');
-    Route::post('/manage-profile/update/{id}', [AdminController::class, 'manageProfileUpdate'])->name('manage-profile.update');
-    Route::post('/manage-admin-profile/update/{id}', [AdminController::class, 'manageAdminProfileUpdate'])->name('manage-admin-profile.update');
-
-    Route::get('/add-users', [AdminController::class, 'addusers'])->name('add-users');
-    Route::post('/add-user-excel', [AdminController::class, 'addExcelUsers'])->name('add-user-excel');
-    Route::post('store-user', [AdminController::class, 'storeUser'])->name('store.user');
+    
 
     
 });
