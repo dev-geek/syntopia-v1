@@ -24,7 +24,7 @@ use App\Http\Controllers\{
 Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:Super Admin|Sub Admin'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
     Route::get('/users', [AdminController::class, 'users'])->name('users');
-    Route::get('/profile', [AdminController::class, 'profile'])->name('profile');
+    Route::get('/profile', [AdminController::class, 'profile'])->name('admin.profile');
     Route::get('/orders', [AdminController::class, 'adminOrders'])->name('orders');
     Route::get('/user-logs', [UserLogController::class, 'index'])->name('users-logs');
     Route::delete('users/{user}', [AdminController::class, 'destroy'])->name('users.destroy');

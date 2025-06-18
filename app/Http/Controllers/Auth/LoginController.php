@@ -19,11 +19,6 @@ class LoginController extends Controller
      */
     protected function authenticated(Request $request, $user)
     {
-        // Admin or Super Admin bypass verification and redirect to dashboard
-        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin.dashboard');
-        }
-        
         // Check if user with 'User' role is using a business email
         if ($user->hasRole('User') && !$this->isBusinessEmail($user->email)) {
             Auth::logout();
@@ -31,7 +26,7 @@ class LoginController extends Controller
                 ->withErrors(['email' => 'Please use your business email to login.']);
         }
 
-        // Check verification status for regular users
+        // Check verification status for all users
         if (!$this->isUserVerified($user)) {
             Auth::logout();
             session(['email' => $user->email]);
@@ -39,8 +34,13 @@ class LoginController extends Controller
                 ->withErrors('Please verify your email before logging in.');
         }
 
-        // Regular user redirect to subscriptions page
-        return redirect()->intended(route('subscriptions.index'));
+        // Redirect based on user role
+        if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+            return redirect()->intended(route('admin.profile'));
+        }
+        
+        // Default redirect for regular users
+        return redirect()->intended(route('user.profile'));
     }
 
     /**
