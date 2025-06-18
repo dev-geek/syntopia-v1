@@ -60,14 +60,14 @@ class LoginController extends Controller
 
         if ($user) {
             if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                return route('dashboard');
+                return route('admin.dashboard');
             }
 
             if (!$this->isUserVerified($user)) {
                 return route('verification.code');
             }
 
-            return route('profile');
+            return route('user.dashboard');
         }
 
         return '/';
@@ -144,10 +144,10 @@ class LoginController extends Controller
         // Final redirect based on role
         $user = Auth::user();
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin.dashboard');
+            return redirect()->intended(route('admin.dashboard'));
         }
 
-        return redirect()->intended(route('profile'));
+        return redirect()->intended(route('user.profile'));
     }
 
     public function checkEmail(Request $request)

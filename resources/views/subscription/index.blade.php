@@ -106,11 +106,11 @@
                                 text: 'Your payment was cancelled. You can try again anytime.',
                                 confirmButtonText: 'OK'
                             }).then(() => {
-                                window.location.href = "/all-subscriptions";
+                                window.location.href = "/pricing";
                             });
                         } else {
                             alert('Payment Cancelled: Your payment was cancelled. You can try again anytime.');
-                            window.location.href = "/all-subscriptions";
+                            window.location.href = "/pricing";
                         }
                     }
                 } catch (err) {
@@ -121,11 +121,11 @@
                             text: 'There was an error processing your payment. Please contact support if your payment was charged.',
                             confirmButtonText: 'OK'
                         }).then(() => {
-                            window.location.href = "/all-subscriptions";
+                            window.location.href = "/pricing";
                         });
                     } else {
                         alert('Processing Error: There was an error processing your payment. Please contact support.');
-                        window.location.href = "/all-subscriptions";
+                        window.location.href = "/pricing";
                     }
                 }
             }
@@ -841,55 +841,6 @@
                     }
                     paymentWindow.location.href = data.checkoutUrl;
 
-                    const checkWindowClosed = setInterval(() => {
-                        if (paymentWindow.closed) {
-                            clearInterval(checkWindowClosed);
-
-                            fetch('/api/payment/save-details', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-TOKEN': csrfToken
-                                },
-                                body: JSON.stringify({
-                                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
-                                    package_id: data
-                                        .package_id // Use package_id from the response
-                                })
-                            }).then(response => {
-                                if (!response.ok) {
-                                    return response.json().then(errData => {
-                                        throw new Error(errData.error ||
-                                            'Failed to save payment details');
-                                    });
-                                }
-                                return response.json();
-                            }).then(data => {
-                                if (data.success) {
-                                    Swal.fire({
-                                        icon: 'success',
-                                        title: 'Payment Details Saved',
-                                        text: data.message ||
-                                            'Your payment details have been saved successfully.',
-                                        confirmButtonText: 'OK'
-                                    }).then(() => {
-                                        window.location.href = '/dashboard';
-                                    });
-                                } else {
-                                    throw new Error(data.error ||
-                                        'Failed to save payment details');
-                                }
-                            }).catch(error => {
-                                Swal.fire({
-                                    icon: 'error',
-                                    title: 'Error',
-                                    text: error.message ||
-                                        'An error occurred while saving payment details. Please try again or contact support.',
-                                    confirmButtonText: 'OK'
-                                });
-                            });
-                        }
-                    }, 500);
                 }).catch(error => {
                     paymentWindow.close();
                     Swal.fire({

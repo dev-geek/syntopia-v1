@@ -15,34 +15,20 @@ class ProfileController extends Controller
     {
         // Ensure the user is authenticated and return their details
         $user = Auth::user();
-
         
 
          // Check if user already has the Starter package
-         $hasStarterPackage = Order::where('user_id', Auth::id())
-         ->where('package', 'Starter')
-         ->where('payment', '!=', null)
-
-         ->exists();
+         $hasStarterPackage = "No";
 
          
 
             // Check Free package status too if you're showing both buttons on the same view
-            $hasFreePackage = Order::where('user_id', Auth::id())
-                ->where('package', 'Free')
-                ->exists();
+            $hasFreePackage = "No";
 
-                $hasProPackage = Order::where('user_id', Auth::id())
-                ->where('package', 'Pro')
-                ->where('payment', '!=', null)
-                ->exists();
+                $hasProPackage = "No";
 
                 
-                $hasBusinessPackage = Order::where('user_id', Auth::id())
-                ->where('package', 'Business')
-                ->where('payment', '!=', null)
-
-                ->exists();
+                $hasBusinessPackage = "No";
 
             
         return view('auth.profile', compact('user','hasStarterPackage','hasFreePackage','hasProPackage','hasBusinessPackage'));
