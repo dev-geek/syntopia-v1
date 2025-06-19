@@ -27,48 +27,31 @@ class Order extends Model
         'payment_gateway_id',
         'amount',
         'transaction_id',
-        'payment_method',
         'status',
-        'paid_at',
     ];
 
     /**
-     * The relationships to other models.
+     * Get the user that placed the order.
      */
-
-    // Relationship with User model
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    public function scopeForUser(Builder $query, int $userId): void
+    /**
+     * Get the package associated with the order.
+     */
+    public function package()
     {
-        $query->where('user_id', $userId);
+        return $this->belongsTo(Package::class);
     }
 
-    public function scopeUnpaid(Builder $query): void
+    /**
+     * Get the payment gateway used for the order.
+     */
+    public function paymentGateway()
     {
-        $query->whereNull('paid_at');
+        return $this->belongsTo(PaymentGateway::class);
     }
 
-    public function scopePaid(Builder $query): void
-    {
-        $query->whereNotNull('paid_at');
-    }
-
-    public function scopeWithPaymentGateway(Builder $query, int $gatewayId): void
-    {
-        $query->where('payment_gateway_id', $gatewayId);
-    }
-
-    public function scopeWithPackage(Builder $query, int $packageId): void
-    {
-        $query->where('package_id', $packageId);
-    }
-
-    public function scopeRecent(Builder $query, int $limit = 10): void
-    {
-        $query->orderBy('created_at', 'desc')->take($limit);
-    }
 }

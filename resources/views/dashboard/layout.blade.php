@@ -11,6 +11,9 @@
     <!-- Main content -->
     <section class="content">
         <div class="container-fluid">
+            <!-- alert component -->
+             @include('components.alert-messages')
+             
             {{-- Show to role Admin and Sub Admin --}}
             @hasanyrole(['Super Admin', 'Sub Admin'])
                 @include('dashboard.includes.cards')

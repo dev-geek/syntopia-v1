@@ -13,13 +13,12 @@ return new class extends Migration
     {
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id'); // Foreign key for the user
-            $table->string('package'); // Package name
-            $table->decimal('amount', 8, 2); // Amount for the package
-            $table->string('payment')->nullable(); // Payment status, nullable
+            $table->unsignedBigInteger('user_id');
+            $table->string('transaction_id')->unique();
+            $table->string('status')->default('pending');
+            $table->decimal('amount', 10, 2);
             $table->timestamps();
 
-            // Foreign key constraint
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
