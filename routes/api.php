@@ -1,23 +1,44 @@
 <?php
 
 use App\Http\Controllers\API\PaymentController;
-use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\SubscriptionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// Public payment callback routes (no auth required)
-Route::match(['get', 'post'], '/payment/success', [PaymentController::class, 'handleSuccess'])->name('payment.success');
-Route::get('/payment/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
-Route::post('/paddle/webhook', [PaymentController::class, 'handlePaddleWebhook'])->name('paddle.webhook');
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register API routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "api" middleware group. Make something great!
+|
+*/
 
-// Authenticated routes
+// Public API routes (no auth required)
+Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handlePaymentWebhook'])
+    ->name('api.payment.webhook');
+
+// Payment success callback (public)
+// Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])
+//     ->name('api.payments.success');
+
+// Authenticated API routes
 Route::middleware('auth:sanctum')->group(function () {
+    // User information
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
 
-    Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');
-    Route::post('/fastspring/checkout/{packageName}', [PaymentController::class, 'fastspringCheckout']);
-    Route::post('/payproglobal/checkout/{packageName}', [PaymentController::class, 'payProGlobalCheckout'])->name('payproglobal.checkout');
-    Route::post('/payment/save-details', [PaymentController::class, 'savePaymentDetails']);
+    // Payment routes
+    Route::prefix('payments')->group(function () {
+        Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('api.payments.paddle.checkout');
+        Route::post('/fastspring/checkout/{package}', [PaymentController::class, 'fastspringCheckout'])->name('api.payments.fastspring.checkout');
+        Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])->name('api.payments.payproglobal.checkout');
+        Route::post('/save-details', [PaymentController::class, 'savePaymentDetails'])->name('api.payments.save-details');
+    });
+
+    // Order routes
+    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('api.orders.index');
 });

@@ -221,6 +221,9 @@
                     </li>
 
                 @endif
+                <li class="nav-item d-none d-sm-inline-block">
+                    <a href="#" class="nav-link">ACCESS THE SOFTWARE</a>
+                </li>
             </ul>
 
             {{-- <!-- SEARCH FORM --> --}}
