@@ -81,6 +81,13 @@ Route::get('/test-payment-log', function (\Illuminate\Http\Request $request) {
     ]);
 });
 
+// Payment callback routes
+// Route::get('/payments/success', [\App\Http\Controllers\SubscriptionController::class, 'paymentSuccess'])
+//     ->name('payment.success');
+
+// Route::get('/payments/cancel', [\App\Http\Controllers\SubscriptionController::class, 'paymentCancel'])
+//     ->name('payment.cancel');
+
 // Test payment callback endpoint
 Route::get('/test-payment-callback', function (\Illuminate\Http\Request $request) {
     \Log::info('=== TEST PAYMENT CALLBACK RECEIVED ===');
@@ -148,6 +155,10 @@ Route::middleware(['web'])->group(function () {
 // AJAX Routes
 Route::post('/check-email', [LoginController::class, 'checkEmail']);
 
+// Payment callback routes (no auth required)
+// Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payment.success');
+Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
+
 // Protected Routes for VERIFIED USERS ONLY
 Route::middleware(['auth', 'verified.custom'])->group(function () {
     // Main application routes
@@ -172,12 +183,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
 
     // Orders
-    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('orders.index');
-
-    // Payment routes
-    Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handlePaymentWebhook'])->name('payment.webhook');
-    // Route::post('/paddle-checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('paddle.checkout');
-
+    Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
 });
 
 // Super Admin Only Routes

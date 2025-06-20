@@ -134,42 +134,69 @@ class SubscriptionController extends Controller
     public function paymentSuccess(Request $request)
     {
         $gateway = $request->query('gateway');
-        $orderId = $request->query('order');
+        $orderId = $request->query('order_id') ?? $request->query('order');
+        $source = $request->query('source');
 
         Log::info("Payment success callback", [
             'gateway' => $gateway,
-            'order' => $orderId,
-            'data' => $request->all()
+            'order_id' => $orderId,
+            'source' => $source,
+            'all_params' => $request->all()
         ]);
 
-        $order = null;
-        if ($orderId) {
-            $order = Order::find($orderId);
-        }
+        // Handle FastSpring return URL (user is redirected back to our site)
+        if ($source === 'fastspring' || $gateway === 'fastspring') {
+            $order = null;
+            
+            if ($orderId) {
+                $order = Order::where('id', $orderId)
+                    ->orWhere('transaction_id', $orderId)
+                    ->first();
+            }
 
-        if ($order && $order->status === 'completed') {
-            // Order has already been completed via webhook
-            session()->flash('success', 'Your subscription has been activated successfully!');
-        } else {
-            // Order is still pending webhook confirmation
-            session()->flash('info', 'Your payment is being processed. Your subscription will be activated shortly.');
-        }
-
-        if ($gateway === 'fastspring' && $orderId && config('payment.gateways.FastSpring.use_redirect_callback')) {
-            DB::transaction(function () use ($orderId) {
-                $order = Order::lockForUpdate()->find($orderId);
-                if ($order && $order->status === 'pending') {
-
-                    $order->update([
-                        'status' => 'completed',
-                        'transaction_id' => 'FS-' . Str::random(10),
-                        'payment_method' => 'FastSpring'
-                    ]);
-
-                    // Update user subscription
-                    $this->updateUserSubscription($order);
+            if ($order) {
+                if ($order->status === 'completed') {
+                    session()->flash('success', 'Your subscription has been activated successfully!');
+                } else {
+                    // Check if webhook has already processed this
+                    if (config('payment.gateways.FastSpring.use_webhook')) {
+                        session()->flash('info', 'Your payment is being processed. Your subscription will be activated shortly.');
+                    } else {
+                        // Process immediately if not using webhooks
+                        DB::transaction(function () use ($order) {
+                            $order->update([
+                                'status' => 'completed',
+                                'transaction_id' => $order->transaction_id ?? ('FS-' . Str::random(10)),
+                                'payment_method' => 'FastSpring'
+                            ]);
+                            $this->updateUserSubscription($order);
+                        });
+                        session()->flash('success', 'Your subscription has been activated successfully!');
+                    }
                 }
-            }, 3);
+            } else {
+                // No order found, but payment was successful
+                Log::warning('FastSpring success callback received but no matching order found', [
+                    'order_id' => $orderId,
+                    'all_params' => $request->all()
+                ]);
+                session()->flash('info', 'Your payment was successful. If you don\'t see your subscription activated, please contact support.');
+            }
+
+            return redirect()->route('dashboard');
+        }
+
+        // Handle other payment gateways
+        $order = $orderId ? Order::find($orderId) : null;
+
+        if ($order) {
+            if ($order->status === 'completed') {
+                session()->flash('success', 'Your subscription has been activated successfully!');
+            } else {
+                session()->flash('info', 'Your payment is being processed. Your subscription will be activated shortly.');
+            }
+        } else {
+            session()->flash('info', 'Payment successful! Your subscription is being processed.');
         }
 
         return redirect()->route('dashboard');
