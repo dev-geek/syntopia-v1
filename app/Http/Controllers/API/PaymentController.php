@@ -750,8 +750,8 @@ class PaymentController extends Controller
                     ]);
 
                     $xiaoiceResponse = $this->callXiaoiceApi($user->id);
-dd($xiaoiceResponse);
-                    if ($xiaoiceResponse['code'] === 'success') {
+
+                    if ($xiaoiceResponse['code'] === 500) {
                         $user->is_subscribed = 1;
                         $user->save();
                     }
@@ -1509,10 +1509,10 @@ dd($xiaoiceResponse);
             'Content-Type' => 'application/json',
             'Accept' => 'application/json'
         ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
-            'name' => $user->name ?? 'Tenant_' . $userId,
-            'adminName' => $user->name ?? 'Admin_' . $userId,
-            'adminEmail' => $user->email,
-            'appIds' => [] // Add appropriate app IDs here, e.g., ['app1', 'app2']
+            'name' => "Test User",
+            'adminName' => "Test User",
+            'adminEmail' => "test@test.com",
+            'appIds' => [2],
         ]);
 
         if ($response->successful()) {
