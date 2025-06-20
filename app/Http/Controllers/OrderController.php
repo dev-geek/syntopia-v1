@@ -16,7 +16,7 @@ class OrderController extends Controller
         if ($user->hasRole('User')) {
             $orders = Order::where('user_id', $user->id)
                 ->orderBy('created_at', 'desc')
-                ->get();
+                ->paginate(10);
         }
 
         return view('subscription.order', compact('orders'));

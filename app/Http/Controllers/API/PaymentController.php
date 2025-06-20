@@ -532,7 +532,7 @@ class PaymentController extends Controller
     {
         Log::info('Payment success callback received', $request->all());
         
-        // try {
+        try {
             // Handle both GET and POST requests
             $gateway = $request->input('gateway', $request->query('gateway'));
             
@@ -725,7 +725,7 @@ class PaymentController extends Controller
                 }
             
                 DB::beginTransaction();
-                // try {
+                try {
                     $order = Order::create([
                         'user_id' => $user->id,
                         'package_id' => $package->id,
@@ -760,12 +760,12 @@ class PaymentController extends Controller
                     $order->save();
             
                     DB::commit();
-                // } catch (\Exception $e) {
-                //     DB::rollBack();
-                //     Log::error('FastSpring callback failed', ['message' => $e->getMessage()]);
-                //     return redirect()->route('subscriptions.index')
-                //         ->with('error', 'Something went wrong while processing your payment.');
-                // }
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    Log::error('FastSpring callback failed', ['message' => $e->getMessage()]);
+                    return redirect()->route('subscriptions.index')
+                        ->with('error', 'Something went wrong while processing your payment.');
+                }
             
                 return redirect()->route('user.dashboard')
                     ->with('success', 'Thank you for your payment! Your subscription is being processed and will be activated shortly.');
@@ -779,15 +779,14 @@ class PaymentController extends Controller
                     ->with('error', 'Invalid payment gateway. Please try again or contact support.');
             }
             
-        // } catch (\Exception $e) {
-        //     Log::error('Error processing payment success: ' . $e->getMessage(), [
-        //         'exception' => $e,
-        //         'request' => $request->all()
-        //     ]);
-            
-        //     return redirect()->route('subscriptions.index')
-        //         ->with('error', 'An error occurred while processing your payment. Please try again or contact support.');
-        // }
+            } catch (\Exception $e) {
+                Log::error('Error processing payment success: ' . $e->getMessage(), [
+                    'exception' => $e,
+                    'request' => $request->all()
+                ]);
+                return redirect()->route('subscriptions.index')
+                    ->with('error', 'An error occurred while processing your payment. Please try again or contact support.');
+            }
     }
     
     private function verifyPayProGlobalPayment($orderId, $paymentId)

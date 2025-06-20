@@ -41,15 +41,15 @@
                               <tr>
                                 <td>{{ $index + 1 }}</td>
                                 <td>{{ $order['id'] }}</td>
-                                <td>{{ ucfirst($order['package']) }}</td>
+                                <td>{{ ucfirst($order['package']['name']) }}</td>
                                 <td>${{ number_format($order['amount'], 2) }}</td>
                                 <td>
-                                  @if($order['payment'] === 'Yes')
-                                    <span class="badge badge-success">Paid</span>
-                                  @elseif($order['payment'] === 'Pending')
+                                  @if($order->status === 'completed')
+                                    <span class="badge badge-success">Completed</span>
+                                  @elseif($order->status === 'pending')
                                     <span class="badge badge-warning">Pending</span>
                                   @else
-                                    <span class="badge badge-secondary">{{ $order['payment'] }}</span>
+                                    <span class="badge badge-secondary">{{ $order->status }}</span>
                                   @endif
                                 </td>
                                 <td>{{ $startDate->format('M d, Y') }}</td>
@@ -70,6 +70,7 @@
                           </tbody>
                         </table>
                       </div>
+                      {{ $orders->links() }}
                     </div>
                   </div>
                 </div>
