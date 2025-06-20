@@ -21,8 +21,8 @@ Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handl
     ->name('api.payment.webhook');
 
 // Payment success callback (public)
-// Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])
-//     ->name('api.payments.success');
+Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])
+    ->name('payments.success');
 
 // Authenticated API routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -33,12 +33,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Payment routes
     Route::prefix('payments')->group(function () {
-        Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('api.payments.paddle.checkout');
-        Route::post('/fastspring/checkout/{package}', [PaymentController::class, 'fastspringCheckout'])->name('api.payments.fastspring.checkout');
-        Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])->name('api.payments.payproglobal.checkout');
-        Route::post('/save-details', [PaymentController::class, 'savePaymentDetails'])->name('api.payments.save-details');
+        Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])->name('payments.paddle.checkout');
+        Route::post('/fastspring/checkout/{package}', [PaymentController::class, 'fastspringCheckout'])->name('payments.fastspring.checkout');
+        Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])->name('payments.payproglobal.checkout');
+        Route::post('/save-details', [PaymentController::class, 'savePaymentDetails'])->name('payments.save-details');
+        Route::get('/verify-payproglobal/{paymentId}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])->name('payments.verify-payproglobal');
     });
 
     // Order routes
-    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('api.orders.index');
+    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('orders.index');
 });

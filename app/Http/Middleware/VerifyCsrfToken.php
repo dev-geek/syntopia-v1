@@ -12,6 +12,8 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-        '/verify-code'
+        '/verify-code',
+        'payment/webhook/fastspring',
+        'payment/webhook/payproglobal',
     ];
 }

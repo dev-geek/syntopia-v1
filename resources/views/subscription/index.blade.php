@@ -28,7 +28,7 @@
     @if (in_array('Paddle', $activeGateways))
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
-    @if (in_array('PayPro Global', $activeGateways))
+    @if (in_array('Pay Pro Global', $activeGateways))
     <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
@@ -67,7 +67,7 @@
                         }
                         const form = document.createElement('form');
                         form.method = 'POST';
-                        form.action = '/payments/success';
+                        form.action = '/api/payments/success';
                         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                         if (csrfToken) {
                             const csrfInput = document.createElement('input');
@@ -156,7 +156,7 @@
     @endif
 
     <!-- PayProGlobal Integration -->
-    @if ($activeGateway && $activeGateway->name === 'PayPro Global')
+    @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
     <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
@@ -721,7 +721,7 @@
 
             function processPaddle(productPath) {
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/paddle/checkout/${packageName}`;
+                const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
 
                 fetch(apiUrl, {
                         method: 'POST',
@@ -824,8 +824,31 @@
         localStorage.removeItem('pendingPayment');
     };
 
+    // Function to verify payment status via API
+    const verifyPaymentStatus = async () => {
+        debugLog('Verifying payment status for paymentId:', paymentId);
+        try {
+            const response = await fetch(`/api/payments/verify-payproglobal/${paymentId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
+                }
+            });
+            const data = await response.json();
+            debugLog('Payment verification response:', data);
+            return data.status === 'completed';
+        } catch (error) {
+            debugLog('Error verifying payment:', error);
+            return false;
+        }
+    };
+
     // Function to handle payment completion
-    const handlePaymentComplete = (source) => {
+    const handlePaymentComplete = async (source) => {
         debugLog(`Payment complete triggered from: ${source}`);
         if (paymentCompleted) {
             debugLog('Payment already marked as completed, skipping');
@@ -833,6 +856,22 @@
         }
 
         paymentCompleted = true;
+
+        // Verify payment status before proceeding
+        const isVerified = await verifyPaymentStatus();
+        if (!isVerified) {
+            debugLog('Payment verification failed');
+            Swal.fire({
+                icon: 'error',
+                title: 'Payment Verification Failed',
+                text: 'Your payment could not be verified. Please contact support.',
+                confirmButtonText: 'OK'
+            }).then(() => {
+                cleanup();
+                window.location.href = '/pricing';
+            });
+            return;
+        }
 
         // Send transaction details to server
         const transactionData = {
@@ -845,13 +884,14 @@
 
         debugLog('Sending transaction details to server:', transactionData);
 
-        const successUrl = new URL('{{ route('payment.success') }}');
+        const successUrl = new URL('{{ route('payments.success') }}');
         const params = new URLSearchParams();
         params.append('gateway', 'payproglobal');
         params.append('order_id', paymentId);
         params.append('user_id', '{{ Auth::id() }}');
         params.append('package', packageName);
         params.append('payment_id', paymentId);
+        params.append('payment_gateway_id', '{{ $activeGateway->id ?? '' }}');
         params.append('redirect_to', '/user/dashboard');
 
         successUrl.search = params.toString();
@@ -862,7 +902,8 @@
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': csrfToken,
                 'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
             },
             body: JSON.stringify(transactionData)
         })
@@ -918,7 +959,7 @@
     };
 
     // Function to check payment status
-    const checkPaymentStatus = () => {
+    const checkPaymentStatus = async () => {
         debugLog('Checking payment status...');
         try {
             if (paymentWindow && paymentWindow.closed) {
@@ -926,16 +967,26 @@
                 clearInterval(checkInterval);
 
                 if (!paymentCompleted && !paymentVerified) {
-                    debugLog('Payment was not completed or verified');
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Checkout Cancelled',
-                        text: 'The payment process was cancelled. You can try again anytime.',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        cleanup();
-                        window.location.href = '/pricing';
-                    });
+                    debugLog('Checking payment status before showing cancel message');
+                    // Delay verification to allow webhook processing
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    const isVerified = await verifyPaymentStatus();
+                    if (isVerified) {
+                        debugLog('Payment was verified before window close');
+                        paymentVerified = true;
+                        handlePaymentComplete('verified');
+                    } else {
+                        debugLog('Payment was not completed or verified');
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Checkout Cancelled',
+                            text: 'The payment process was cancelled. You can try again anytime.',
+                            confirmButtonText: 'OK'
+                        }).then(() => {
+                            cleanup();
+                            window.location.href = '/pricing';
+                        });
+                    }
                 } else if (paymentVerified) {
                     debugLog('Payment was verified before window close');
                     handlePaymentComplete('verified');
@@ -955,12 +1006,7 @@
                     handlePaymentComplete('URL check');
                 }
             } catch (e) {
-                debugLog('Cross-origin error, using postMessage', e.message);
-                try {
-                    paymentWindow.postMessage({ type: 'check-payment-status' }, '*');
-                } catch (postError) {
-                    debugLog('Error in postMessage:', postError.message);
-                }
+                debugLog('Cross-origin error, relying on API verification');
             }
         } catch (e) {
             debugLog('Error in checkPaymentStatus:', e);
@@ -1046,7 +1092,7 @@
     }
 
     // Start checking payment status
-    checkInterval = setInterval(checkPaymentStatus, 1000);
+    checkInterval = setInterval(checkPaymentStatus, 3000); // Increased interval to 3 seconds
 
     // Fetch checkout URL
     debugLog('Fetching checkout URL from:', apiUrl);
@@ -1056,7 +1102,8 @@
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': csrfToken,
             'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
         },
         credentials: 'same-origin',
         body: JSON.stringify({ package: packageName })
@@ -1143,7 +1190,7 @@
     });
 
     // Message handler for payment completion
-    const messageHandler = (event) => {
+    const messageHandler = async (event) => {
         debugLog('Received message from payment window:', event.data);
 
         // Only process messages from trusted origins
@@ -1157,13 +1204,7 @@
             event.data.paymentId === paymentId) {
             debugLog('Payment completed via message');
             paymentVerified = true;
-
-            setTimeout(() => {
-                if (paymentWindow && !paymentWindow.closed) {
-                    paymentWindow.close();
-                }
-                handlePaymentComplete('message');
-            }, 1000);
+            handlePaymentComplete('message');
         }
     };
 

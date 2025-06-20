@@ -183,8 +183,8 @@ class PaymentService
             'product_id' => $this->getPaddleProductId($order->package),
             'customer_email' => $order->user->email,
             'passthrough' => json_encode(['order_id' => $order->id]),
-            'return_url' => route('payment.success', ['gateway' => 'paddle']),
-            'cancel_url' => route('payment.cancel', ['gateway' => 'paddle']),
+            'return_url' => route('payments.success', ['gateway' => 'paddle']),
+            'cancel_url' => route('payments.cancel', ['gateway' => 'paddle']),
         ];
 
         try {
@@ -261,8 +261,8 @@ class PaymentService
                 'custom_fields' => [
                     'order_id' => $order->id,
                 ],
-                'return_url' => route('payment.success', ['gateway' => 'payproglobal']),
-                'cancel_url' => route('payment.cancel', ['gateway' => 'payproglobal']),
+                'return_url' => route('payments.success', ['gateway' => 'payproglobal']),
+                'cancel_url' => route('payments.cancel', ['gateway' => 'payproglobal']),
             ];
 
             $response = Http::withHeaders([

@@ -81,6 +81,13 @@ Route::get('/test-payment-log', function (\Illuminate\Http\Request $request) {
     ]);
 });
 
+// Payment callback routes
+// Route::get('/payments/success', [\App\Http\Controllers\SubscriptionController::class, 'paymentSuccess'])
+//     ->name('payment.success');
+
+// Route::get('/payments/cancel', [\App\Http\Controllers\SubscriptionController::class, 'paymentCancel'])
+//     ->name('payment.cancel');
+
 // Test payment callback endpoint
 Route::get('/test-payment-callback', function (\Illuminate\Http\Request $request) {
     \Log::info('=== TEST PAYMENT CALLBACK RECEIVED ===');
@@ -149,8 +156,8 @@ Route::middleware(['web'])->group(function () {
 Route::post('/check-email', [LoginController::class, 'checkEmail']);
 
 // Payment callback routes (no auth required)
-Route::match(['get', 'post'], '/payment/success', [PaymentController::class, 'handleSuccess'])->name('payment.success');
-Route::get('/payment/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
+// Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payment.success');
+Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
 
 // Protected Routes for VERIFIED USERS ONLY
 Route::middleware(['auth', 'verified.custom'])->group(function () {
