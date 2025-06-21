@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
@@ -356,8 +357,13 @@ class PaymentController extends Controller
             if (!$packageModel) {
                 return response()->json(['error' => 'Package not found'], 404);
             }
-            
-            $this->activateUserSubscription($user, $package, 'Paddle');
+
+            $user->update([
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'package_id' => $packageModel->id,
+                'subscription_starts_at' => now(),
+                'license_key' => $this->makeLicense() ?? null,
+            ]);
 
             return response()->json([
                 'status' => 'processed',
@@ -528,11 +534,11 @@ class PaymentController extends Controller
     public function handleSuccess(Request $request)
     {
         Log::info('Payment success callback received', $request->all());
-        
+
         try {
             // Handle both GET and POST requests
             $gateway = $request->input('gateway', $request->query('gateway'));
-            
+
             if ($gateway === 'payproglobal') {
                 // Handle PayProGlobal callback
                 $orderId = $request->input('order_id', $request->query('order_id'));
@@ -540,7 +546,7 @@ class PaymentController extends Controller
                 $packageName = $request->input('package', $request->query('package'));
                 $paymentId = $request->input('payment_id', $request->query('payment_id'));
                 $paymentGatewayId = $this->getPaymentGatewayId('payproglobal');
-            
+
                 Log::info('Processing PayProGlobal success callback', [
                     'order_id' => $orderId,
                     'user_id' => $userId,
@@ -548,21 +554,21 @@ class PaymentController extends Controller
                     'payment_id' => $paymentId,
                     'request_method' => $request->method()
                 ]);
-            
+
                 $user = User::find($userId);
                 if (!$user) {
                     Log::error('User not found with ID: ' . $userId);
                     return redirect()->route('login')
                         ->with('error', 'Please log in to complete your purchase.');
                 }
-            
+
                 $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
                 if (!$package) {
                     Log::error('Package not found: ' . $packageName);
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Invalid package selected. Please try again.');
                 }
-            
+
                 DB::beginTransaction();
                 try {
                     // Verify payment with PayProGlobal API
@@ -570,7 +576,7 @@ class PaymentController extends Controller
                     if (!$paymentVerified) {
                         throw new \Exception('Payment verification failed');
                     }
-            
+
                     $order = Order::updateOrCreate(
                         ['transaction_id' => $orderId],
                         [
@@ -582,7 +588,7 @@ class PaymentController extends Controller
                             'status' => 'completed',
                         ]
                     );
-            
+
                     Log::info('Created/Updated order for PayProGlobal payment', [
                         'order_id' => $order->id,
                         'transaction_id' => $order->transaction_id,
@@ -594,13 +600,14 @@ class PaymentController extends Controller
                         'payment_gateway_id' => $paymentGatewayId,
                         'package_id' => $package->id,
                         'subscription_starts_at' => now(),
+                        'license_key' => $this->makeLicense() ?? null,
                     ]);
-                    
+
                     $order->status = 'completed';
                     $order->save();
-            
+
                     DB::commit();
-            
+
                     return response()->json([
                         'status' => 'success',
                         'message' => 'Thank you for your payment! Your subscription is now active.',
@@ -624,28 +631,28 @@ class PaymentController extends Controller
                 $userId = $request->input('user_id', $request->query('user_id'));
                 $packageId = $request->input('package_id', $request->query('package_id'));
                 $paymentGatewayId = $request->input('payment_gateway_id', $request->query('payment_gateway_id'));
-                
+
                 Log::info('Processing Paddle success callback', [
                     'order_id' => $orderId,
                     'user_id' => $userId,
                     'package_id' => $packageId,
                     'request_method' => $request->method()
                 ]);
-                
+
                 $user = User::find($userId);
                 if (!$user) {
                     Log::error('User not found with ID: ' . $userId);
                     return redirect()->route('login')
                         ->with('error', 'Please log in to complete your purchase.');
                 }
-                
+
                 $package = Package::find($packageId);
                 if (!$package) {
                     Log::error('Package not found with ID: ' . $packageId);
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Invalid package selected. Please try again.');
                 }
-                
+
                 DB::beginTransaction();
                 try {
                     $order = Order::create([
@@ -657,30 +664,29 @@ class PaymentController extends Controller
                         'payment_gateway_id' => $paymentGatewayId,
                         'status' => 'pending',
                     ]);
-                    
+
                     Log::info('Created pending order for Paddle payment', [
                         'order_id' => $order->id,
                         'transaction_id' => $order->transaction_id,
                         'user_id' => $user->id,
                         'package_id' => $package->id
                     ]);
-                    
-                    // For Paddle, we'll verify the webhook separately
-                    // Just mark as completed for now
+
                     $user->update([
                         'payment_gateway_id' => $paymentGatewayId,
                         'package_id' => $package->id,
                         'subscription_starts_at' => now(),
+                        'license_key' => $this->makeLicense() ?? null,
                     ]);
-                    
+
                     $order->status = 'completed';
                     $order->save();
-                    
+
                     DB::commit();
-                    
+
                     return redirect()->route('user.dashboard')
                         ->with('success', 'Thank you for your payment! Your subscription is now active.');
-                        
+
                 } catch (\Exception $e) {
                     DB::rollBack();
                     Log::error('Paddle callback failed', [
@@ -690,32 +696,32 @@ class PaymentController extends Controller
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Something went wrong while processing your payment. Please contact support.');
                 }
-                
+
             } elseif ($gateway === 'fastspring') {
                 $orderId = $request->input('orderId', $request->query('orderId'));
                 $packageId = $request->input('package_id', $request->query('package_id'));
                 $paymentGatewayId = $request->input('payment_gateway_id', $request->query('payment_gateway_id'));
-            
+
                 Log::info('Processing FastSpring success callback', [
                     'order_id' => $orderId,
                     'package_id' => $packageId,
                     'payment_gateway_id' => $paymentGatewayId,
                     'request_method' => $request->method()
                 ]);
-            
+
                 $user = Auth::user();
                 if (!$user) {
                     Log::error('No authenticated user for FastSpring success callback');
                     return redirect()->route('login')->with('error', 'Please log in to complete your purchase.');
                 }
-            
+
                 $package = Package::find($packageId);
                 if (!$package) {
                     Log::error('Package not found with ID: ' . $packageId);
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Invalid package selected. Please try again.');
                 }
-            
+
                 DB::beginTransaction();
                 try {
                     $order = Order::create([
@@ -727,23 +733,31 @@ class PaymentController extends Controller
                         'payment_gateway_id' => $paymentGatewayId,
                         'status' => 'pending',
                     ]);
-            
+
                     Log::info('Created pending order for FastSpring payment', [
                         'order_id' => $order->id,
                         'transaction_id' => $order->transaction_id,
                         'user_id' => $user->id,
                         'package_id' => $package->id
                     ]);
-            
+
                     $user->update([
                         'payment_gateway_id' => $paymentGatewayId,
                         'package_id' => $packageId,
                         'subscription_starts_at' => now(),
+                        'license_key' => $this->makeLicense($user),
+                        'is_subscribed' => true,
                     ]);
 
                     $order->status = 'completed';
                     $order->save();
-            
+                    Log::info('User', [
+                        'user_payment_gateway_id' => $user->payment_gateway_id,
+                        'user_package_id' => $user->package_id,
+                        'user_subscription_starts_at' => $user->subscription_starts_at,
+                        'user_license_key' => $user->license_key,
+                        'user_is_subscribed' => $user->is_subscribed
+                    ]);
                     DB::commit();
                 } catch (\Exception $e) {
                     DB::rollBack();
@@ -751,10 +765,10 @@ class PaymentController extends Controller
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Something went wrong while processing your payment.');
                 }
-            
+
                 return redirect()->route('user.dashboard')
                     ->with('success', 'Thank you for your payment! Your subscription is being processed and will be activated shortly.');
-                    
+
             } else {
                 Log::warning('Invalid payment gateway specified', [
                     'gateway' => $gateway,
@@ -763,7 +777,7 @@ class PaymentController extends Controller
                 return redirect()->route('subscriptions.index')
                     ->with('error', 'Invalid payment gateway. Please try again or contact support.');
             }
-            
+
             } catch (\Exception $e) {
                 Log::error('Error processing payment success: ' . $e->getMessage(), [
                     'exception' => $e,
@@ -773,7 +787,7 @@ class PaymentController extends Controller
                     ->with('error', 'An error occurred while processing your payment. Please try again or contact support.');
             }
     }
-    
+
     private function verifyPayProGlobalPayment($orderId, $paymentId)
 {
     try {
@@ -976,7 +990,7 @@ class PaymentController extends Controller
                 $tags = is_string($payload['tags']) ? json_decode($payload['tags'], true) : $payload['tags'];
                 $userId = $tags['user_id'] ?? null;
                 $package = $tags['package'] ?? null;
-                
+
                 Log::debug('Extracted from tags', [
                     'user_id' => $userId,
                     'package' => $package,
@@ -1162,10 +1176,10 @@ class PaymentController extends Controller
             // Extract custom data
             $customData = [];
             if (isset($payload['custom'])) {
-                $customData = is_string($payload['custom']) 
-                    ? json_decode($payload['custom'], true) 
+                $customData = is_string($payload['custom'])
+                    ? json_decode($payload['custom'], true)
                     : (array) $payload['custom'];
-                
+
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     Log::warning('Failed to parse custom data as JSON, using as-is', [
                         'custom' => $payload['custom']
@@ -1293,7 +1307,8 @@ class PaymentController extends Controller
         $user->update([
             'payment_gateway_id' => $request->payment_gateway_id,
             'package_id' => $request->package_id,
-            'subscription_starts_at' => now()
+            'subscription_starts_at' => now(),
+            'license_key' => $this->makeLicense() ?? null,
         ]);
 
         return response()->json(['success' => true, 'message' => 'Payment details saved successfully']);
@@ -1318,12 +1333,12 @@ class PaymentController extends Controller
             if ($paymentGateway === 'Pay Pro Global') {
                 $vendorAccountId = config('payment.gateways.PayProGlobal.merchant_id');
                 $apiSecretKey = config('payment.gateways.PayProGlobal.api_secret');
-            
+
                 if (empty($vendorAccountId) || empty($apiSecretKey)) {
                     Log::error('PayProGlobal API credentials not configured for orders list');
                     return view('subscription.order', compact('paymentGateway'))->with('error', 'Payment system is not properly configured');
                 }
-            
+
                 // Batch fetch orders with pagination support
                 $cacheKey = "paypro_orders_{$user->id}";
                 $ordersData = Cache::remember($cacheKey, 300, function () use ($client, $vendorAccountId, $apiSecretKey) {
@@ -1341,9 +1356,9 @@ class PaymentController extends Controller
                     ]);
                     return json_decode($response->getBody(), true);
                 });
-            
+
                 $orderIds = array_column($ordersData['response'] ?? [], 'orderId');
-            
+
                 // Batch fetch order details
                 foreach (array_chunk($orderIds, 10) as $chunk) {
                     $promises = [];
@@ -1361,13 +1376,13 @@ class PaymentController extends Controller
                             ],
                         ]);
                     }
-            
+
                     $responses = \GuzzleHttp\Promise\Utils::settle($promises)->wait();
                     foreach ($responses as $orderId => $result) {
                         if ($result['state'] === 'fulfilled') {
                             $orderDetails = json_decode($result['value']->getBody(), true);
                             $order = $orderDetails['response'] ?? null;
-            
+
                             if ($order && $orderDetails['isSuccess']) {
                                 $orders[] = [
                                     'id' => $order['orderId'],
@@ -1426,7 +1441,7 @@ class PaymentController extends Controller
                     }
                 }
             } elseif ($paymentGateway === 'Paddle') {
-                $apiKey = config('payment.gateways.Paddle.apiKey');
+                $apiKey = config('payment.gateways.Paddle.api_key');
 
                 // Cache transactions for 5 minutes
                 $cacheKey = "paddle_orders_{$user->id}";
@@ -1476,5 +1491,10 @@ class PaymentController extends Controller
         } catch (\Exception $e) {
             return view('subscription.order', compact('paymentGateway'))->with('error', 'Failed to fetch orders');
         }
+    }
+
+    private function makeLicense($user)
+    {
+        return $user->id . Str::random(16);
     }
 }
