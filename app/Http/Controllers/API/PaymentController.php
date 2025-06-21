@@ -755,7 +755,7 @@ class PaymentController extends Controller
                         'user_payment_gateway_id' => $user->payment_gateway_id,
                         'user_package_id' => $user->package_id,
                         'user_subscription_starts_at' => $user->subscription_starts_at,
-                        'user_license_key' => $user->license_key,
+                        'user_license_key' => $this->addLicense($user),
                         'user_is_subscribed' => $user->is_subscribed
                     ]);
                     DB::commit();
@@ -1493,8 +1493,43 @@ class PaymentController extends Controller
         }
     }
 
-    private function makeLicense($user)
+    private function addLicense($user)
     {
-        return $user->id . Str::random(16);
+        $subscriptionKey = "5c745ccd024140ffad8af2ed7a30ccad";
+        try {
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add', [
+                'userId' => $user->id,
+                'subscriptionKey' => $subscriptionKey,
+            ]);
+            if ($response->successful()) {
+                Log::info('Xiaoice API call successful', [
+                    'user_id' => $user->id,
+                    'license_key' => $response->json()['data']['licenseKey'],
+                    'response' => $response->json()
+                ]);
+
+                $user->update([
+                    'license_key' => $response->json()['data']['licenseKey']
+                ]);
+
+                return $response->json();
+            } else {
+                Log::error('Xiaoice API call failed', [
+                    'user_id' => $user->id,
+                    'status' => $response->status(),
+                    'response' => $response->body()
+                ]);
+                return $response->json();
+            }
+        } catch (\Exception $e) {
+            Log::error('Xiaoice API call failed', [
+                'user_id' => $user->id,
+                'exception' => $e->getMessage()
+            ]);
+            return $user->id;
+        }
     }
 }
