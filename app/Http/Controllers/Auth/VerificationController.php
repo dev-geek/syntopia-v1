@@ -84,16 +84,16 @@ class VerificationController extends Controller
 
         // Clear email from session
         session()->forget('email');
-        
+
         // Log the user in
         Auth::login($user);
-        
+
         // Redirect based on user role
         if ($user->hasRole('User')) {
             return redirect()->route('subscriptions.index')
                 ->with('success', 'Email verified successfully!');
         }
-        
+
         return redirect()->route('login')
             ->with('success', 'Email verified successfully! You can now login.');
     }

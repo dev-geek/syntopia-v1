@@ -32,7 +32,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'verification_code',
         'payment_gateway_id',
         'subscription_starts_at',
-        'package_id'
+        'package_id',
+        'license_key',
+        'is_subscribed',
     ];
 
     /**
