@@ -356,14 +356,11 @@ class PaymentController extends Controller
             if (!$packageModel) {
                 return response()->json(['error' => 'Package not found'], 404);
             }
-
-            // Call Xiaoice API and update subscription
-            $xiaoiceResponse = $this->callXiaoiceApi($userId);
+            
             $this->activateUserSubscription($user, $package, 'Paddle');
 
             return response()->json([
                 'status' => 'processed',
-                'xiaoice_response' => $xiaoiceResponse
             ]);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Processing failed'], 500);
@@ -602,9 +599,6 @@ class PaymentController extends Controller
                     $order->status = 'completed';
                     $order->save();
             
-                    // Call Xiaoice API
-                    $xiaoiceResponse = $this->callXiaoiceApi($user->id);
-            
                     DB::commit();
             
                     return response()->json([
@@ -681,8 +675,6 @@ class PaymentController extends Controller
                     
                     $order->status = 'completed';
                     $order->save();
-
-                    $xiaoiceResponse = $this->callXiaoiceApi($user->id);
                     
                     DB::commit();
                     
@@ -749,13 +741,6 @@ class PaymentController extends Controller
                         'subscription_starts_at' => now(),
                     ]);
 
-                    $xiaoiceResponse = $this->callXiaoiceApi($user->id);
-
-                    if ($xiaoiceResponse['code'] === 500) {
-                        $user->is_subscribed = 1;
-                        $user->save();
-                    }
-            
                     $order->status = 'completed';
                     $order->save();
             
@@ -1058,7 +1043,6 @@ class PaymentController extends Controller
                 $user = User::where('email', $userEmail)->first();
                 if ($user) {
                     $userId = $user->id;
-                    $xiaoiceResponse = $this->callXiaoiceApi($userId);
                     Log::debug('Found user by email', [
                         'email' => $userEmail,
                         'user_id' => $userId
@@ -1493,51 +1477,4 @@ class PaymentController extends Controller
             return view('subscription.order', compact('paymentGateway'))->with('error', 'Failed to fetch orders');
         }
     }
-    
-    private function callXiaoiceApi($userId)
-{
-    try {
-        $user = User::find($userId);
-        if (!$user) {
-            Log::error('User not found for Xiaoice API call', ['user_id' => $userId]);
-            return null;
-        }
-
-        $response = Http::withHeaders([
-            'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json'
-        ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
-            'name' => "Test User",
-            'adminName' => "Test User",
-            'adminEmail' => "test@test.com",
-            'appIds' => [2],
-        ]);
-
-        if ($response->successful()) {
-            Log::info('Xiaoice API call successful', [
-                'user_id' => $userId,
-                'response' => $response->json()
-            ]);
-            
-            // Update is_subscribed to true
-            User::where('id', $userId)->update(['is_subscribed' => true]);
-            
-            return $response->json();
-        } else {
-            Log::error('Xiaoice API call failed', [
-                'user_id' => $userId,
-                'status' => $response->status(),
-                'response' => $response->body()
-            ]);
-            return null;
-        }
-    } catch (\Exception $e) {
-        Log::error('Error calling Xiaoice API', [
-            'user_id' => $userId,
-            'error' => $e->getMessage()
-        ]);
-        return null;
-    }
-}
 }

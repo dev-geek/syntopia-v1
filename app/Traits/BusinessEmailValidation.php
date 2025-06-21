@@ -28,13 +28,24 @@ trait BusinessEmailValidation
         
         $domain = strtolower(substr(strrchr($email, "@"), 1));
         
+        // Log the original domain
+        \Log::info('Original domain extracted', ['email' => $email, 'domain' => $domain]);
+        
         // Remove any subdomains 
         $domainParts = explode('.', $domain);
         if (count($domainParts) > 2) {
             $domain = $domainParts[count($domainParts) - 2] . '.' . $domainParts[count($domainParts) - 1];
+            \Log::info('Domain after subdomain processing', ['original_domain' => $domain, 'processed_domain' => $domain]);
         }
         
-        // If domain is not in the personal domains list, consider it a business email
-        return !in_array($domain, $personalDomains);
+        $isBusiness = !in_array($domain, $personalDomains);
+        \Log::info('Business email check result', [
+            'email' => $email,
+            'domain_checked' => $domain,
+            'is_business' => $isBusiness,
+            'in_personal_domains' => in_array($domain, $personalDomains)
+        ]);
+        
+        return $isBusiness;
     }
 }

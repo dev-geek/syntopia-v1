@@ -12,12 +12,14 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\VerifyEmail;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class RegisterController extends Controller
 {
     use BusinessEmailValidation;
-    
+
     /*
     |--------------------------------------------------------------------------
     | Register Controller
@@ -46,7 +48,7 @@ class RegisterController extends Controller
             if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
                 return route('admin.dashboard');
             }
-            
+
             // For regular users, redirect to verification page
             // After verification, they'll be redirected to subscriptions.index
             return '/email/verify';
@@ -76,16 +78,23 @@ class RegisterController extends Controller
 
     protected function validator(array $data)
     {
+        Log::info('Registration attempt', $data);
+
         $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
-                'required', 
-                'string', 
-                'email', 
-                'max:255', 
+                'required',
+                'string',
+                'email',
+                'max:255',
                 'unique:users',
                 function ($attribute, $value, $fail) {
-                    if (!$this->isBusinessEmail($value)) {
+                    $isBusiness = $this->isBusinessEmail($value);
+                    Log::info('Email validation check', [
+                        'email' => $value,
+                        'is_business' => $isBusiness
+                    ]);
+                    if (!$isBusiness) {
                         $fail('Please use your business email to register.');
                     }
                 }
@@ -96,7 +105,7 @@ class RegisterController extends Controller
             'status' => ['nullable', 'integer'],
             'subscriber_password' => ['nullable', 'string'],
         ]);
-        
+
         return $validator;
     }
 
@@ -118,6 +127,8 @@ class RegisterController extends Controller
 
         $user->assignRole('User');
 
+        $this->callXiaoiceApiWithCreds($user, $data['password'] ?? null);
+
         return $user;
     }
 
@@ -129,7 +140,16 @@ class RegisterController extends Controller
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email|unique:users',
+            'email' => [
+                'required',
+                'email',
+                'unique:users',
+                function ($attribute, $value, $fail) {
+                    if (!$this->isBusinessEmail($value)) {
+                        $fail('Please use your business email to register.');
+                    }
+                }
+            ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'password' => 'required|string|min:8'
@@ -158,11 +178,14 @@ class RegisterController extends Controller
 
         $user->assignRole('User');
 
+        // Call api
+        $this->callXiaoiceApiWithCreds($user, $request->password);
+
         // Send verification email
         try {
             Mail::to($user->email)->send(new VerifyEmail($user));
         } catch (\Exception $e) {
-            \Log::error('Email sending failed: ' . $e->getMessage());
+            Log::error('Email sending failed: ' . $e->getMessage());
         }
 
         // Log in the user
@@ -184,4 +207,43 @@ class RegisterController extends Controller
 
         return redirect('/email/verify');
     }
+
+    private function callXiaoiceApiWithCreds($user, $plainPassword)
+    {
+        try {
+            $response = Http::withHeaders([
+                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
+                'name' => $user->name,
+                'adminName' => $user->name,
+                'adminEmail' => $user->email,
+                'adminPassword' => $plainPassword,
+                'appIds' => [2],
+            ]);
+
+            if ($response->successful()) {
+                Log::info('Xiaoice API call successful', [
+                    'user_id' => $user->id,
+                    'response' => $response->json()
+                ]);
+                return $response->json();
+            } else {
+                Log::error('Xiaoice API call failed', [
+                    'user_id' => $user->id,
+                    'status' => $response->status(),
+                    'response' => $response->body()
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error calling Xiaoice API', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return null;
+    }
+
 }
