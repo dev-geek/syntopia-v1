@@ -6,6 +6,8 @@
     <title>Signup - Syntopia</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('plugins/fontawesome-free/css/all.min.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
          body {
             background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
@@ -120,7 +122,7 @@
         <div class="container-box text-center">
             <h1 class="heading-text">Welcome To Syntopia</h1>
             <p class="email-text">You're setting up an account for {{ request()->get('email') }}</p>
-
+            @include('components.alert-messages')
             <!-- Signup Form -->
             <form method="POST" action="{{ route('register') }}">
             @csrf
@@ -158,12 +160,17 @@
                         </span>
                     @enderror
                 </div>
-                <div class="mb-3">
+                <div class="mb-3 position-relative">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" class="form-control @error('password') is-invalid @enderror"
-                        placeholder="Enter a strong password" required>
+                    <div class="input-group">
+                        <input type="password" id="password" name="password" class="form-control @error('password') is-invalid @enderror"
+                            placeholder="Enter a strong password" required>
+                        <button type="button" class="btn btn-outline-secondary" id="togglePassword" tabindex="-1">
+                            <i class="fas fa-eye" id="togglePasswordIcon"></i>
+                        </button>
+                    </div>
                     @error('password')
-                        <span class="invalid-feedback" role="alert">
+                        <span class="invalid-feedback d-block" role="alert">
                             <strong>{{ $message }}</strong>
                         </span>
                     @enderror
@@ -194,5 +201,18 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById("togglePassword").addEventListener("click", function () {
+            const passwordField = document.getElementById("password");
+            const passwordIcon = document.getElementById("togglePasswordIcon");
+
+            const isPassword = passwordField.getAttribute("type") === "password";
+            passwordField.setAttribute("type", isPassword ? "text" : "password");
+
+            // Toggle the icon classes
+            passwordIcon.classList.toggle("fa-eye");
+            passwordIcon.classList.toggle("fa-eye-slash");
+        });
+    </script>
 </body>
 </html>
