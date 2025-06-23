@@ -40,95 +40,95 @@
     <script>
         let currentProductPath = '';
 
-            function processFastSpring(productPath) {
-                try {
-                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                        throw new Error('FastSpring is not properly initialized');
-                    }
-                    fastspring.builder.reset();
-                    const packageName = productPath.replace('-plan', '').toLowerCase();
-                    currentProductPath = productPath;
-                    fastspring.builder.add(packageName);
-                    setTimeout(() => {
-                        fastspring.builder.checkout();
-                    }, 500);
-                } catch (error) {
-                    throw error;
+        function processFastSpring(productPath) {
+            try {
+                if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                    throw new Error('FastSpring is not properly initialized');
                 }
+                fastspring.builder.reset();
+                const packageName = productPath.replace('-plan', '').toLowerCase();
+                currentProductPath = productPath;
+                fastspring.builder.add(packageName);
+                setTimeout(() => {
+                    fastspring.builder.checkout();
+                }, 500);
+            } catch (error) {
+                throw error;
             }
+        }
 
-            function onFSPopupClosed(orderData) {
-                try {
-                    if (orderData && (orderData.reference || orderData.id)) {
-                        const orderId = orderData.reference || orderData.id;
+        function onFSPopupClosed(orderData) {
+            try {
+                if (orderData && (orderData.reference || orderData.id)) {
+                    const orderId = orderData.reference || orderData.id;
 
-                        if (typeof fastspring !== 'undefined' && fastspring.builder) {
-                            fastspring.builder.reset();
-                        }
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = '/api/payments/success';
-                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-                        if (csrfToken) {
-                            const csrfInput = document.createElement('input');
-                            csrfInput.type = 'hidden';
-                            csrfInput.name = '_token';
-                            csrfInput.value = csrfToken;
-                            form.appendChild(csrfInput);
-                        }
-                        const gatewayInput = document.createElement('input');
-                        gatewayInput.type = 'hidden';
-                        gatewayInput.name = 'gateway';
-                        gatewayInput.value = 'fastspring';
-                        form.appendChild(gatewayInput);
-                        const orderIdInput = document.createElement('input');
-                        orderIdInput.type = 'hidden';
-                        orderIdInput.name = 'orderId';
-                        orderIdInput.value = orderId;
-                        form.appendChild(orderIdInput);
-                        const packageIdInput = document.createElement('input');
-                        packageIdInput.type = 'hidden';
-                        packageIdInput.name = 'package_id';
-                        packageIdInput.value = 3;
-                        form.appendChild(packageIdInput);
-                        const paymentGatewayIdInput = document.createElement('input');
-                        paymentGatewayIdInput.type = 'hidden';
-                        paymentGatewayIdInput.name = 'payment_gateway_id';
-                        paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
-                        form.appendChild(paymentGatewayIdInput);
-                        document.body.appendChild(form);
-                        form.submit();
-                    } else {
-                        if (typeof Swal !== 'undefined') {
-                            Swal.fire({
-                                icon: 'info',
-                                title: 'Payment Cancelled',
-                                text: 'Your payment was cancelled. You can try again anytime.',
-                                confirmButtonText: 'OK'
-                            }).then(() => {
-                                window.location.href = "/pricing";
-                            });
-                        } else {
-                            alert('Payment Cancelled: Your payment was cancelled. You can try again anytime.');
-                            window.location.href = "/pricing";
-                        }
+                    if (typeof fastspring !== 'undefined' && fastspring.builder) {
+                        fastspring.builder.reset();
                     }
-                } catch (err) {
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/api/payments/success';
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                    if (csrfToken) {
+                        const csrfInput = document.createElement('input');
+                        csrfInput.type = 'hidden';
+                        csrfInput.name = '_token';
+                        csrfInput.value = csrfToken;
+                        form.appendChild(csrfInput);
+                    }
+                    const gatewayInput = document.createElement('input');
+                    gatewayInput.type = 'hidden';
+                    gatewayInput.name = 'gateway';
+                    gatewayInput.value = 'fastspring';
+                    form.appendChild(gatewayInput);
+                    const orderIdInput = document.createElement('input');
+                    orderIdInput.type = 'hidden';
+                    orderIdInput.name = 'orderId';
+                    orderIdInput.value = orderId;
+                    form.appendChild(orderIdInput);
+                    const packageIdInput = document.createElement('input');
+                    packageIdInput.type = 'hidden';
+                    packageIdInput.name = 'package_id';
+                    packageIdInput.value = 3;
+                    form.appendChild(packageIdInput);
+                    const paymentGatewayIdInput = document.createElement('input');
+                    paymentGatewayIdInput.type = 'hidden';
+                    paymentGatewayIdInput.name = 'payment_gateway_id';
+                    paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
+                    form.appendChild(paymentGatewayIdInput);
+                    document.body.appendChild(form);
+                    form.submit();
+                } else {
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
-                            icon: 'error',
-                            title: 'Processing Error',
-                            text: 'There was an error processing your payment. Please contact support if your payment was charged.',
+                            icon: 'info',
+                            title: 'Payment Cancelled',
+                            text: 'Your payment was cancelled. You can try again anytime.',
                             confirmButtonText: 'OK'
                         }).then(() => {
                             window.location.href = "/pricing";
                         });
                     } else {
-                        alert('Processing Error: There was an error processing your payment. Please contact support.');
+                        alert('Payment Cancelled: Your payment was cancelled. You can try again anytime.');
                         window.location.href = "/pricing";
                     }
                 }
+            } catch (err) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Processing Error',
+                        text: 'There was an error processing your payment. Please contact support if your payment was charged.',
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.href = "/pricing";
+                    });
+                } else {
+                    alert('Processing Error: There was an error processing your payment. Please contact support.');
+                    window.location.href = "/pricing";
+                }
             }
+        }
     </script>
     @endif
 
@@ -137,21 +137,21 @@
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-                try {
-                    Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
-                    Paddle.Setup({
-                        token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
-                    });
+            try {
+                Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment ', 'sandbox ') }}');
+                Paddle.Setup({
+                    token: '{{ config('payment.gateways.Paddle.client_side_token ') }}',
+                });
 
-                } catch (error) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment System Error',
-                        text: 'We cannot process payments at this moment. Our team has been notified. Please try again later.',
-                        confirmButtonText: 'OK'
-                    });
-                }
-            });
+            } catch (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Payment System Error',
+                    text: 'We cannot process payments at this moment. Our team has been notified. Please try again later.',
+                    confirmButtonText: 'OK'
+                });
+            }
+        });
     </script>
     @endif
 
@@ -645,532 +645,534 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
         document.addEventListener("DOMContentLoaded", function() {
-            const currentPackage = "{{ $currentPackage ?? '' }}";
-            const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
-            const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
-            const selectedGateway = userOriginalGateway && userOriginalGateway.trim() !== "" ?
-                userOriginalGateway :
-                (activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null);
+                    const currentPackage = "{{ $currentPackage ?? '' }}";
+                    const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
+                    const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
+                    const selectedGateway = userOriginalGateway && userOriginalGateway.trim() !== "" ?
+                        userOriginalGateway :
+                        (activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null);
 
-            document.querySelectorAll('.checkout-button').forEach(button => {
-                button.addEventListener('click', function() {
-                    if (this.disabled) return;
-                    this.disabled = true;
-                    const productPath = this.getAttribute('data-package');
-                    processCheckout(productPath);
-                    setTimeout(() => {
-                        this.disabled = false;
-                    }, 3000);
-                });
-            });
-
-            const packageFromURL = "{{ $currentPackage ?? '' }}";
-            if (packageFromURL && packageFromURL !== '' && packageFromURL !== currentPackage) {
-                processCheckout(packageFromURL.toLowerCase() + "-plan");
-            }
-
-            function processCheckout(productPath) {
-                try {
-                    if (!selectedGateway) {
-                        throw new Error('No payment gateway selected');
-                    }
-                    switch (selectedGateway) {
-                        case 'FastSpring':
-                            processFastSpring(productPath);
-                            break;
-                        case 'Paddle':
-                            processPaddle(productPath);
-                            break;
-                        case 'Pay Pro Global':
-                            processPayProGlobal(productPath);
-                            break;
-                        default:
-                            throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
-                    }
-                } catch (error) {
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Gateway Error',
-                            text: error.message ||
-                                'Payment gateway error. Please try again later or contact support.',
-                            confirmButtonText: 'OK'
+                    document.querySelectorAll('.checkout-button').forEach(button => {
+                        button.addEventListener('click', function() {
+                            if (this.disabled) return;
+                            this.disabled = true;
+                            const productPath = this.getAttribute('data-package');
+                            processCheckout(productPath);
+                            setTimeout(() => {
+                                this.disabled = false;
+                            }, 3000);
                         });
-                    } else {
-                        alert('Payment Gateway Error: ' + (error.message ||
-                            'Payment gateway error. Please try again later or contact support.'));
+                    });
+
+                    const packageFromURL = "{{ $currentPackage ?? '' }}";
+                    if (packageFromURL && packageFromURL !== '' && packageFromURL !== currentPackage) {
+                        processCheckout(packageFromURL.toLowerCase() + "-plan");
                     }
-                }
-            }
 
-            function processFastSpring(productPath) {
-                try {
-                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                        throw new Error('FastSpring is not properly initialized');
+                    function processCheckout(productPath) {
+                        try {
+                            if (!selectedGateway) {
+                                throw new Error('No payment gateway selected');
+                            }
+                            switch (selectedGateway) {
+                                case 'FastSpring':
+                                    processFastSpring(productPath);
+                                    break;
+                                case 'Paddle':
+                                    processPaddle(productPath);
+                                    break;
+                                case 'Pay Pro Global':
+                                    processPayProGlobal(productPath);
+                                    break;
+                                default:
+                                    throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
+                            }
+                        } catch (error) {
+                            if (typeof Swal !== 'undefined') {
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Payment Gateway Error',
+                                    text: error.message ||
+                                        'Payment gateway error. Please try again later or contact support.',
+                                    confirmButtonText: 'OK'
+                                });
+                            } else {
+                                alert('Payment Gateway Error: ' + (error.message ||
+                                    'Payment gateway error. Please try again later or contact support.'));
+                            }
+                        }
                     }
-                    fastspring.builder.reset();
-                    const packageName = productPath.replace('-plan', '').toLowerCase();
-                    fastspring.builder.add(packageName);
-                    setTimeout(() => {
-                        fastspring.builder.checkout();
-                    }, 500);
-                } catch (error) {
-                    throw error;
-                }
-            }
 
-            function processPaddle(productPath) {
-                const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
+                    function processFastSpring(productPath) {
+                        try {
+                            if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                                throw new Error('FastSpring is not properly initialized');
+                            }
+                            fastspring.builder.reset();
+                            const packageName = productPath.replace('-plan', '').toLowerCase();
+                            fastspring.builder.add(packageName);
+                            setTimeout(() => {
+                                fastspring.builder.checkout();
+                            }, 500);
+                        } catch (error) {
+                            throw error;
+                        }
+                    }
 
-                fetch(apiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        credentials: 'same-origin'
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (!data.success) {
-                            throw new Error(data.message || data.error || 'Unknown error occurred');
-                        }
-                        if (data.transaction_id && typeof Paddle !== 'undefined') {
-                            Paddle.Checkout.open({
-                                transactionId: data.transaction_id,
-                                eventCallback: function(eventData) {
-                                    if (eventData.event === 'checkout.completed') {
-                                        window.location.href = '/user/dashboard';
-                                    } else if (eventData.event === 'checkout.failed') {
-                                        Swal.fire({
-                                            icon: 'error',
-                                            title: 'Payment Failed',
-                                            text: eventData.data.error ||
-                                                'An error occurred during payment. Please try again.',
-                                            confirmButtonText: 'OK'
-                                        }).then(() => {
-                                            window.location.reload();
-                                        });
-                                    } else if (eventData.event === 'checkout.closed' && !eventData
-                                        .data.success) {
-                                        Swal.fire({
-                                            icon: 'info',
-                                            title: 'Payment Cancelled',
-                                            text: 'Your payment was cancelled. You can try again anytime.',
-                                            confirmButtonText: 'OK'
-                                        }).then(() => {
-                                            window.location.reload();
-                                        });
-                                    }
+                    function processPaddle(productPath) {
+                        const packageName = productPath.replace('-plan', '');
+                        const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
+
+                        fetch(apiUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('
+                                    api ')->plainTextToken : '
+                                    ' }}',
+                                    'X-CSRF-TOKEN': csrfToken,
+                                    'X-Requested-With': 'XMLHttpRequest'
+                                },
+                                credentials: 'same-origin'
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                if (!data.success) {
+                                    throw new Error(data.message || data.error || 'Unknown error occurred');
+                                }
+                                if (data.transaction_id && typeof Paddle !== 'undefined') {
+                                    Paddle.Checkout.open({
+                                        transactionId: data.transaction_id,
+                                        eventCallback: function(eventData) {
+                                            console.log(eventData.data.event);
+                                            if (eventData.data?.event?.name === 'checkout.completed') {
+                                                window.location.href = '/user/dashboard';
+                                            } else if (eventData.data?.event?.name === 'checkout.failed') {
+                                                Swal.fire({
+                                                    icon: 'error',
+                                                    title: 'Payment Failed',
+                                                    text: eventData.data.error ||
+                                                        'An error occurred during payment. Please try again.',
+                                                    confirmButtonText: 'OK'
+                                                }).then(() => {
+                                                    window.location.reload();
+                                                });
+                                            } else if (eventData.data?.event?.name === 'checkout.closed' && !eventData
+                                                .data.success) {
+                                                Swal.fire({
+                                                    icon: 'info',
+                                                    title: 'Payment Cancelled',
+                                                    text: 'Your payment was cancelled. You can try again anytime.',
+                                                    confirmButtonText: 'OK'
+                                                }).then(() => {
+                                                    window.location.reload();
+                                                });
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    throw new Error('No transaction ID provided');
+                                }
+                            })
+                            .catch(error => {
+                                if (typeof Swal !== 'undefined') {
+                                    Swal.fire({
+                                        icon: 'error',
+                                        title: 'Checkout Failed',
+                                        text: error.message ||
+                                            'An error occurred while processing your checkout. Please try again later.',
+                                        confirmButtonText: 'OK'
+                                    });
+                                } else {
+                                    alert('Checkout Failed: ' + (error.message ||
+                                        'An error occurred while processing your checkout. Please try again later.'
+                                    ));
                                 }
                             });
-                        } else {
-                            throw new Error('No transaction ID provided');
-                        }
-                    })
-                    .catch(error => {
-                        if (typeof Swal !== 'undefined') {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Checkout Failed',
-                                text: error.message ||
-                                    'An error occurred while processing your checkout. Please try again later.',
-                                confirmButtonText: 'OK'
-                            });
-                        } else {
-                            alert('Checkout Failed: ' + (error.message ||
-                                'An error occurred while processing your checkout. Please try again later.'
-                            ));
-                        }
-                    });
-            }
-
-            function processPayProGlobal(productPath) {
-                console.log('[PayProGlobal] Starting payment process for product:', productPath);
-                const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
-                const paymentId = 'pay-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                let paymentWindow = null;
-                let paymentCompleted = false;
-                let paymentVerified = false;
-                let checkInterval = null;
-
-                // Function to clean up resources
-                const cleanup = () => {
-                    window.removeEventListener('message', messageHandler);
-                    window.removeEventListener('beforeunload', cleanup);
-                    if (checkInterval) clearInterval(checkInterval);
-                    if (paymentWindow && !paymentWindow.closed) {
-                        paymentWindow.close();
                     }
-                    localStorage.removeItem('pendingPayment');
-                };
 
-                // Function to verify payment status via API
-                const verifyPaymentStatus = async () => {
-                    try {
-                        const response = await fetch(`/api/payments/verify-payproglobal/${paymentId}`, {
-                            method: 'GET',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Accept': 'application/json',
-                                'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
+                    // Enhanced PayProGlobal payment processing function
+                    function processPayProGlobal(productPath) {
+                        console.log('[PayProGlobal] Starting payment process for product:', productPath);
+
+                        const packageName = productPath.replace('-plan', '');
+                        const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
+
+                        let paymentWindow = null;
+                        let paymentCompleted = false;
+                        let checkInterval = null;
+                        let paymentReference = null;
+
+                        // Helper function for debugging
+                        const debugLog = (message, data = null) => {
+                            console.log(`[PayProGlobal Debug] ${message}`, data || '');
+                        };
+
+                        // Cleanup function to clear intervals and close windows
+                        const cleanup = () => {
+                            if (checkInterval) {
+                                clearInterval(checkInterval);
+                                checkInterval = null;
                             }
-                        });
-                        const data = await response.json();
-                        return data.status === 'completed';
-                    } catch (error) {
-                        return false;
-                    }
-                };
+                            if (paymentWindow && !paymentWindow.closed) {
+                                try {
+                                    paymentWindow.close();
+                                } catch (e) {
+                                    debugLog('Error closing payment window:', e);
+                                }
+                            }
+                        };
 
-                // Function to handle payment completion
-                const handlePaymentComplete = async (source) => {
-                    debugLog(`Payment complete triggered from: ${source}`);
-                    if (paymentCompleted) {
-                        debugLog('Payment already marked as completed, skipping');
-                        return;
-                    }
+                        // Function to verify payment status via our API
+                        const verifyPaymentStatus = async (reference) => {
+                            try {
+                                debugLog('Verifying payment status for reference:', reference);
 
-                    paymentCompleted = true;
+                                const response = await fetch(`/api/payments/verify-payproglobal/${reference}`, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': csrfToken,
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                        'Accept': 'application/json',
+                                        'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
+                                    }
+                                });
 
-                    // Verify payment status before proceeding
-                    const isVerified = await verifyPaymentStatus();
-                    if (!isVerified) {
-                        debugLog('Payment verification failed');
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Verification Failed',
-                            text: 'Your payment could not be verified. Please contact support.',
-                            confirmButtonText: 'OK'
-                        }).then(() => {
+                                const data = await response.json();
+                                debugLog('Payment verification response:', data);
+
+                                return {
+                                    isCompleted: data.status === 'completed',
+                                    isPending: data.status === 'pending',
+                                    isError: data.status === 'error',
+                                    message: data.message,
+                                    orderId: data.order_id
+                                };
+                            } catch (error) {
+                                debugLog('Error verifying payment status:', error);
+                                return {
+                                    isCompleted: false,
+                                    isPending: false,
+                                    isError: true
+                                };
+                            }
+                        };
+
+                        // Function to handle successful payment completion
+                        const handlePaymentSuccess = async (source) => {
+                            debugLog(`Payment success detected from: ${source}`);
+
+                            if (paymentCompleted) {
+                                debugLog('Payment already processed, skipping duplicate');
+                                return;
+                            }
+
+                            paymentCompleted = true;
                             cleanup();
-                            window.location.href = '/pricing';
-                        });
-                        return;
-                    }
 
-                    // Send transaction details to server
-                    const transactionData = {
-                        transaction_id: paymentId,
-                        paymentId: paymentId,
-                        package: packageName,
-                        timestamp: Date.now(),
-                        _token: csrfToken
-                    };
+                            // Verify the payment one more time to be sure
+                            if (paymentReference) {
+                                const verification = await verifyPaymentStatus(paymentReference);
 
-                    debugLog('Sending transaction details to server:', transactionData);
+                                if (verification.isCompleted) {
+                                    debugLog('Payment verification successful, redirecting to dashboard');
 
-                    const successUrl = new URL('{{ route('payments.success') }}');
-                    const params = new URLSearchParams();
-                    params.append('gateway', 'payproglobal');
-                    params.append('order_id', paymentId);
-                    params.append('user_id', '{{ Auth::id() }}');
-                    params.append('package', packageName);
-                    params.append('payment_id', paymentId);
-                    params.append('payment_gateway_id', '{{ $activeGateway->id ?? '' }}');
-                    params.append('redirect_to', '/user/dashboard');
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Payment Completed!',
+                                        text: 'Your subscription has been successfully activated.',
+                                        confirmButtonText: 'Continue to Dashboard',
+                                        allowOutsideClick: false
+                                    }).then(() => {
+                                        window.location.href = '/user/dashboard';
+                                    });
+                                    return;
+                                }
 
-                    successUrl.search = params.toString();
+                                if (verification.isPending) {
+                                    debugLog('Payment is pending verification');
 
-                    fetch(successUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json',
-                            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
-                        },
-                        body: JSON.stringify(transactionData)
-                    })
-                    .then(response => {
-                        debugLog('Server response status:', response.status);
-                        if (!response.ok) {
-                            return response.json().then(err => { throw err; });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        debugLog('Transaction details saved:', data);
-                        localStorage.removeItem('pendingPayment');
-
-                        if (data.status === 'success') {
-                            debugLog('Showing success message');
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Payment Completed!',
-                                text: data.message || 'Your subscription has been successfully updated.',
-                                confirmButtonText: 'OK'
-                            }).then(() => {
-                                cleanup();
-                                window.location.href = data.redirect || '/user/dashboard';
-                            });
-                        } else if (data.status === 'pending') {
-                            debugLog('Payment is pending verification');
-                            Swal.fire({
-                                icon: 'info',
-                                title: 'Payment Processing',
-                                text: data.message || 'Your payment is being processed. Please check your email for confirmation.',
-                                confirmButtonText: 'OK'
-                            }).then(() => {
-                                cleanup();
-                                window.location.href = data.redirect || '/user/dashboard';
-                            });
-                        } else {
-                            throw new Error(data.message || 'An unknown error occurred');
-                        }
-                    })
-                    .catch(error => {
-                        debugLog('Error saving transaction details:', error);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Error',
-                            text: error.message || 'Your payment was processed, but there was an issue updating your subscription. Please contact support.',
-                            confirmButtonText: 'OK'
-                        }).then(() => {
-                            cleanup();
-                            window.location.href = '/pricing';
-                        });
-                    });
-                };
-
-                // Function to check payment status
-                const checkPaymentStatus = async () => {
-                    debugLog('Checking payment status...');
-                    try {
-                        if (paymentWindow && paymentWindow.closed) {
-                            debugLog('Payment window was closed by user');
-                            clearInterval(checkInterval);
-
-                            if (!paymentCompleted && !paymentVerified) {
-                                debugLog('Checking payment status before showing cancel message');
-                                // Delay verification to allow webhook processing
-                                await new Promise(resolve => setTimeout(resolve, 5000));
-                                const isVerified = await verifyPaymentStatus();
-                                if (isVerified) {
-                                    debugLog('Payment was verified before window close');
-                                    paymentVerified = true;
-                                    handlePaymentComplete('verified');
-                                } else {
-                                    debugLog('Payment was not completed or verified');
                                     Swal.fire({
                                         icon: 'info',
-                                        title: 'Checkout Cancelled',
-                                        text: 'The payment process was cancelled. You can try again anytime.',
-                                        confirmButtonText: 'OK'
+                                        title: 'Payment Processing',
+                                        text: 'Your payment is being processed. Please check your dashboard in a few minutes.',
+                                        confirmButtonText: 'Go to Dashboard'
                                     }).then(() => {
-                                        cleanup();
-                                        window.location.href = '/pricing';
+                                        window.location.href = '/user/dashboard';
                                     });
+                                    return;
                                 }
-                            } else if (paymentVerified) {
-                                debugLog('Payment was verified before window close');
-                                handlePaymentComplete('verified');
                             }
-                            return;
-                        }
 
-                        try {
-                            const url = paymentWindow.location.href;
-                            debugLog('Payment window URL:', url);
+                            // Fallback success message
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Payment Submitted',
+                                text: 'Your payment has been submitted. Please check your email for confirmation.',
+                                confirmButtonText: 'Continue'
+                            }).then(() => {
+                                window.location.href = '/user/dashboard';
+                            });
+                        };
 
-                            if (url.includes('payproglobal.com/thankyou') ||
-                                url.includes('payproglobal.com/thank_you') ||
-                                url.includes('payproglobal.com/success')) {
-                                debugLog('Detected success URL, completing payment');
-                                paymentVerified = true;
-                                handlePaymentComplete('URL check');
+                        // Function to handle payment cancellation
+                        const handlePaymentCancel = () => {
+                            debugLog('Payment was cancelled by user');
+
+                            if (paymentCompleted) return;
+
+                            cleanup();
+
+                            Swal.fire({
+                                icon: 'info',
+                                title: 'Payment Cancelled',
+                                text: 'Your payment was cancelled. You can try again anytime.',
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                // Stay on current page
+                            });
+                        };
+
+                        // Function to check payment window status and URL
+                        const checkPaymentStatus = async () => {
+                            try {
+                                // Check if window was closed by user
+                                if (paymentWindow && paymentWindow.closed) {
+                                    debugLog('Payment window was closed by user');
+                                    clearInterval(checkInterval);
+
+                                    if (!paymentCompleted && paymentReference) {
+                                        // Give webhook a moment to process before checking
+                                        await new Promise(resolve => setTimeout(resolve, 3000));
+
+                                        const verification = await verifyPaymentStatus(paymentReference);
+
+                                        if (verification.isCompleted) {
+                                            debugLog('Payment was completed before window close');
+                                            handlePaymentSuccess('delayed verification');
+                                        } else {
+                                            debugLog('Payment was not completed when window closed');
+                                            handlePaymentCancel();
+                                        }
+                                    }
+                                    return;
+                                }
+
+                                // Try to check the URL of the payment window
+                                try {
+                                    if (paymentWindow && paymentWindow.location) {
+                                        const currentUrl = paymentWindow.location.href;
+                                        debugLog('Current payment window URL:', currentUrl);
+
+                                        // Check for success indicators in the URL
+                                        if (currentUrl.includes('success') ||
+                                            currentUrl.includes('thank') ||
+                                            currentUrl.includes('complete') ||
+                                            currentUrl.includes('thankyou')) {
+                                            debugLog('Success URL detected, completing payment');
+                                            handlePaymentSuccess('URL detection');
+                                        }
+                                    }
+                                } catch (crossOriginError) {
+                                    // This is expected when the iframe is on a different domain
+                                    debugLog('Cross-origin restriction (normal for payment pages)');
+                                }
+
+                                // Periodically verify payment status even if we can't check the URL
+                                if (paymentReference && !paymentCompleted) {
+                                    const verification = await verifyPaymentStatus(paymentReference);
+                                    if (verification.isCompleted) {
+                                        debugLog('Payment completion detected via API check');
+                                        handlePaymentSuccess('API polling');
+                                    }
+                                }
+
+                            } catch (error) {
+                                debugLog('Error in payment status check:', error);
                             }
-                        } catch (e) {
-                            debugLog('Cross-origin error, relying on API verification');
+                        };
+
+                        // Open the payment window
+                        const openPaymentWindow = () => {
+                            const width = 1000;
+                            const height = 700;
+                            const left = (window.screen.width - width) / 2;
+                            const top = (window.screen.height - height) / 2;
+
+                            try {
+                                paymentWindow = window.open(
+                                    'about:blank',
+                                    'PayProGlobalCheckout',
+                                    `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+                                );
+
+                                if (!paymentWindow) {
+                                    throw new Error('Payment window was blocked by your browser. Please allow popups and try again.');
+                                }
+
+                                // Show loading content in the payment window
+                                paymentWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                    <head>
+                        <title>Processing Payment...</title>
+                        <style>
+                            body { 
+                                font-family: 'Inter', Arial, sans-serif; 
+                                display: flex; 
+                                justify-content: center; 
+                                align-items: center; 
+                                height: 100vh; 
+                                margin: 0; 
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                            }
+                            .loader {
+                                text-align: center;
+                                padding: 40px;
+                                background: rgba(255, 255, 255, 0.1);
+                                border-radius: 15px;
+                                backdrop-filter: blur(10px);
+                            }
+                            .spinner {
+                                border: 4px solid rgba(255, 255, 255, 0.3);
+                                border-top: 4px solid white;
+                                border-radius: 50%;
+                                width: 60px;
+                                height: 60px;
+                                animation: spin 1s linear infinite;
+                                margin: 0 auto 20px;
+                            }
+                            @keyframes spin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                            }
+                            h2 { margin: 20px 0 10px; font-weight: 600; }
+                            p { margin: 0; opacity: 0.9; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="loader">
+                            <div class="spinner"></div>
+                            <h2>Connecting to Payment Gateway</h2>
+                            <p>Please wait while we securely redirect you to complete your payment...</p>
+                        </div>
+                    </body>
+                </html>
+            `);
+
+                                return true;
+                            } catch (error) {
+                                debugLog('Error opening payment window:', error);
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Unable to Open Payment Window',
+                                    text: error.message,
+                                    confirmButtonText: 'OK'
+                                });
+                                return false;
+                            }
+                        };
+
+                        // Start the payment process
+                        debugLog('Initiating PayProGlobal checkout');
+
+                        if (!openPaymentWindow()) {
+                            return; // Failed to open window
                         }
-                    } catch (e) {
-                        debugLog('Error in checkPaymentStatus:', e);
-                    }
-                };
 
-                // Open payment window
-                const width = 1000;
-                const height = 700;
-                const left = (window.screen.width - width) / 2;
-                const top = (window.screen.height - height) / 2;
+                        // Start monitoring the payment window
+                        checkInterval = setInterval(checkPaymentStatus, 2000);
 
-                try {
-                    paymentWindow = window.open(
-                        'about:blank',
-                        'PayProGlobalCheckout',
-                        `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
-                    );
+                        // Fetch the checkout URL from our backend
+                        debugLog('Fetching checkout URL from backend');
 
-                    if (!paymentWindow) {
-                        debugLog('Payment window blocked by browser');
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Popup Blocked',
-                            text: 'Please allow popups for this site in your browser settings and try again.',
-                            confirmButtonText: 'OK'
-                        });
-                        return;
-                    }
+                        fetch(apiUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken,
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                    'Accept': 'application/json',
+                                    'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
+                                },
+                                credentials: 'same-origin',
+                                body: JSON.stringify({
+                                    package: packageName
+                                })
+                            })
+                            .then(async response => {
+                                debugLog('Received response from backend, status:', response.status);
 
-                    // Show loading message in payment window
-                    paymentWindow.document.write(`
-                        <html>
-                            <head>
-                                <title>Processing Payment...</title>
-                                <style>
-                                    body { 
-                                        font-family: Arial, sans-serif; 
-                                        display: flex; 
-                                        justify-content: center; 
-                                        align-items: center; 
-                                        height: 100vh; 
-                                        margin: 0; 
-                                        background: #f5f5f5;
-                                    }
-                                    .loader {
-                                        text-align: center;
-                                        padding: 20px;
-                                    }
-                                    .spinner {
-                                        border: 5px solid #f3f3f3;
-                                        border-top: 5px solid #3498db;
-                                        border-radius: 50%;
-                                        width: 50px;
-                                        height: 50px;
-                                        animation: spin 1s linear infinite;
-                                        margin: 0 auto 20px;
-                                    }
-                                    @keyframes spin {
-                                        0% { transform: rotate(0deg); }
-                                        100% { transform: rotate(360deg); }
-                                    }
-                                </style>
-                            </head>
-                            <body>
-                                <div class="loader">
-                                    <div class="spinner"></div>
-                                    <h2>Processing Your Payment</h2>
-                                    <p>Please wait while we connect you to our secure payment processor...</p>
-                                </div>
-                            </body>
-                        </html>
-                    `);
-                } catch (windowError) {
-                    debugLog('Error opening payment window:', windowError);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'Failed to open payment window: ' + windowError.message,
-                        confirmButtonText: 'OK'
-                    });
-                    return;
-                }
+                                if (!response.ok) {
+                                    const errorData = await response.json().catch(() => ({}));
+                                    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+                                }
 
-                // Start checking payment status
-                checkInterval = setInterval(checkPaymentStatus, 3000); // Increased interval to 3 seconds
+                                return response.json();
+                            })
+                            .then(data => {
+                                debugLog('Checkout response data:', data);
 
-                // Fetch checkout URL
-                debugLog('Fetching checkout URL from:', apiUrl);
-                fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json',
-                        'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ package: packageName })
-                })
-                .then(async response => {
-                    debugLog('Received response, status:', response.status);
-                    const responseData = await response.json().catch(e => ({}));
+                                if (!data.success || !data.checkoutUrl) {
+                                    throw new Error(data.message || 'No checkout URL received');
+                                }
 
-                    if (!response.ok) {
-                        const errorMsg = responseData.message || 'Network response was not ok';
-                        debugLog('Error response:', responseData);
-                        throw new Error(errorMsg);
+                                // Store the payment reference for verification
+                                paymentReference = data.payment_reference;
+                                debugLog('Payment reference stored:', paymentReference);
+
+                                // Redirect the payment window to the checkout URL
+                                debugLog('Redirecting payment window to checkout URL');
+                                paymentWindow.location.href = data.checkoutUrl;
+
+                            })
+                            .catch(error => {
+                                debugLog('Error during checkout process:', error);
+                                cleanup();
+
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Checkout Error',
+                                    text: error.message || 'Failed to initiate payment. Please try again or contact support.',
+                                    confirmButtonText: 'OK'
+                                });
+                            });
                     }
 
-                    debugLog('Response data:', responseData);
-                    return responseData;
-                })
-                .then(data => {
-                    debugLog('Processing checkout data:', data);
-
-                    if (!data.checkoutUrl) {
-                        throw new Error('No checkout URL received in response');
-                    }
-
-                    debugLog('Redirecting to checkout URL:', data.checkoutUrl);
-
-                    try {
-                        const successUrl = new URL(data.checkoutUrl);
-                        const params = new URLSearchParams(successUrl.search);
-                        params.set('payment_id', paymentId);
-                        successUrl.search = params.toString();
-
-                        debugLog('Redirecting to payment page with payment ID:', paymentId);
-                        paymentWindow.location.href = successUrl.toString();
-                    } catch (redirectError) {
-                        debugLog('Error redirecting to checkout:', redirectError);
-                        throw new Error('Failed to redirect to payment page: ' + redirectError.message);
-                    }
-                })
-                .catch(error => {
-                    debugLog('Payment processing error:', error);
-                    try {
-                        if (paymentWindow && !paymentWindow.closed) {
-                            paymentWindow.close();
+                    // Enhanced success URL handler for PayProGlobal
+                    window.addEventListener('message', function(event) {
+                        // Listen for messages from the payment window
+                        if (event.data && event.data.type === 'payproGlobalSuccess') {
+                            console.log('[PayProGlobal] Received success message from payment window');
+                            handlePaymentSuccess('postMessage');
                         }
-                    } catch (closeError) {
-                        debugLog('Error closing payment window:', closeError);
-                    }
-
-                    const errorMessage = error.message || 'Failed to process payment. Please try again or contact support.';
-                    debugLog('Showing error to user:', errorMessage);
-
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment Error',
-                        text: errorMessage,
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        cleanup();
-                    });
+                    }, false);
                 });
-            }
-        });
-    </script>
+
+            </script>
     <script>
         document.querySelector('.dropdown-toggle').addEventListener('click', function() {
-        const menu = document.querySelector('.dropdown-menu');
-        const isOpen = menu.style.display === 'block';
-        menu.style.display = isOpen ? 'none' : 'block';
-        this.setAttribute('aria-expanded', !isOpen);
-    });
+            const menu = document.querySelector('.dropdown-menu');
+            const isOpen = menu.style.display === 'block';
+            menu.style.display = isOpen ? 'none' : 'block';
+            this.setAttribute('aria-expanded', !isOpen);
+        });
 
-    document.addEventListener('click', function(event) {
-        const dropdown = document.querySelector('.dropdown');
-        if (!dropdown.contains(event.target)) {
-            document.querySelector('.dropdown-menu').style.display = 'none';
-            document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
-        }
-    });
+        document.addEventListener('click', function(event) {
+            const dropdown = document.querySelector('.dropdown');
+            if (!dropdown.contains(event.target)) {
+                document.querySelector('.dropdown-menu').style.display = 'none';
+                document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
+            }
+        });
     </script>
 </body>
 

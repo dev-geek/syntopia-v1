@@ -132,6 +132,7 @@ class PaymentController extends Controller
                 'Accept' => 'application/json',
             ];
 
+            // Get or create Paddle customer
             if (!$user->paddle_customer_id) {
                 $customerId = $this->getOrCreatePaddleCustomer($user, $headers);
                 if (!$customerId) {
@@ -145,6 +146,7 @@ class PaymentController extends Controller
                 $user->save();
             }
 
+            // Get product and price information
             $productsResponse = Http::withHeaders($headers)
                 ->get('https://sandbox-api.paddle.com/products', [
                     'include' => 'prices',
@@ -192,6 +194,8 @@ class PaymentController extends Controller
             }
 
             $priceId = reset($activePrices)['id'];
+            
+            // Create transaction with success URL that includes verification
             $transactionData = [
                 'items' => [
                     [
@@ -205,7 +209,12 @@ class PaymentController extends Controller
                 'billing_details' => null,
                 'custom_data' => [
                     'user_id' => (string) $user->id,
-                    'package' => $processedPackage
+                    'package' => $processedPackage,
+                    'package_id' => (string) $packageData->id
+                ],
+                // Add success redirect URL
+                'checkout' => [
+                    'success_url' => route('payments.paddle.verify') . '?transaction_id={transaction_id}'
                 ]
             ];
 
@@ -230,16 +239,20 @@ class PaymentController extends Controller
 
             $transaction = $response->json()['data'];
 
-            // Process transaction data directly
-            if (isset($transaction['checkout']['url'])) {
-                // Store transaction details
-                $this->savePaymentDetails($request->merge([
-                    'transaction_id' => $transaction['id'],
-                    'checkout_url' => $transaction['checkout']['url'],
-                    'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+            // Create a pending order to track this transaction
+            if (isset($transaction['id'])) {
+                Order::create([
+                    'user_id' => $user->id,
                     'package_id' => $packageData->id,
-                    'status' => 'pending'
-                ]));
+                    'amount' => $transaction['details']['totals']['total'] / 100, // Convert from cents
+                    'currency' => $transaction['currency_code'],
+                    'transaction_id' => $transaction['id'],
+                    'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                    'status' => 'pending',
+                    'metadata' => [
+                        'checkout_url' => $transaction['checkout']['url'] ?? null
+                    ]
+                ]);
             }
 
             return response()->json([
@@ -248,6 +261,11 @@ class PaymentController extends Controller
                 'transaction_id' => $transaction['id']
             ]);
         } catch (\Exception $e) {
+            Log::error('Paddle checkout error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'error' => 'Checkout failed',
@@ -320,17 +338,39 @@ class PaymentController extends Controller
         $signature = $request->header('Paddle-Signature');
 
         if ($secret && $signature) {
-            [$timestamp, $hmac] = explode(';', str_replace('ts=', '', $signature));
-            $computedHmac = hash_hmac('sha256', $timestamp . ':' . $request->getContent(), $secret);
-            if (!hash_equals($hmac, $computedHmac)) {
-                return response()->json(['error' => 'Invalid signature'], 403);
+            $signatureParts = explode(';', $signature);
+            $timestamp = null;
+            $hmac = null;
+            
+            foreach ($signatureParts as $part) {
+                if (strpos($part, 'ts=') === 0) {
+                    $timestamp = substr($part, 3);
+                } elseif (strpos($part, 'h1=') === 0) {
+                    $hmac = substr($part, 3);
+                }
+            }
+            
+            if ($timestamp && $hmac) {
+                $signedPayload = $timestamp . ':' . $request->getContent();
+                $computedHmac = hash_hmac('sha256', $signedPayload, $secret);
+                
+                if (!hash_equals($hmac, $computedHmac)) {
+                    Log::error('Invalid Paddle webhook signature');
+                    return response()->json(['error' => 'Invalid signature'], 403);
+                }
             }
         }
 
+        Log::info('Paddle webhook received', [
+            'event_type' => $payload['event_type'] ?? 'unknown',
+            'event_id' => $payload['event_id'] ?? null
+        ]);
+
         switch ($payload['event_type'] ?? null) {
-            case 'checkout.completed':
+            case 'transaction.completed':
+            case 'transaction.paid':
                 return $this->handlePaddleTransactionCompleted($payload);
-            case 'checkout.payment_failed':
+            case 'transaction.payment_failed':
                 return $this->handlePaddleTransactionFailed($payload);
             default:
                 return response()->json(['status' => 'ignored']);
@@ -755,7 +795,6 @@ class PaymentController extends Controller
                         'user_payment_gateway_id' => $user->payment_gateway_id,
                         'user_package_id' => $user->package_id,
                         'user_subscription_starts_at' => $user->subscription_starts_at,
-                        'user_license_key' => $this->addLicense($user),
                         'user_is_subscribed' => $user->is_subscribed
                     ]);
                     DB::commit();
@@ -1258,6 +1297,123 @@ class PaymentController extends Controller
         }
     }
 
+    public function verifyPaddlePayment(Request $request)
+    {
+        $transactionId = $request->query('transaction_id');
+        
+        if (!$transactionId) {
+            return redirect()->route('subscriptions.index')
+                ->with('error', 'Invalid payment verification request.');
+        }
+
+        try {
+            // Wait a moment for webhook to process
+            sleep(2);
+            
+            // Check if the order has been completed by webhook
+            $order = Order::where('transaction_id', $transactionId)->first();
+            
+            if ($order && $order->status === 'completed') {
+                return redirect()->route('user.dashboard')
+                    ->with('success', 'Thank you for your payment! Your subscription is now active.');
+            }
+            
+            // If not completed, verify with Paddle API
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            $headers = [
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Accept' => 'application/json',
+            ];
+            
+            $response = Http::withHeaders($headers)
+                ->get("https://sandbox-api.paddle.com/transactions/{$transactionId}");
+                
+            if ($response->successful()) {
+                $transactionData = $response->json()['data'];
+                
+                if ($transactionData['status'] === 'completed' || $transactionData['status'] === 'paid') {
+                    // Process the payment if webhook hasn't done it yet
+                    $this->processPaddlePaymentFromTransaction($transactionData);
+                    
+                    return redirect()->route('user.dashboard')
+                        ->with('success', 'Thank you for your payment! Your subscription is now active.');
+                }
+            }
+            
+            // Payment not completed
+            return redirect()->route('subscriptions.index')
+                ->with('error', 'Payment could not be verified. Please contact support if you were charged.');
+                
+        } catch (\Exception $e) {
+            Log::error('Paddle payment verification error', [
+                'transaction_id' => $transactionId,
+                'error' => $e->getMessage()
+            ]);
+            
+            return redirect()->route('subscriptions.index')
+                ->with('error', 'An error occurred while verifying your payment. Please contact support.');
+        }
+    }
+
+    private function processPaddlePaymentFromTransaction($transactionData)
+    {
+        DB::beginTransaction();
+        try {
+            $userId = $transactionData['custom_data']['user_id'] ?? null;
+            $packageId = $transactionData['custom_data']['package_id'] ?? null;
+            $transactionId = $transactionData['id'];
+            
+            if (!$userId || !$packageId) {
+                throw new \Exception('Missing user or package information');
+            }
+            
+            $user = User::find($userId);
+            $package = Package::find($packageId);
+            
+            if (!$user || !$package) {
+                throw new \Exception('User or package not found');
+            }
+            
+            // Update or create order
+            $order = Order::updateOrCreate(
+                ['transaction_id' => $transactionId],
+                [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'amount' => ($transactionData['details']['totals']['total'] ?? 0) / 100,
+                    'currency' => $transactionData['currency_code'],
+                    'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                    'status' => 'completed',
+                    'metadata' => $transactionData
+                ]
+            );
+            
+            // Update user subscription
+            $user->update([
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'package_id' => $package->id,
+                'subscription_starts_at' => now(),
+                'license_key' => $this->makeLicense() ?? null,
+            ]);
+            
+            DB::commit();
+            
+            Log::info('Paddle payment processed successfully', [
+                'transaction_id' => $transactionId,
+                'user_id' => $user->id,
+                'package_id' => $package->id
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to process Paddle payment', [
+                'transaction_id' => $transactionId,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
     public function verifyPayProGlobalPaymentStatus(Request $request, $paymentId)
     {
         try {
@@ -1490,46 +1646,6 @@ class PaymentController extends Controller
             return view('subscription.order', compact('orders', 'paymentGateway'));
         } catch (\Exception $e) {
             return view('subscription.order', compact('paymentGateway'))->with('error', 'Failed to fetch orders');
-        }
-    }
-
-    private function addLicense($user)
-    {
-        $subscriptionKey = "5c745ccd024140ffad8af2ed7a30ccad";
-        try {
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add', [
-                'userId' => $user->id,
-                'subscriptionKey' => $subscriptionKey,
-            ]);
-            if ($response->successful()) {
-                Log::info('Xiaoice API call successful', [
-                    'user_id' => $user->id,
-                    'license_key' => $response->json()['data']['licenseKey'],
-                    'response' => $response->json()
-                ]);
-
-                $user->update([
-                    'license_key' => $response->json()['data']['licenseKey']
-                ]);
-
-                return $response->json();
-            } else {
-                Log::error('Xiaoice API call failed', [
-                    'user_id' => $user->id,
-                    'status' => $response->status(),
-                    'response' => $response->body()
-                ]);
-                return $response->json();
-            }
-        } catch (\Exception $e) {
-            Log::error('Xiaoice API call failed', [
-                'user_id' => $user->id,
-                'exception' => $e->getMessage()
-            ]);
-            return $user->id;
         }
     }
 }

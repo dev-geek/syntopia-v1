@@ -35,6 +35,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'package_id',
         'license_key',
         'is_subscribed',
+        'tenant_id',
     ];
 
     /**
