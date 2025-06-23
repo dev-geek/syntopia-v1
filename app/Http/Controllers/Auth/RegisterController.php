@@ -238,9 +238,9 @@ class RegisterController extends Controller
             ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
                 'name' => $user->name,
                 'regionCode' => 'OTHER',
-                'adminName' => "Super Admin",
-                'adminEmail' => "admin@syntopia.io",
-                'adminPassword' => "Passw0rd@2025",
+                'adminName' => $user->name,
+                'adminEmail' => $user->email,
+                'adminPassword' => $plainPassword,
                 'appIds' => [2],
             ]);
 
