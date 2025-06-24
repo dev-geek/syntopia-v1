@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\SubscriptionController;
 use App\Models\Order;
 use App\Models\PaymentGateways;
 use App\Models\Package;
@@ -17,57 +18,45 @@ class PaymentService
 
     public function __construct()
     {
-        // Default gateway can be set from config or database
         $this->gateway = config('payment.default_gateway');
         $this->config = config('payment.gateways.' . $this->gateway);
     }
 
-    /**
-     * Set the payment gateway to use
-     */
     public function setGateway($gateway)
     {
         $this->gateway = $gateway;
         $this->config = config('payment.gateways.' . $gateway);
+        Log::info("PaymentService gateway set to: {$this->gateway}");
         return $this;
     }
 
-    /**
-     * Determine gateway from user or admin settings
-     */
     public function initializeGateway(Order $order)
     {
         $user = $order->user;
 
-        // User's existing gateway if set
-        if ($user->payment_gateway) {
-            $this->setGateway($user->payment_gateway);
-            return;
+        if ($user->payment_gateway_id) {
+            $paymentGateway = PaymentGateways::find($user->payment_gateway_id);
+            if ($paymentGateway) {
+                $this->setGateway($paymentGateway->name);
+                Log::info("Active Gateway Selected: {$paymentGateway->name}");
+                return;
+            } else {
+                Log::warning("Invalid payment gateway ID for user: {$user->payment_gateway_id}");
+            }
         }
 
-        // Get admin's active gateway
         $activeGateway = PaymentGateways::where('is_active', true)->first();
-
         if (!$activeGateway) {
             throw new \Exception("No active payment gateway configured");
         }
 
         Log::info("Active Gateway Selected: {$activeGateway->name}");
-
-        // Save to user's profile
-        $user->payment_gateway = $activeGateway->name;
-        $user->save();
-
+        $user->update(['payment_gateway_id' => $activeGateway->id]);
         $this->setGateway($activeGateway->name);
-        Log::info("PaymentService is using: {$this->gateway}");
     }
 
-    /**
-     * Create a payment session for the given package and user
-     */
     public function createPaymentSession(string $packageName, User $user)
     {
-        // Create an order record
         $package = Package::where('name', $packageName)->firstOrFail();
 
         $order = Order::create([
@@ -76,18 +65,11 @@ class PaymentService
             'amount' => $package->price,
             'status' => 'pending',
             'order_id' => 'ORD-' . strtoupper(Str::random(10)),
+            'payment_method' => $user->paymentGateway ? $user->paymentGateway->name : null,
         ]);
 
-        // Determine the payment gateway to use
-        $activeGateway = PaymentGateways::where('is_active', true)->first();
+        $this->initializeGateway($order);
 
-        if (!$activeGateway) {
-            throw new \Exception("No active payment gateway configured");
-        }
-
-        $this->setGateway($activeGateway->name);
-
-        // Process with appropriate gateway
         switch ($this->gateway) {
             case 'FastSpring':
                 return $this->createFastSpringSession($order);
@@ -100,9 +82,6 @@ class PaymentService
         }
     }
 
-    /**
-     * Handle payment callback/webhook
-     */
     public function handlePaymentCallback(array $data)
     {
         switch ($this->gateway) {
@@ -117,14 +96,8 @@ class PaymentService
         }
     }
 
-    /**
-     * FastSpring implementation
-     */
     protected function createFastSpringSession(Order $order)
     {
-        // For FastSpring, we don't need to create a session via API
-        // The JavaScript library handles it client-side
-        // But we'll return the product path to use
         return [
             'success' => true,
             'productPath' => $this->getFastSpringProductPath($order->package),
@@ -134,28 +107,22 @@ class PaymentService
 
     protected function handleFastSpringCallback(array $data)
     {
-        // Validation
         if (!isset($data['events']) || !isset($data['signature'])) {
             Log::error('Invalid FastSpring webhook payload - missing required fields');
             throw new \Exception('Invalid webhook payload');
         }
 
-        // Verify the webhook signature
         $signature = hash_hmac('sha256', $data['events'], $this->config['webhook_secret']);
-
         if (!hash_equals($signature, $data['signature'])) {
             Log::error('Invalid FastSpring webhook signature');
             throw new \Exception('Invalid webhook signature');
         }
 
-        // Process the events
         $events = json_decode($data['events'], true);
-
         foreach ($events as $event) {
             if ($event['type'] === 'order.completed') {
                 $orderReference = $event['data']['reference'];
                 $orderId = str_replace('order_', '', $orderReference);
-
                 $order = Order::find($orderId);
                 if ($order) {
                     $order->update([
@@ -163,22 +130,15 @@ class PaymentService
                         'transaction_id' => $event['data']['id'],
                         'payment_method' => 'FastSpring',
                     ]);
-
-                    // Update user subscription
-                    $this->updateUserSubscription($order);
+                    app(SubscriptionController::class)->updateUserSubscription($order);
                 }
             }
         }
-
         return true;
     }
 
-    /**
-     * Paddle implementation
-     */
     protected function createPaddleSession(Order $order)
     {
-        // For Paddle API v2
         $payload = [
             'product_id' => $this->getPaddleProductId($order->package),
             'customer_email' => $order->user->email,
@@ -206,14 +166,11 @@ class PaymentService
 
     protected function handlePaddleCallback(array $data)
     {
-        // Verify Paddle webhook signature
         $publicKey = $this->config['public_key'];
         $signature = base64_decode($data['p_signature']);
-
         $fields = $data;
         unset($fields['p_signature']);
         ksort($fields);
-
         $dataToVerify = serialize($fields);
         $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA1);
 
@@ -222,11 +179,9 @@ class PaymentService
             throw new \Exception('Invalid Paddle webhook signature');
         }
 
-        // Process the event
         if ($data['alert_name'] === 'payment_succeeded') {
             $passthrough = json_decode($data['passthrough'], true);
             $orderId = $passthrough['order_id'] ?? null;
-
             if ($orderId) {
                 $order = Order::find($orderId);
                 if ($order) {
@@ -235,19 +190,13 @@ class PaymentService
                         'transaction_id' => $data['checkout_id'],
                         'payment_method' => 'Paddle',
                     ]);
-
-                    // Update user subscription
-                    $this->updateUserSubscription($order);
+                    app(SubscriptionController::class)->updateUserSubscription($order);
                 }
             }
         }
-
         return true;
     }
 
-    /**
-     * PayProGlobal implementation
-     */
     protected function createPayProGlobalSession(Order $order)
     {
         try {
@@ -284,23 +233,18 @@ class PaymentService
 
     protected function handlePayProGlobalCallback(array $data)
     {
-        // Verify webhook signature
         $receivedSignature = $data['signature'] ?? '';
         $payload = $data;
         unset($payload['signature']);
-
         $calculatedSignature = hash_hmac('sha256', json_encode($payload), $this->config['webhook_secret']);
-
         if (!hash_equals($calculatedSignature, $receivedSignature)) {
             Log::error('Invalid PayProGlobal webhook signature');
             throw new \Exception('Invalid PayProGlobal webhook signature');
         }
 
-        // Process the event
         if ($data['event_type'] === 'payment_success') {
             $customFields = $data['custom_fields'] ?? [];
             $orderId = $customFields['order_id'] ?? null;
-
             if ($orderId) {
                 $order = Order::find($orderId);
                 if ($order) {
@@ -309,55 +253,13 @@ class PaymentService
                         'transaction_id' => $data['transaction_id'] ?? null,
                         'payment_method' => 'Pay Pro Global',
                     ]);
-
-                    // Update user subscription
-                    $this->updateUserSubscription($order);
+                    app(SubscriptionController::class)->updateUserSubscription($order);
                 }
             }
         }
-
         return true;
     }
 
-    /**
-     * Update user subscription based on completed order
-     */
-    protected function updateUserSubscription(Order $order)
-    {
-        $user = $order->user;
-
-        // Update user's subscription details
-        $user->update([
-            'package' => $order->package,
-            'subscription_ends_at' => $this->calculateSubscriptionEndDate($order->package),
-        ]);
-
-        // You might want to log subscription activity or trigger other services
-        Log::info("User {$user->id} subscription updated to {$order->package}");
-
-        return true;
-    }
-
-    /**
-     * Calculate subscription end date based on package
-     */
-    protected function calculateSubscriptionEndDate(string $packageName)
-    {
-        // This is just an example - adjust based on your actual packages
-        $periodMap = [
-            'Free' => null, // No end date for free tier
-            'Starter' => now()->addMonth(),
-            'Pro' => now()->addMonth(),
-            'Business' => now()->addMonth(),
-            'Enterprise' => now()->addYear(), // Assuming enterprise is annual
-        ];
-
-        return $periodMap[$packageName] ?? now()->addMonth();
-    }
-
-    /**
-     * Helper methods to get product IDs for each gateway
-     */
     protected function getFastSpringProductPath(string $package): string
     {
         $mapping = [
@@ -367,7 +269,6 @@ class PaymentService
             'Business' => 'business-plan',
             'Enterprise' => 'enterprise-plan',
         ];
-
         return $mapping[$package] ?? 'starter-plan';
     }
 
@@ -379,7 +280,6 @@ class PaymentService
             'Business' => $this->config['product_ids']['business'],
             'Enterprise' => $this->config['product_ids']['enterprise'],
         ];
-
         return $mapping[$package] ?? $this->config['product_ids']['starter'];
     }
 
@@ -391,7 +291,6 @@ class PaymentService
             'Business' => $this->config['product_ids']['business'],
             'Enterprise' => $this->config['product_ids']['enterprise'],
         ];
-
         return $mapping[$package] ?? $this->config['product_ids']['starter'];
     }
 }

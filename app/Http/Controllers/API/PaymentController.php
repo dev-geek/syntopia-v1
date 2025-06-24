@@ -523,6 +523,14 @@ class PaymentController extends Controller
                 config('payment.gateways.FastSpring.webhook_secret', '')
             );
 
+            // Get product ID from configuration
+            $productIds = config('payment.gateways.FastSpring.product_ids', []);
+            $productId = $productIds[$processedPackage] ?? null;
+
+            if (!$productId) {
+                throw new \Exception("Product ID not configured for package: {$processedPackage}");
+            }
+
             $checkoutUrl = "https://{$storefront}/{$productId}";
 
             $queryParams = [

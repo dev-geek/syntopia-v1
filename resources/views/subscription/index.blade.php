@@ -28,10 +28,12 @@
             data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"
+            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'Paddle' }}"></script>
     @endif
     @if (in_array('Pay Pro Global', $activeGateways))
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"
+            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'Pay Pro Global' }}"></script>
     @endif
 
     <!-- FastSpring Integration -->
@@ -372,6 +374,12 @@
             color: white;
         }
 
+        .checkout-button[aria-label="Current Plan"] {
+            background-color: #4CAF50 !important;
+            border-color: #4CAF50 !important;
+            cursor: not-allowed;
+        }
+
         .per-month {
             font-size: 16px;
             color: #5b0dd5;
@@ -655,8 +663,9 @@
             <div class="badge-wrapper">
                 <div class="pricing-badge">PRICING PLANS</div>
             </div>
-            @include('components.alert-messages')
-            <h2 class="section-title">Plans For Every Type of Business</h2>
+            <h2 class="section-title">
+                {{ Route::currentRouteName() === 'subscription.upgrade' ? 'Upgrade Your Plan' : 'Plans For Every Type of Business' }}
+            </h2>
             <p class="section-subtitle">SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how
                 businesses and individuals connect with their audiences. Our avatars can:</p>
             <div class="pricing-grid">
@@ -666,12 +675,15 @@
                         <p class="price">${{ number_format($package->price, 0) }} <span
                                 class="per-month">/{{ $package->duration }}</span></p>
                         <button class="btn dark checkout-button" data-package="{{ $package->name }}"
-                            {{ $currentPackage == $package->name ? 'disabled' : '' }}>
+                            {{ $currentPackage == $package->name || $package->isFree() ? 'disabled' : '' }}
+                            data-action="{{ Route::currentRouteName() === 'subscription.upgrade' ? 'upgrade' : 'subscribe' }}">
                             {{ $package->name == 'Enterprise'
                                 ? 'Get in Touch'
                                 : ($currentPackage == $package->name
-                                    ? 'Activated'
-                                    : 'Get Started') }}
+                                    ? 'Current Plan'
+                                    : (Route::currentRouteName() === 'subscription.upgrade'
+                                        ? 'Upgrade to ' . $package->name
+                                        : 'Get Started')) }}
                         </button>
                         <p class="included-title">What's included</p>
                         <ul class="features">
@@ -695,7 +707,7 @@
 
         document.addEventListener("DOMContentLoaded", function() {
             const currentPackage = "{{ $currentPackage ?? '' }}";
-            const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
+            const userOriginalGateway = "{{ $currentLoggedInUserPaymentGateway ?? '' }}";
             const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
             const selectedGateway = userOriginalGateway && userOriginalGateway.trim() !== "" ?
                 userOriginalGateway :
@@ -718,51 +730,72 @@
                 processCheckout(packageFromURL.toLowerCase() + "-plan");
             }
 
-            function processCheckout(productPath) {
+            function processCheckout(productPath, action) {
                 try {
                     if (!selectedGateway) {
                         throw new Error('No payment gateway selected');
                     }
                     switch (selectedGateway) {
                         case 'FastSpring':
-                            processFastSpring(productPath);
+                            processFastSpring(productPath, action);
                             break;
                         case 'Paddle':
-                            processPaddle(productPath);
+                            processPaddle(productPath, action);
                             break;
                         case 'Pay Pro Global':
-                            processPayProGlobal(productPath);
+                            processPayProGlobal(productPath, action);
                             break;
                         default:
                             throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
                     }
                 } catch (error) {
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Payment Gateway Error',
-                            text: error.message ||
-                                'Payment gateway error. Please try again later or contact support.',
-                            confirmButtonText: 'OK'
-                        });
-                    } else {
-                        alert('Payment Gateway Error: ' + (error.message ||
-                            'Payment gateway error. Please try again later or contact support.'));
-                    }
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment Gateway Error',
+                        text: error.message ||
+                            'Payment gateway error. Please try again later or contact support.',
+                        confirmButtonText: 'OK'
+                    });
                 }
             }
 
-            function processFastSpring(productPath) {
+            function processFastSpring(productPath, action) {
                 try {
                     if (typeof fastspring === 'undefined' || !fastspring.builder) {
                         throw new Error('FastSpring is not properly initialized');
                     }
                     fastspring.builder.reset();
                     const packageName = productPath.replace('-plan', '').toLowerCase();
-                    fastspring.builder.add(packageName);
-                    setTimeout(() => {
-                        fastspring.builder.checkout();
-                    }, 500);
+                    const apiUrl = action === 'upgrade' ? `/subscription/upgrade/${packageName}` :
+                        `/api/payments/fastspring/checkout/${packageName}`;
+                    fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            credentials: 'same-origin'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && data.productPath && data.orderId) {
+                                fastspring.builder.add(data.productPath);
+                                fastspring.builder.checkout(data.orderId);
+                            } else {
+                                throw new Error(data.error || 'Failed to initiate FastSpring checkout');
+                            }
+                        })
+                        .catch(error => {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Checkout Failed',
+                                text: error.message ||
+                                    'An error occurred while initiating FastSpring checkout.',
+                                confirmButtonText: 'OK'
+                            });
+                        });
                 } catch (error) {
                     throw error;
                 }
@@ -771,7 +804,8 @@
 
             function processPaddle(productPath) {
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
+                const apiUrl = action === 'upgrade' ? `/subscription/upgrade/${packageName}` :
+                    `/api/payments/paddle/checkout/${packageName}`;
 
                 fetch(apiUrl, {
                         method: 'POST',
@@ -850,7 +884,8 @@
                 console.log('[PayProGlobal] Starting payment process for product:', productPath);
 
                 const packageName = productPath.replace('-plan', '');
-                const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
+                const apiUrl = action === 'upgrade' ? `/subscription/upgrade/${packageName}` :
+                    `/api/payments/payproglobal/checkout/${packageName}`;
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 
                 if (!csrfToken) {

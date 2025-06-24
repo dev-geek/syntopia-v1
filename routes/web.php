@@ -186,6 +186,10 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/pro-package-confirmed', [SubscriptionController::class, 'proPackageConfirmed'])->name('pro-package-confirmed');
     Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
 
+    // Upgrade the package
+    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgradePlan'])->name('subscription.upgrade');
+    Route::post('/subscription/upgrade/{packageName}', [SubscriptionController::class, 'processUpgrade'])->name('subscription.processUpgrade');
+
     // Orders
     Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
 });

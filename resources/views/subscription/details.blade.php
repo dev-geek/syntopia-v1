@@ -25,6 +25,7 @@
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Current Subscription Status</h3>
+                            <a href="{{ route('subscription.upgrade') }}" class="btn btn-primary float-right">Upgrade Subscription</a>
                         </div>
                         <div class="card-body">
                             <div class="row">
