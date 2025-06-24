@@ -30,89 +30,23 @@ Route::get('/test-verification', function () {
     return view('verify-form');
 });
 
-// Test logging route
-Route::get('/test-log', function () {
-    // Test different log levels
-    \Log::emergency('EMERGENCY: Test emergency message');
-    \Log::alert('ALERT: Test alert message');
-    \Log::critical('CRITICAL: Test critical message');
-    \Log::error('ERROR: Test error message');
-    \Log::warning('WARNING: Test warning message');
-    \Log::notice('NOTICE: Test notice message');
-    \Log::info('INFO: Test info message');
-    \Log::debug('DEBUG: Test debug message');
-
-    // Test writing to a custom log file
-    \Log::channel('single')->info('Test message to single log file');
-
-    // Check log file path
-    $logPath = storage_path('logs/laravel.log');
-    $logDir = dirname($logPath);
-    $isWritable = is_writable($logDir) && (!file_exists($logPath) || is_writable($logPath));
-
-    return response()->json([
-        'status' => 'success',
-        'log_file' => $logPath,
-        'log_dir_writable' => is_writable($logDir) ? 'yes' : 'no',
-        'log_file_writable' => !file_exists($logPath) ? 'n/a' : (is_writable($logPath) ? 'yes' : 'no'),
-        'log_dir_exists' => file_exists($logDir) ? 'yes' : 'no',
-        'log_file_exists' => file_exists($logPath) ? 'yes' : 'no',
-        'message' => 'Check laravel.log for test messages'
-    ]);
+Route::middleware(['auth'])->group(function () {
+    
+    // Check if user can upgrade
+    Route::get('/subscription/upgrade/check', function () {
+        $user = auth()->user();
+        
+        return response()->json([
+            'eligible' => $user->package && $user->paymentGateway && 
+                         $user->paymentGateway->is_active && 
+                         $user->subscription_starts_at !== null,
+            'current_package' => $user->package->name ?? null,
+            'current_gateway' => $user->paymentGateway->name ?? null,
+            'subscription_starts_at' => $user->subscription_starts_at,
+        ]);
+    })->name('subscription.upgrade.check');
 });
 
-// Test payment logging
-Route::get('/test-payment-log', function (\Illuminate\Http\Request $request) {
-    // Test payment logging
-    \Log::channel('payment')->info('=== PAYMENT LOG TEST ===');
-    \Log::channel('payment')->info('Test payment log entry', [
-        'time' => now()->toDateTimeString(),
-        'ip' => $request->ip(),
-        'user_agent' => $request->userAgent(),
-        'test_data' => 'This is a test payment log entry'
-    ]);
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Test payment log entry created',
-        'log_file' => storage_path('logs/payment.log'),
-        'log_dir_writable' => is_writable(storage_path('logs')) ? 'yes' : 'no',
-        'log_file_exists' => file_exists(storage_path('logs/payment.log')) ? 'yes' : 'no'
-    ]);
-});
-
-// Payment callback routes
-// Route::get('/payments/success', [\App\Http\Controllers\SubscriptionController::class, 'paymentSuccess'])
-//     ->name('payment.success');
-
-// Route::get('/payments/cancel', [\App\Http\Controllers\SubscriptionController::class, 'paymentCancel'])
-//     ->name('payment.cancel');
-
-// Test payment callback endpoint
-Route::get('/test-payment-callback', function (\Illuminate\Http\Request $request) {
-    \Log::info('=== TEST PAYMENT CALLBACK RECEIVED ===');
-    \Log::info('Request Method: ' . $request->method());
-    \Log::info('Full URL: ' . $request->fullUrl());
-    \Log::info('Request Headers: ', $request->headers->all());
-    \Log::info('Request All Input: ', $request->all());
-    \Log::info('Request Query Params: ', $request->query());
-    \Log::info('Request IP: ' . $request->ip());
-    \Log::info('User Agent: ' . $request->userAgent());
-    \Log::info('Request Content: ' . $request->getContent());
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Test callback received',
-        'data' => [
-            'method' => $request->method(),
-            'query_params' => $request->query(),
-            'headers' => $request->headers->all(),
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'timestamp' => now()->toDateTimeString()
-        ]
-    ]);
-})->name('payment.test-callback');
 Route::get('/test-fastspring', [SubscriptionController::class, 'createFastSpringSession']);
 Route::get('/test-paddle', [SubscriptionController::class, 'createPaddleSession']);
 Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
@@ -186,12 +120,11 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/pro-package-confirmed', [SubscriptionController::class, 'proPackageConfirmed'])->name('pro-package-confirmed');
     Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
 
-    // Upgrade the package
-    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgradePlan'])->name('subscription.upgrade');
-    Route::post('/subscription/upgrade/{packageName}', [SubscriptionController::class, 'processUpgrade'])->name('subscription.processUpgrade');
-
     // Orders
     Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
+
+    // Upgrade Subscription
+    Route::get('/user/subscription/upgrade', [SubscriptionController::class, 'upgradeSubscription'])->name('subscription.upgrade');
 });
 
 // Super Admin Only Routes

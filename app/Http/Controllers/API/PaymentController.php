@@ -23,20 +23,40 @@ class PaymentController extends Controller
 {
     private function validatePackageAndGetUser($package)
     {
+        Log::info('=== VALIDATING PACKAGE AND USER ===', ['package' => $package]);
+        
         $user = Auth::user();
         if (!$user) {
+            Log::error('User validation failed: Not authenticated');
             return response()->json(['error' => 'User not authenticated'], 401);
         }
+
+        Log::info('User found', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'name' => $user->name
+        ]);
 
         $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
 
         if (!$packageModel) {
+            Log::error('Package validation failed: Package not found', [
+                'requested_package' => $package,
+                'available_packages' => Package::pluck('name')->toArray()
+            ]);
             return response()->json([
                 'error' => 'Invalid package',
                 'message' => 'Package not found: ' . $package,
                 'available_packages' => Package::pluck('name')->toArray()
             ], 400);
         }
+
+        Log::info('Package found', [
+            'package_id' => $packageModel->id,
+            'package_name' => $packageModel->name,
+            'package_price' => $packageModel->price,
+            'package_duration' => $packageModel->duration
+        ]);
 
         return [
             'user' => $user,
@@ -96,10 +116,31 @@ class PaymentController extends Controller
 
     public function paddleCheckout(Request $request, string $package)
     {
+        Log::info('=== PADDLE CHECKOUT STARTED ===', [
+            'package' => $package,
+            'request_method' => $request->method(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent()
+        ]);
+
         try {
+            // Detect and validate upgrade
+            $upgradeInfo = $this->detectAndValidateUpgrade($request, $package);
+            
+            if ($upgradeInfo['is_upgrade'] && !$upgradeInfo['validation_passed']) {
+                Log::error('Paddle checkout failed: Upgrade validation failed', [
+                    'error' => $upgradeInfo['error'] ?? 'Unknown validation error'
+                ]);
+                return response()->json(['error' => $upgradeInfo['error']], 400);
+            }
+
+            $isUpgrade = $upgradeInfo['is_upgrade'];
+            Log::info('Paddle checkout type determined', ['is_upgrade' => $isUpgrade]);
+
             $apiKey = config('payment.gateways.Paddle.api_key');
 
             if (empty($apiKey)) {
+                Log::error('Paddle configuration error: API key missing');
                 return response()->json([
                     'success' => false,
                     'error' => 'Payment configuration error',
@@ -108,6 +149,10 @@ class PaymentController extends Controller
             }
 
             $processedPackage = str_replace('-plan', '', strtolower($package));
+            Log::info('Processing package name', [
+                'original' => $package,
+                'processed' => $processedPackage
+            ]);
 
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
@@ -117,8 +162,28 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            // For upgrades, ensure we're using the user's original gateway
+            if ($isUpgrade) {
+                $originalGateway = $upgradeInfo['original_gateway'];
+                if ($originalGateway->name !== 'Paddle') {
+                    Log::error('Paddle upgrade failed: User original gateway mismatch', [
+                        'user_id' => $user->id,
+                        'original_gateway' => $originalGateway->name,
+                        'requested_gateway' => 'Paddle'
+                    ]);
+                    return response()->json([
+                        'error' => "You must use your original payment gateway ({$originalGateway->name}) for upgrades"
+                    ], 400);
+                }
+                Log::info('Upgrade gateway validation passed', [
+                    'user_id' => $user->id,
+                    'original_gateway' => $originalGateway->name
+                ]);
+            }
+
             $userName = trim($user->name);
             if (empty($userName)) {
+                Log::error('Paddle checkout validation failed: Missing user name', ['user_id' => $user->id]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Missing name',
@@ -132,10 +197,14 @@ class PaymentController extends Controller
                 'Accept' => 'application/json',
             ];
 
+            Log::info('Paddle API headers prepared', ['has_auth' => !empty($headers['Authorization'])]);
+
             // Get or create Paddle customer
             if (!$user->paddle_customer_id) {
+                Log::info('Creating Paddle customer for user', ['user_id' => $user->id]);
                 $customerId = $this->getOrCreatePaddleCustomer($user, $headers);
                 if (!$customerId) {
+                    Log::error('Paddle customer creation failed', ['user_id' => $user->id]);
                     return response()->json([
                         'success' => false,
                         'error' => 'Customer setup failed',
@@ -144,9 +213,19 @@ class PaymentController extends Controller
                 }
                 $user->paddle_customer_id = $customerId;
                 $user->save();
+                Log::info('Paddle customer created and saved', [
+                    'user_id' => $user->id,
+                    'customer_id' => $customerId
+                ]);
+            } else {
+                Log::info('Using existing Paddle customer', [
+                    'user_id' => $user->id,
+                    'customer_id' => $user->paddle_customer_id
+                ]);
             }
 
             // Get product and price information
+            Log::info('Fetching Paddle products');
             $productsResponse = Http::withHeaders($headers)
                 ->get('https://sandbox-api.paddle.com/products', [
                     'include' => 'prices',
@@ -154,6 +233,10 @@ class PaymentController extends Controller
                 ]);
 
             if (!$productsResponse->successful()) {
+                Log::error('Paddle products fetch failed', [
+                    'status' => $productsResponse->status(),
+                    'response' => $productsResponse->body()
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Product fetch failed',
@@ -162,6 +245,7 @@ class PaymentController extends Controller
             }
 
             $products = $productsResponse->json()['data'];
+            Log::info('Paddle products fetched', ['product_count' => count($products)]);
 
             $matchingProduct = null;
             foreach ($products as $product) {
@@ -172,6 +256,10 @@ class PaymentController extends Controller
             }
 
             if (!$matchingProduct) {
+                Log::error('Paddle product not found', [
+                    'requested_package' => $processedPackage,
+                    'available_products' => collect($products)->pluck('name')->toArray()
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Unavailable package',
@@ -180,12 +268,21 @@ class PaymentController extends Controller
                 ], 400);
             }
 
+            Log::info('Matching Paddle product found', [
+                'product_id' => $matchingProduct['id'],
+                'product_name' => $matchingProduct['name']
+            ]);
+
             $prices = $matchingProduct['prices'] ?? [];
             $activePrices = array_filter($prices, function ($price) {
                 return ($price['status'] ?? '') === 'active';
             });
 
             if (empty($activePrices)) {
+                Log::error('No active prices found for Paddle product', [
+                    'product_id' => $matchingProduct['id'],
+                    'total_prices' => count($prices)
+                ]);
                 return response()->json([
                     'success' => false,
                     'error' => 'No active price',
@@ -194,8 +291,23 @@ class PaymentController extends Controller
             }
 
             $priceId = reset($activePrices)['id'];
+            Log::info('Active price found', ['price_id' => $priceId]);
 
-            // Create transaction with success URL that includes verification
+            // Create transaction with upgrade context
+            $customData = [
+                'user_id' => (string) $user->id,
+                'package' => $processedPackage,
+                'package_id' => (string) $packageData->id
+            ];
+
+            // Add upgrade context to custom data
+            if ($isUpgrade) {
+                $customData['is_upgrade'] = 'true';
+                $customData['current_package'] = $upgradeInfo['current_package']->name;
+                $customData['current_package_id'] = (string) $upgradeInfo['current_package']->id;
+                Log::info('Adding upgrade context to Paddle transaction', $customData);
+            }
+
             $transactionData = [
                 'items' => [
                     [
@@ -207,16 +319,20 @@ class PaymentController extends Controller
                 'currency_code' => 'USD',
                 'collection_mode' => 'automatic',
                 'billing_details' => null,
-                'custom_data' => [
-                    'user_id' => (string) $user->id,
-                    'package' => $processedPackage,
-                    'package_id' => (string) $packageData->id
-                ],
-                // Add success redirect URL
+                'custom_data' => $customData,
+                // Add success redirect URL with upgrade context
                 'checkout' => [
-                    'success_url' => route('payments.paddle.verify') . '?transaction_id={transaction_id}'
+                    'success_url' => route('payments.paddle.verify') . '?transaction_id={transaction_id}' . 
+                                   ($isUpgrade ? '&is_upgrade=true' : '')
                 ]
             ];
+
+            Log::info('Creating Paddle transaction', [
+                'customer_id' => $user->paddle_customer_id,
+                'price_id' => $priceId,
+                'is_upgrade' => $isUpgrade,
+                'custom_data' => $customData
+            ]);
 
             $response = Http::withHeaders($headers)
                 ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
@@ -224,6 +340,12 @@ class PaymentController extends Controller
             if (!$response->successful()) {
                 $errorBody = $response->body();
                 $errorData = json_decode($errorBody, true);
+
+                Log::error('Paddle transaction creation failed', [
+                    'status' => $response->status(),
+                    'error_body' => $errorBody,
+                    'error_data' => $errorData
+                ]);
 
                 $errorMessage = $errorData['error']['detail'] ?? 'Transaction creation failed';
                 $errorCode = $errorData['error']['code'] ?? 'unknown_error';
@@ -238,10 +360,14 @@ class PaymentController extends Controller
             }
 
             $transaction = $response->json()['data'];
+            Log::info('Paddle transaction created successfully', [
+                'transaction_id' => $transaction['id'],
+                'checkout_url' => $transaction['checkout']['url'] ?? 'N/A'
+            ]);
 
             // Create a pending order to track this transaction
             if (isset($transaction['id'])) {
-                Order::create([
+                $orderData = [
                     'user_id' => $user->id,
                     'package_id' => $packageData->id,
                     'amount' => $transaction['details']['totals']['total'] / 100, // Convert from cents
@@ -250,20 +376,43 @@ class PaymentController extends Controller
                     'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
                     'status' => 'pending',
                     'metadata' => [
-                        'checkout_url' => $transaction['checkout']['url'] ?? null
+                        'checkout_url' => $transaction['checkout']['url'] ?? null,
+                        'is_upgrade' => $isUpgrade
                     ]
+                ];
+
+                if ($isUpgrade) {
+                    $orderData['metadata']['upgrade_from_package_id'] = $upgradeInfo['current_package']->id;
+                    $orderData['metadata']['upgrade_from_package_name'] = $upgradeInfo['current_package']->name;
+                }
+
+                $order = Order::create($orderData);
+                Log::info('Paddle order created', [
+                    'order_id' => $order->id,
+                    'transaction_id' => $transaction['id'],
+                    'is_upgrade' => $isUpgrade
                 ]);
             }
+
+            Log::info('=== PADDLE CHECKOUT COMPLETED SUCCESSFULLY ===', [
+                'transaction_id' => $transaction['id'],
+                'is_upgrade' => $isUpgrade,
+                'user_id' => $user->id,
+                'package' => $packageData->name
+            ]);
 
             return response()->json([
                 'success' => true,
                 'checkout_url' => $transaction['checkout']['url'] ?? null,
-                'transaction_id' => $transaction['id']
+                'transaction_id' => $transaction['id'],
+                'is_upgrade' => $isUpgrade
             ]);
+
         } catch (\Exception $e) {
-            Log::error('Paddle checkout error', [
+            Log::error('=== PADDLE CHECKOUT ERROR ===', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'package' => $package
             ]);
 
             return response()->json([
@@ -501,8 +650,32 @@ class PaymentController extends Controller
 
     public function fastspringCheckout(Request $request, $package)
     {
+        Log::info('=== FASTSPRING CHECKOUT STARTED ===', [
+            'package' => $package,
+            'request_method' => $request->method(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent()
+        ]);
+
         try {
+            // Detect and validate upgrade
+            $upgradeInfo = $this->detectAndValidateUpgrade($request, $package);
+            
+            if ($upgradeInfo['is_upgrade'] && !$upgradeInfo['validation_passed']) {
+                Log::error('FastSpring checkout failed: Upgrade validation failed', [
+                    'error' => $upgradeInfo['error'] ?? 'Unknown validation error'
+                ]);
+                return response()->json(['error' => $upgradeInfo['error']], 400);
+            }
+
+            $isUpgrade = $upgradeInfo['is_upgrade'];
+            Log::info('FastSpring checkout type determined', ['is_upgrade' => $isUpgrade]);
+
             $processedPackage = str_replace('-plan', '', strtolower($package));
+            Log::info('Processing package name', [
+                'original' => $package,
+                'processed' => $processedPackage
+            ]);
 
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
@@ -512,10 +685,35 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            // For upgrades, ensure we're using the user's original gateway
+            if ($isUpgrade) {
+                $originalGateway = $upgradeInfo['original_gateway'];
+                if ($originalGateway->name !== 'FastSpring') {
+                    Log::error('FastSpring upgrade failed: User original gateway mismatch', [
+                        'user_id' => $user->id,
+                        'original_gateway' => $originalGateway->name,
+                        'requested_gateway' => 'FastSpring'
+                    ]);
+                    return response()->json([
+                        'error' => "You must use your original payment gateway ({$originalGateway->name}) for upgrades"
+                    ], 400);
+                }
+                Log::info('Upgrade gateway validation passed', [
+                    'user_id' => $user->id,
+                    'original_gateway' => $originalGateway->name
+                ]);
+            }
+
             $storefront = config('payment.gateways.FastSpring.storefront');
             if (!$storefront) {
+                Log::error('FastSpring configuration error: Storefront not configured');
                 throw new \Exception('FastSpring storefront not configured');
             }
+
+            Log::info('FastSpring configuration', [
+                'storefront' => $storefront,
+                'package' => $processedPackage
+            ]);
 
             $secureHash = hash_hmac(
                 'sha256',
@@ -523,35 +721,47 @@ class PaymentController extends Controller
                 config('payment.gateways.FastSpring.webhook_secret', '')
             );
 
-            // Get product ID from configuration
-            $productIds = config('payment.gateways.FastSpring.product_ids', []);
-            $productId = $productIds[$processedPackage] ?? null;
+            // Note: FastSpring doesn't need specific product ID here, it's handled in the storefront
+            $checkoutUrl = "https://{$storefront}/{$processedPackage}";
 
-            if (!$productId) {
-                throw new \Exception("Product ID not configured for package: {$processedPackage}");
+            // Prepare tags with upgrade context
+            $tags = [
+                'user_id' => $user->id,
+                'package' => $processedPackage,
+                'secure_hash' => $secureHash
+            ];
+
+            if ($isUpgrade) {
+                $tags['is_upgrade'] = 'true';
+                $tags['current_package'] = $upgradeInfo['current_package']->name;
+                $tags['current_package_id'] = $upgradeInfo['current_package']->id;
+                Log::info('Adding upgrade context to FastSpring tags', $tags);
             }
-
-            $checkoutUrl = "https://{$storefront}/{$productId}";
 
             $queryParams = [
                 'referrer' => $user->id,
                 'contactEmail' => $user->email,
                 'contactFirstName' => $user->first_name ?? '',
                 'contactLastName' => $user->last_name ?? '',
-                'tags' => json_encode([
-                    'user_id' => $user->id,
-                    'package' => $processedPackage,
-                    'secure_hash' => $secureHash
-                ]),
-                'returnUrl' => route('payments.success') . '?gateway=fastspring',
+                'tags' => json_encode($tags),
+                'returnUrl' => route('payments.success') . '?gateway=fastspring' . ($isUpgrade ? '&is_upgrade=true' : ''),
                 'cancelUrl' => route('payments.cancel'),
             ];
 
             $checkoutUrl .= '?' . http_build_query($queryParams);
 
+            Log::info('=== FASTSPRING CHECKOUT COMPLETED SUCCESSFULLY ===', [
+                'checkout_url_length' => strlen($checkoutUrl),
+                'is_upgrade' => $isUpgrade,
+                'user_id' => $user->id,
+                'package' => $packageData->name,
+                'tags' => $tags
+            ]);
+
             return response()->json([
                 'success' => true,
                 'checkout_url' => $checkoutUrl,
+                'is_upgrade' => $isUpgrade,
                 'package_details' => [
                     'name' => $packageData->name,
                     'price' => $packageData->price,
@@ -561,7 +771,13 @@ class PaymentController extends Controller
                         : (array) $packageData->features
                 ]
             ]);
+
         } catch (\Exception $e) {
+            Log::error('=== FASTSPRING CHECKOUT ERROR ===', [
+                'package' => $package,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
             return response()->json([
                 'error' => 'Failed to process FastSpring checkout',
@@ -572,8 +788,32 @@ class PaymentController extends Controller
 
     public function payProGlobalCheckout(Request $request, string $package)
     {
+        Log::info('=== PAYPROGLOBAL CHECKOUT STARTED ===', [
+            'package' => $package,
+            'request_method' => $request->method(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent()
+        ]);
+
         try {
+            // Detect and validate upgrade
+            $upgradeInfo = $this->detectAndValidateUpgrade($request, $package);
+            
+            if ($upgradeInfo['is_upgrade'] && !$upgradeInfo['validation_passed']) {
+                Log::error('PayProGlobal checkout failed: Upgrade validation failed', [
+                    'error' => $upgradeInfo['error'] ?? 'Unknown validation error'
+                ]);
+                return response()->json(['error' => $upgradeInfo['error']], 400);
+            }
+
+            $isUpgrade = $upgradeInfo['is_upgrade'];
+            Log::info('PayProGlobal checkout type determined', ['is_upgrade' => $isUpgrade]);
+
             $processedPackage = str_replace('-plan', '', strtolower($package));
+            Log::info('Processing package name', [
+                'original' => $package,
+                'processed' => $processedPackage
+            ]);
 
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
@@ -583,8 +823,33 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            // For upgrades, ensure we're using the user's original gateway
+            if ($isUpgrade) {
+                $originalGateway = $upgradeInfo['original_gateway'];
+                if ($originalGateway->name !== 'Pay Pro Global') {
+                    Log::error('PayProGlobal upgrade failed: User original gateway mismatch', [
+                        'user_id' => $user->id,
+                        'original_gateway' => $originalGateway->name,
+                        'requested_gateway' => 'Pay Pro Global'
+                    ]);
+                    return response()->json([
+                        'error' => "You must use your original payment gateway ({$originalGateway->name}) for upgrades"
+                    ], 400);
+                }
+                Log::info('Upgrade gateway validation passed', [
+                    'user_id' => $user->id,
+                    'original_gateway' => $originalGateway->name
+                ]);
+            }
+
             $productIds = $this->getProductIds('PayProGlobal');
             $productId = $productIds[$processedPackage] ?? null;
+
+            Log::info('PayProGlobal product lookup', [
+                'processed_package' => $processedPackage,
+                'product_id' => $productId,
+                'all_product_ids' => $productIds
+            ]);
 
             if (!$productId) {
                 $legacyProductIds = [
@@ -593,28 +858,69 @@ class PaymentController extends Controller
                     'business' => Config::get('payment.gateways.PayProGlobal.product_id_business'),
                 ];
                 $productId = $legacyProductIds[$processedPackage] ?? null;
+                Log::info('Using legacy product ID', [
+                    'processed_package' => $processedPackage,
+                    'legacy_product_id' => $productId
+                ]);
             }
 
             if (!$productId) {
+                Log::error('PayProGlobal product ID not found', [
+                    'package' => $processedPackage,
+                    'available_products' => array_keys($productIds)
+                ]);
                 throw new \Exception("Product ID not configured for package: {$processedPackage}");
             }
 
             $secretKey = Config::get('payment.gateways.PayProGlobal.webhook_secret');
             $testMode = Config::get('payment.gateways.PayProGlobal.test_mode', true);
 
-            // Updated success URL with popup=true
-            $successUrl = route('payments.success') . "?gateway=payproglobal&order_id={order_id}&user_id={$user->id}&package={$processedPackage}&popup=true";
-            // Updated cancel URL to a dedicated popup cancel route
+            Log::info('PayProGlobal configuration', [
+                'product_id' => $productId,
+                'test_mode' => $testMode,
+                'has_secret_key' => !empty($secretKey)
+            ]);
+
+            // Create success and cancel URLs with upgrade context
+            $successParams = [
+                'gateway' => 'payproglobal',
+                'order_id' => '{order_id}',
+                'user_id' => $user->id,
+                'package' => $processedPackage,
+                'popup' => 'true'
+            ];
+
+            if ($isUpgrade) {
+                $successParams['is_upgrade'] = 'true';
+                $successParams['current_package'] = $upgradeInfo['current_package']->name;
+            }
+
+            $successUrl = route('payments.success') . '?' . http_build_query($successParams);
             $cancelUrl = route('payments.popup-cancel');
+
+            Log::info('PayProGlobal URLs prepared', [
+                'success_url' => $successUrl,
+                'cancel_url' => $cancelUrl
+            ]);
+
+            // Prepare custom data with upgrade context
+            $customData = [
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'package' => $processedPackage,
+            ];
+
+            if ($isUpgrade) {
+                $customData['is_upgrade'] = true;
+                $customData['current_package_id'] = $upgradeInfo['current_package']->id;
+                $customData['current_package'] = $upgradeInfo['current_package']->name;
+                Log::info('Adding upgrade context to PayProGlobal custom data', $customData);
+            }
 
             $checkoutUrl = "https://store.payproglobal.com/checkout?products[1][id]={$productId}";
             $checkoutUrl .= "&email=" . urlencode($user->email);
             $checkoutUrl .= "&products[0][id]=" . $productId;
-            $checkoutUrl .= "&custom=" . urlencode(json_encode([
-                'user_id' => $user->id,
-                'package_id' => $packageData->id,
-                'package' => $processedPackage,
-            ]));
+            $checkoutUrl .= "&custom=" . urlencode(json_encode($customData));
             $checkoutUrl .= "&first_name=" . urlencode($user->first_name ?? '');
             $checkoutUrl .= "&last_name=" . urlencode($user->last_name ?? '');
             $checkoutUrl .= "&page-template=ID";
@@ -624,10 +930,19 @@ class PaymentController extends Controller
             $checkoutUrl .= "&success-url=" . urlencode($successUrl);
             $checkoutUrl .= "&cancel-url=" . urlencode($cancelUrl);
 
+            Log::info('=== PAYPROGLOBAL CHECKOUT COMPLETED SUCCESSFULLY ===', [
+                'checkout_url_length' => strlen($checkoutUrl),
+                'is_upgrade' => $isUpgrade,
+                'user_id' => $user->id,
+                'package' => $packageData->name,
+                'product_id' => $productId
+            ]);
+
             return response()->json([
                 'success' => true,
                 'checkoutUrl' => $checkoutUrl,
                 'package_id' => $packageData->id,
+                'is_upgrade' => $isUpgrade,
                 'package_details' => [
                     'name' => $packageData->name,
                     'price' => $packageData->price,
@@ -637,10 +952,12 @@ class PaymentController extends Controller
                         : (array) $packageData->features
                 ]
             ]);
+
         } catch (\Exception $e) {
-            Log::error('PayProGlobal checkout error: ' . $e->getMessage(), [
+            Log::error('=== PAYPROGLOBAL CHECKOUT ERROR ===', [
                 'package' => $package,
-                'exception' => $e
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return response()->json([
                 'success' => false,
@@ -1807,5 +2124,139 @@ class PaymentController extends Controller
             ]);
             return false;
         }
+    }
+
+    /**
+     * Detect if this is an upgrade request and validate
+     */
+    private function detectAndValidateUpgrade(Request $request, $package)
+    {
+        Log::info('=== DETECTING UPGRADE REQUEST ===', [
+            'package' => $package,
+            'headers' => $request->headers->all(),
+            'request_data' => $request->all()
+        ]);
+
+        // Check if this is an upgrade request
+        $isUpgrade = $request->input('is_upgrade', false) || 
+                    $request->header('X-Is-Upgrade', false) || 
+                    $request->query('is_upgrade', false);
+
+        Log::info('Upgrade detection result', [
+            'is_upgrade' => $isUpgrade,
+            'from_input' => $request->input('is_upgrade'),
+            'from_header' => $request->header('X-Is-Upgrade'),
+            'from_query' => $request->query('is_upgrade')
+        ]);
+
+        if (!$isUpgrade) {
+            Log::info('Request identified as NEW SUBSCRIPTION');
+            return [
+                'is_upgrade' => false,
+                'validation_passed' => true
+            ];
+        }
+
+        Log::info('Request identified as UPGRADE - validating eligibility');
+
+        // Validate upgrade eligibility
+        $user = Auth::user();
+        
+        Log::info('User upgrade validation', [
+            'user_id' => $user->id,
+            'has_package' => !is_null($user->package),
+            'has_payment_gateway' => !is_null($user->paymentGateway),
+            'subscription_starts_at' => $user->subscription_starts_at,
+            'is_subscribed' => $user->is_subscribed ?? false
+        ]);
+
+        // Check if user has an active subscription
+        if (!$user->package || !$user->paymentGateway) {
+            Log::error('Upgrade validation failed: No active subscription', [
+                'user_id' => $user->id,
+                'has_package' => !is_null($user->package),
+                'has_payment_gateway' => !is_null($user->paymentGateway)
+            ]);
+            return [
+                'is_upgrade' => true,
+                'validation_passed' => false,
+                'error' => 'No active subscription found'
+            ];
+        }
+
+        if ($user->subscription_starts_at === null) {
+            Log::error('Upgrade validation failed: No subscription start date', [
+                'user_id' => $user->id,
+                'subscription_starts_at' => $user->subscription_starts_at
+            ]);
+            return [
+                'is_upgrade' => true,
+                'validation_passed' => false,
+                'error' => 'Subscription has expired'
+            ];
+        }
+
+        // Check if original gateway is still active
+        if (!$user->paymentGateway->is_active) {
+            Log::error('Upgrade validation failed: Original gateway inactive', [
+                'user_id' => $user->id,
+                'gateway_id' => $user->paymentGateway->id,
+                'gateway_name' => $user->paymentGateway->name,
+                'is_active' => $user->paymentGateway->is_active
+            ]);
+            return [
+                'is_upgrade' => true,
+                'validation_passed' => false,
+                'error' => 'Your original payment gateway is no longer available'
+            ];
+        }
+
+        // Get target package
+        $targetPackage = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
+        if (!$targetPackage) {
+            Log::error('Upgrade validation failed: Target package not found', [
+                'package' => $package,
+                'user_id' => $user->id
+            ]);
+            return [
+                'is_upgrade' => true,
+                'validation_passed' => false,
+                'error' => 'Package not found'
+            ];
+        }
+
+        // Validate that this is actually an upgrade (higher price/tier)
+        $currentPrice = optional($user->package)->price ?? 0;
+        if ($targetPackage->price <= $currentPrice) {
+            Log::error('Upgrade validation failed: Not an upgrade', [
+                'user_id' => $user->id,
+                'current_package' => $user->package->name ?? 'Unknown',
+                'current_price' => $currentPrice,
+                'target_package' => $targetPackage->name,
+                'target_price' => $targetPackage->price
+            ]);
+            return [
+                'is_upgrade' => true,
+                'validation_passed' => false,
+                'error' => 'This is not an upgrade. Please contact support for downgrades.'
+            ];
+        }
+
+        Log::info('Upgrade validation PASSED', [
+            'user_id' => $user->id,
+            'current_package' => $user->package->name,
+            'current_price' => $currentPrice,
+            'target_package' => $targetPackage->name,
+            'target_price' => $targetPackage->price,
+            'original_gateway' => $user->paymentGateway->name
+        ]);
+
+        return [
+            'is_upgrade' => true,
+            'validation_passed' => true,
+            'current_package' => $user->package,
+            'target_package' => $targetPackage,
+            'original_gateway' => $user->paymentGateway
+        ];
     }
 }
