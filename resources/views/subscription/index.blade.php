@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta http-equiv="Content-Security-Policy" content="
+    <meta http-equiv="Content-Security-Policy"
+        content="
         default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
         font-src 'self' https://fonts.gstatic.com;
@@ -19,26 +20,26 @@
 
     <!-- Payment Gateway Scripts -->
     @php
-    $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
+        $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
     @endphp
     @if (in_array('FastSpring', $activeGateways))
-    <script src="https://sbl.onfastspring.com/js/checkout/button.js"
-        data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('Pay Pro Global', $activeGateways))
-    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
-    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-        data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment"
-        data-popup-closed="onFSPopupClosed" data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
-    <script>
-        let currentProductPath = '';
+        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
+            data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+        <script>
+            let currentProductPath = '';
 
             function processFastSpring(productPath) {
                 try {
@@ -129,15 +130,16 @@
                     }
                 }
             }
-    </script>
+        </script>
     @endif
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
-    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
                 try {
+                    // Fix the environment setting
                     Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
                     Paddle.Setup({
                         token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
@@ -152,12 +154,12 @@
                     });
                 }
             });
-    </script>
+        </script>
     @endif
 
     <!-- PayProGlobal Integration -->
     @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
-    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <style>
@@ -612,25 +614,25 @@
                 businesses and individuals connect with their audiences. Our avatars can:</p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
-                <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
-                    <h3>{{ $package->name }}</h3>
-                    <p class="price">${{ number_format($package->price, 0) }} <span class="per-month">/{{
-                            $package->duration }}</span></p>
-                    <button class="btn dark checkout-button" data-package="{{ $package->name }}" {{
-                        $currentPackage==$package->name ? 'disabled' : '' }}>
-                        {{ $package->name == 'Enterprise'
-                        ? 'Get in Touch'
-                        : ($currentPackage == $package->name
-                        ? 'Activated'
-                        : 'Get Started') }}
-                    </button>
-                    <p class="included-title">What's included</p>
-                    <ul class="features">
-                        @foreach ($package->features as $feature)
-                        <li><span class="icon"></span> {{ $feature }}</li>
-                        @endforeach
-                    </ul>
-                </div>
+                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                        <h3>{{ $package->name }}</h3>
+                        <p class="price">${{ number_format($package->price, 0) }} <span
+                                class="per-month">/{{ $package->duration }}</span></p>
+                        <button class="btn dark checkout-button" data-package="{{ $package->name }}"
+                            {{ $currentPackage == $package->name ? 'disabled' : '' }}>
+                            {{ $package->name == 'Enterprise'
+                                ? 'Get in Touch'
+                                : ($currentPackage == $package->name
+                                    ? 'Activated'
+                                    : 'Get Started') }}
+                        </button>
+                        <p class="included-title">What's included</p>
+                        <ul class="features">
+                            @foreach ($package->features as $feature)
+                                <li><span class="icon"></span> {{ $feature }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
                 @endforeach
             </div>
         </div>
@@ -728,7 +730,11 @@
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
-                            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}',
+                            'Authorization': 'Bearer {{ auth()->user()
+                                ? auth()->user()->createToken('
+                                                                                                                                                                    api ')->plainTextToken
+                                : '
+                                                                                                                                                                    ' }}',
                             'X-CSRF-TOKEN': csrfToken,
                             'X-Requested-With': 'XMLHttpRequest'
                         },
@@ -748,9 +754,10 @@
                             Paddle.Checkout.open({
                                 transactionId: data.transaction_id,
                                 eventCallback: function(eventData) {
-                                    if (eventData.event === 'checkout.completed') {
+                                    console.log(eventData.data.event);
+                                    if (eventData.data?.event?.name === 'checkout.completed') {
                                         window.location.href = '/user/dashboard';
-                                    } else if (eventData.event === 'checkout.failed') {
+                                    } else if (eventData.data?.event?.name === 'checkout.failed') {
                                         Swal.fire({
                                             icon: 'error',
                                             title: 'Payment Failed',
@@ -760,7 +767,8 @@
                                         }).then(() => {
                                             window.location.reload();
                                         });
-                                    } else if (eventData.event === 'checkout.closed' && !eventData
+                                    } else if (eventData.data?.event?.name === 'checkout.closed' &&
+                                        !eventData
                                         .data.success) {
                                         Swal.fire({
                                             icon: 'info',
@@ -794,439 +802,129 @@
                     });
             }
 
+            // Payproglobal processing
+            // Payproglobal processing
             function processPayProGlobal(productPath) {
-    console.log('[PayProGlobal] Starting payment process for product:', productPath);
-    const packageName = productPath.replace('-plan', '');
-    const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
-    const paymentId = 'pay-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-    let paymentWindow = null;
-    let paymentCompleted = false;
-    let paymentVerified = false;
-    let checkInterval = null;
-    const debugMode = true; // Set to false in production
+                console.log('[PayProGlobal] Starting payment process for product:', productPath);
 
-    // Debug logging
-    const debugLog = (...args) => {
-        if (debugMode) {
-            console.log('[PayProGlobal]', ...args);
-        }
-    };
+                const packageName = productPath.replace('-plan', '');
+                const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 
-    // Function to clean up resources
-    const cleanup = () => {
-        debugLog('Cleaning up resources');
-        window.removeEventListener('message', messageHandler);
-        window.removeEventListener('beforeunload', cleanup);
-        if (checkInterval) clearInterval(checkInterval);
-        if (paymentWindow && !paymentWindow.closed) {
-            paymentWindow.close();
-        }
-        localStorage.removeItem('pendingPayment');
-    };
-
-    // Function to verify payment status via API
-    const verifyPaymentStatus = async () => {
-        debugLog('Verifying payment status for paymentId:', paymentId);
-        try {
-            const response = await fetch(`/api/payments/verify-payproglobal/${paymentId}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json',
-                    'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
-                }
-            });
-            const data = await response.json();
-            debugLog('Payment verification response:', data);
-            return data.status === 'completed';
-        } catch (error) {
-            debugLog('Error verifying payment:', error);
-            return false;
-        }
-    };
-
-    // Function to handle payment completion
-    const handlePaymentComplete = async (source) => {
-        debugLog(`Payment complete triggered from: ${source}`);
-        if (paymentCompleted) {
-            debugLog('Payment already marked as completed, skipping');
-            return;
-        }
-
-        paymentCompleted = true;
-
-        // Verify payment status before proceeding
-        const isVerified = await verifyPaymentStatus();
-        if (!isVerified) {
-            debugLog('Payment verification failed');
-            Swal.fire({
-                icon: 'error',
-                title: 'Payment Verification Failed',
-                text: 'Your payment could not be verified. Please contact support.',
-                confirmButtonText: 'OK'
-            }).then(() => {
-                cleanup();
-                window.location.href = '/pricing';
-            });
-            return;
-        }
-
-        // Send transaction details to server
-        const transactionData = {
-            transaction_id: paymentId,
-            paymentId: paymentId,
-            package: packageName,
-            timestamp: Date.now(),
-            _token: csrfToken
-        };
-
-        debugLog('Sending transaction details to server:', transactionData);
-
-        const successUrl = new URL('{{ route('payments.success') }}');
-        const params = new URLSearchParams();
-        params.append('gateway', 'payproglobal');
-        params.append('order_id', paymentId);
-        params.append('user_id', '{{ Auth::id() }}');
-        params.append('package', packageName);
-        params.append('payment_id', paymentId);
-        params.append('payment_gateway_id', '{{ $activeGateway->id ?? '' }}');
-        params.append('redirect_to', '/user/dashboard');
-
-        successUrl.search = params.toString();
-
-        fetch(successUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json',
-                'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
-            },
-            body: JSON.stringify(transactionData)
-        })
-        .then(response => {
-            debugLog('Server response status:', response.status);
-            if (!response.ok) {
-                return response.json().then(err => { throw err; });
-            }
-            return response.json();
-        })
-        .then(data => {
-            debugLog('Transaction details saved:', data);
-            localStorage.removeItem('pendingPayment');
-
-            if (data.status === 'success') {
-                debugLog('Showing success message');
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Payment Completed!',
-                    text: data.message || 'Your subscription has been successfully updated.',
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    cleanup();
-                    window.location.href = data.redirect || '/user/dashboard';
-                });
-            } else if (data.status === 'pending') {
-                debugLog('Payment is pending verification');
-                Swal.fire({
-                    icon: 'info',
-                    title: 'Payment Processing',
-                    text: data.message || 'Your payment is being processed. Please check your email for confirmation.',
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    cleanup();
-                    window.location.href = data.redirect || '/user/dashboard';
-                });
-            } else {
-                throw new Error(data.message || 'An unknown error occurred');
-            }
-        })
-        .catch(error => {
-            debugLog('Error saving transaction details:', error);
-            Swal.fire({
-                icon: 'error',
-                title: 'Payment Error',
-                text: error.message || 'Your payment was processed, but there was an issue updating your subscription. Please contact support.',
-                confirmButtonText: 'OK'
-            }).then(() => {
-                cleanup();
-                window.location.href = '/pricing';
-            });
-        });
-    };
-
-    // Function to check payment status
-    const checkPaymentStatus = async () => {
-        debugLog('Checking payment status...');
-        try {
-            if (paymentWindow && paymentWindow.closed) {
-                debugLog('Payment window was closed by user');
-                clearInterval(checkInterval);
-
-                if (!paymentCompleted && !paymentVerified) {
-                    debugLog('Checking payment status before showing cancel message');
-                    // Delay verification to allow webhook processing
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    const isVerified = await verifyPaymentStatus();
-                    if (isVerified) {
-                        debugLog('Payment was verified before window close');
-                        paymentVerified = true;
-                        handlePaymentComplete('verified');
-                    } else {
-                        debugLog('Payment was not completed or verified');
-                        Swal.fire({
-                            icon: 'info',
-                            title: 'Checkout Cancelled',
-                            text: 'The payment process was cancelled. You can try again anytime.',
-                            confirmButtonText: 'OK'
-                        }).then(() => {
-                            cleanup();
-                            window.location.href = '/pricing';
-                        });
-                    }
-                } else if (paymentVerified) {
-                    debugLog('Payment was verified before window close');
-                    handlePaymentComplete('verified');
-                }
-                return;
-            }
-
-            try {
-                const url = paymentWindow.location.href;
-                debugLog('Payment window URL:', url);
-
-                if (url.includes('payproglobal.com/thankyou') ||
-                    url.includes('payproglobal.com/thank_you') ||
-                    url.includes('payproglobal.com/success')) {
-                    debugLog('Detected success URL, completing payment');
-                    paymentVerified = true;
-                    handlePaymentComplete('URL check');
-                }
-            } catch (e) {
-                debugLog('Cross-origin error, relying on API verification');
-            }
-        } catch (e) {
-            debugLog('Error in checkPaymentStatus:', e);
-        }
-    };
-
-    // Open payment window
-    const width = 1000;
-    const height = 700;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-
-    try {
-        paymentWindow = window.open(
-            'about:blank',
-            'PayProGlobalCheckout',
-            `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
-        );
-
-        if (!paymentWindow) {
-            debugLog('Payment window blocked by browser');
-            Swal.fire({
-                icon: 'error',
-                title: 'Popup Blocked',
-                text: 'Please allow popups for this site in your browser settings and try again.',
-                confirmButtonText: 'OK'
-            });
-            return;
-        }
-
-        // Show loading message in payment window
-        paymentWindow.document.write(`
-            <html>
-                <head>
-                    <title>Processing Payment...</title>
-                    <style>
-                        body { 
-                            font-family: Arial, sans-serif; 
-                            display: flex; 
-                            justify-content: center; 
-                            align-items: center; 
-                            height: 100vh; 
-                            margin: 0; 
-                            background: #f5f5f5;
-                        }
-                        .loader {
-                            text-align: center;
-                            padding: 20px;
-                        }
-                        .spinner {
-                            border: 5px solid #f3f3f3;
-                            border-top: 5px solid #3498db;
-                            border-radius: 50%;
-                            width: 50px;
-                            height: 50px;
-                            animation: spin 1s linear infinite;
-                            margin: 0 auto 20px;
-                        }
-                        @keyframes spin {
-                            0% { transform: rotate(0deg); }
-                            100% { transform: rotate(360deg); }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="loader">
-                        <div class="spinner"></div>
-                        <h2>Processing Your Payment</h2>
-                        <p>Please wait while we connect you to our secure payment processor...</p>
-                    </div>
-                </body>
-            </html>
-        `);
-    } catch (windowError) {
-        debugLog('Error opening payment window:', windowError);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: 'Failed to open payment window: ' + windowError.message,
-            confirmButtonText: 'OK'
-        });
-        return;
-    }
-
-    // Start checking payment status
-    checkInterval = setInterval(checkPaymentStatus, 3000); // Increased interval to 3 seconds
-
-    // Fetch checkout URL
-    debugLog('Fetching checkout URL from:', apiUrl);
-    fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': 'application/json',
-            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}'
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify({ package: packageName })
-    })
-    .then(async response => {
-        debugLog('Received response, status:', response.status);
-        const responseData = await response.json().catch(e => ({}));
-
-        if (!response.ok) {
-            const errorMsg = responseData.message || 'Network response was not ok';
-            debugLog('Error response:', responseData);
-            throw new Error(errorMsg);
-        }
-
-        debugLog('Response data:', responseData);
-        return responseData;
-    })
-    .then(data => {
-        debugLog('Processing checkout data:', data);
-
-        if (!data.checkoutUrl) {
-            throw new Error('No checkout URL received in response');
-        }
-
-        debugLog('Redirecting to checkout URL:', data.checkoutUrl);
-
-        try {
-            const successUrl = new URL(data.checkoutUrl);
-            const params = new URLSearchParams(successUrl.search);
-            params.set('payment_id', paymentId);
-            successUrl.search = params.toString();
-
-            debugLog('Redirecting to payment page with payment ID:', paymentId);
-            paymentWindow.location.href = successUrl.toString();
-
-            // Set payment timeout
-            const timeoutDuration = 30 * 60 * 1000; // 30 minutes
-            debugLog(`Setting payment timeout for ${timeoutDuration}ms`);
-
-            setTimeout(() => {
-                if (!paymentCompleted) {
-                    debugLog('Payment session timeout reached');
-                    localStorage.removeItem('pendingPayment');
-                    if (paymentWindow && !paymentWindow.closed) {
-                        debugLog('Closing payment window due to timeout');
-                        paymentWindow.close();
-                    }
+                if (!csrfToken) {
+                    console.error('[PayProGlobal] CSRF token not found');
                     Swal.fire({
-                        icon: 'warning',
-                        title: 'Session Expired',
-                        text: 'The payment session has timed out. Please try again if your payment was not processed.',
+                        icon: 'error',
+                        title: 'Configuration Error',
+                        text: 'Security token not found. Please refresh the page and try again.',
+                        confirmButtonText: 'OK'
+                    });
+                    return;
+                }
+
+                // Define success and cancel callbacks
+                window.paymentSuccess = function() {
+                    console.log('[PayProGlobal] Payment successful for package:', packageName);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Payment Successful',
+                        text: 'Your payment was processed successfully.',
                         confirmButtonText: 'OK'
                     }).then(() => {
-                        cleanup();
+                        window.location.href = '/user/dashboard';
                     });
-                }
-            }, timeoutDuration);
-        } catch (redirectError) {
-            debugLog('Error redirecting to checkout:', redirectError);
-            throw new Error('Failed to redirect to payment page: ' + redirectError.message);
-        }
-    })
-    .catch(error => {
-        debugLog('Payment processing error:', error);
-        try {
-            if (paymentWindow && !paymentWindow.closed) {
-                paymentWindow.close();
+                };
+
+                window.paymentCancelled = function() {
+                    console.log('[PayProGlobal] Payment cancelled for package:', packageName);
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Payment Cancelled',
+                        text: 'Your payment was cancelled. You can try again anytime.',
+                        confirmButtonText: 'OK'
+                    });
+                };
+
+                fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            package: packageName
+                        })
+                    })
+                    .then(response => {
+                        console.log('[PayProGlobal] Response status:', response.status);
+                        if (response.status === 401) {
+                            console.error('[PayProGlobal] Authentication error: User not logged in');
+                            throw new Error(
+                                'You must be logged in to make a purchase. Please log in and try again.');
+                        }
+                        if (!response.ok) {
+                            console.error('[PayProGlobal] HTTP error:', response.status, response.statusText);
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('[PayProGlobal] Checkout response:', data);
+                        if (!data.success || !data.checkoutUrl) {
+                            console.error('[PayProGlobal] Checkout failed:', data.message ||
+                                'No checkout URL received');
+                            throw new Error(data.message || 'No checkout URL received');
+                        }
+                        console.log('[PayProGlobal] Opening checkout popup with URL:', data.checkoutUrl);
+                        // Open popup instead of redirecting
+                        const popup = window.open(
+                            data.checkoutUrl,
+                            'PayProGlobal Checkout',
+                            'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
+                        );
+                        if (!popup) {
+                            console.warn('[PayProGlobal] Popup blocked for checkout');
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Popup Blocked',
+                                text: 'Please allow popups for this site and try again.',
+                                confirmButtonText: 'OK'
+                            });
+                        } else {
+                            console.log('[PayProGlobal] Checkout popup opened successfully');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('[PayProGlobal] Error during checkout:', error.message);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Checkout Error',
+                            text: error.message ||
+                                'Failed to initiate payment. Please try again or contact support.',
+                            confirmButtonText: 'OK'
+                        });
+                    });
             }
-        } catch (closeError) {
-            debugLog('Error closing payment window:', closeError);
-        }
-
-        const errorMessage = error.message || 'Failed to process payment. Please try again or contact support.';
-        debugLog('Showing error to user:', errorMessage);
-
-        Swal.fire({
-            icon: 'error',
-            title: 'Payment Error',
-            text: errorMessage,
-            confirmButtonText: 'OK'
-        }).then(() => {
-            cleanup();
-        });
-    });
-
-    // Message handler for payment completion
-    const messageHandler = async (event) => {
-        debugLog('Received message from payment window:', event.data);
-
-        // Only process messages from trusted origins
-        if (event.origin !== 'https://store.payproglobal.com' && event.origin !== window.location.origin) {
-            debugLog('Message from untrusted origin:', event.origin);
-            return;
-        }
-
-        if (event.data && typeof event.data === 'object' &&
-            event.data.type === 'payment-completed' &&
-            event.data.paymentId === paymentId) {
-            debugLog('Payment completed via message');
-            paymentVerified = true;
-            handlePaymentComplete('message');
-        }
-    };
-
-    window.addEventListener('message', messageHandler);
-}
         });
     </script>
     <script>
         document.querySelector('.dropdown-toggle').addEventListener('click', function() {
-        const menu = document.querySelector('.dropdown-menu');
-        const isOpen = menu.style.display === 'block';
-        menu.style.display = isOpen ? 'none' : 'block';
-        this.setAttribute('aria-expanded', !isOpen);
-    });
+            const menu = document.querySelector('.dropdown-menu');
+            const isOpen = menu.style.display === 'block';
+            menu.style.display = isOpen ? 'none' : 'block';
+            this.setAttribute('aria-expanded', !isOpen);
+        });
 
-    document.addEventListener('click', function(event) {
-        const dropdown = document.querySelector('.dropdown');
-        if (!dropdown.contains(event.target)) {
-            document.querySelector('.dropdown-menu').style.display = 'none';
-            document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
-        }
-    });
+        document.addEventListener('click', function(event) {
+            const dropdown = document.querySelector('.dropdown');
+            if (!dropdown.contains(event.target)) {
+                document.querySelector('.dropdown-menu').style.display = 'none';
+                document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
+            }
+        });
     </script>
 </body>
 

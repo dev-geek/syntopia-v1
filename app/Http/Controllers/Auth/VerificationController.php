@@ -9,6 +9,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Foundation\Auth\VerifiesEmails;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class VerificationController extends Controller
 {
@@ -48,7 +51,6 @@ class VerificationController extends Controller
 
     public function verifyCode(Request $request)
     {
-        // Removed dd() - this was stopping execution
         $request->validate([
             'verification_code' => 'required|string|size:6'
         ]);
@@ -65,37 +67,54 @@ class VerificationController extends Controller
             return redirect()->route('login')->withErrors('User not found. Please register again.');
         }
 
-        // Check if already verified
         if ($user->status == 1 && !is_null($user->email_verified_at)) {
             return redirect()->route('login')->with('success', 'Email already verified. Please login.');
         }
 
-        // Verify the code
         if ($user->verification_code !== $request->verification_code) {
             return back()->withErrors(['verification_code' => 'Invalid verification code.']);
         }
 
-        // Update user verification status
-        $user->update([
-            'email_verified_at' => now(),
-            'status' => 1,
-            'verification_code' => null // Clear the code after use
-        ]);
+        try {
+            DB::beginTransaction();
 
-        // Clear email from session
-        session()->forget('email');
+            // Call API
+            $apiResponse = $this->callXiaoiceApiWithCreds($user, $request->password);
 
-        // Log the user in
-        Auth::login($user);
+            if (!$apiResponse || empty($apiResponse['data']['tenantId'])) {
+                // API failed: rollback and prompt re-verification
+                DB::rollBack();
 
-        // Redirect based on user role
-        if ($user->hasRole('User')) {
-            return redirect()->route('subscriptions.index')
-                ->with('success', 'Email verified successfully!');
+                return back()->with('error', 'System API is down right now. Please try again later.');
+            }
+
+            $user->update([
+                'email_verified_at' => now(),
+                'status' => 1,
+                'verification_code' => null,
+                'tenant_id' => $apiResponse['data']['tenantId'],
+            ]);
+
+            DB::commit();
+
+            session()->forget('email');
+
+            Auth::login($user);
+
+            if ($user->hasRole('User')) {
+                return redirect()->route('subscriptions.index')
+                    ->with('success', 'Email verified successfully!');
+            }
+
+            return redirect()->route('login')
+                ->with('success', 'Email verified successfully! You can now login.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->withErrors([
+                'server_error' => 'Something went wrong during verification. Please try again later.'
+            ]);
         }
-
-        return redirect()->route('login')
-            ->with('success', 'Email verified successfully! You can now login.');
     }
 
     public function resend()
@@ -110,5 +129,52 @@ class VerificationController extends Controller
         }
 
         return back()->with('message', 'Verification code has been resent');
+    }
+
+    private function callXiaoiceApiWithCreds($user, $plainPassword)
+    {
+        try {
+            $response = Http::withHeaders([
+                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
+                'name' => $user->name,
+                'regionCode' => 'OTHER',
+                'adminName' => $user->name,
+                'adminEmail' => $user->email,
+                'adminPassword' => $plainPassword,
+                'appIds' => [2],
+            ]);
+
+            if ($response->successful()) {
+                return $response->json(); // ✅ Return the actual response data
+            }
+
+            // Log error if not successful
+            $status = $response->status();
+            $errorMessage = match ($status) {
+                400 => 'Bad Request - Missing required parameters.',
+                401 => 'Unauthorized - Invalid or expired subscription key.',
+                404 => 'Not Found - The requested resource does not exist.',
+                429 => 'Too Many Requests - Rate limit exceeded.',
+                500 => 'Internal Server Error - API server issue.',
+                default => 'Unexpected error occurred.'
+            };
+
+            Log::error('Xiaoice API call failed', [
+                'user_id' => $user->id,
+                'status' => $status,
+                'error_message' => $errorMessage,
+                'response_body' => $response->body()
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error calling Xiaoice API', [
+                'user_id' => $user->id,
+                'exception_message' => $e->getMessage()
+            ]);
+        }
+
+        return null;
     }
 }

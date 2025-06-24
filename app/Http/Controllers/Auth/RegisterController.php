@@ -184,15 +184,7 @@ class RegisterController extends Controller
                 'status' => 0
             ]);
 
-            $user->assignRole('User');
-
-            // Call API
-            $apiResponse = $this->callXiaoiceApiWithCreds($user, $request->password);
-
-            if (!$apiResponse || empty($apiResponse['data']['tenantId'])) {
-                $apiError = $apiResponse['message'] ?? 'Xiaoice API failed or tenantId missing';
-                throw new \Exception($apiError);
-            }            
+            $user->assignRole('User');           
 
             DB::commit();
 
@@ -227,65 +219,4 @@ class RegisterController extends Controller
 
         return redirect('/email/verify');
     }
-
-    private function callXiaoiceApiWithCreds($user, $plainPassword)
-    {
-        try {
-            $response = Http::withHeaders([
-                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
-                'name' => $user->name,
-                'regionCode' => 'OTHER',
-                'adminName' => "Super Admin",
-                'adminEmail' => "admin@syntopia.io",
-                'adminPassword' => "Passw0rd@2025",
-                'appIds' => [2],
-            ]);
-
-            if ($response->successful()) {
-                $tenantId = $response->json('data.tenantId');
-
-                if ($tenantId) {
-                    $user->update([
-                        'tenant_id' => $tenantId
-                    ]);
-                }
-
-                Log::info('Xiaoice API call successful', [
-                    'user_id' => $user->id,
-                    'response' => $response->json()
-                ]);
-
-                return $response->json(); // Now we return after saving
-            }
-
-            // Handle known error codes
-            $status = $response->status();
-            $errorMessage = match ($status) {
-                400 => 'Bad Request - Missing required parameters.',
-                401 => 'Unauthorized - Invalid or expired subscription key.',
-                404 => 'Not Found - The requested resource does not exist.',
-                429 => 'Too Many Requests - Rate limit exceeded.',
-                500 => 'Internal Server Error - API server issue.',
-                default => 'Unexpected error occurred.'
-            };
-
-            Log::error('Xiaoice API call failed', [
-                'user_id' => $user->id,
-                'status' => $status,
-                'error_message' => $errorMessage,
-                'response_body' => $response->body()
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error calling Xiaoice API', [
-                'user_id' => $user->id,
-                'exception_message' => $e->getMessage()
-            ]);
-        }
-
-        return null;
-    }
-
 }

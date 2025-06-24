@@ -118,6 +118,9 @@ Route::get('/test-paddle', [SubscriptionController::class, 'createPaddleSession'
 Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
 
 // Guest routes (no authentication required)
+// Pricing route
+Route::get('/pricing', [\App\Http\Controllers\SubscriptionController::class, 'index'])->name('pricing');
+
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login-user', [LoginController::class, 'customLogin'])->name('login.user');

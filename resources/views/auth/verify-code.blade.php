@@ -1,92 +1,117 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Verification code - Syntopia</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
+@extends('layouts.app')
+
+@section('content')
+<style>
+    body {
+        background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
+        background-size: cover;
+        min-height: 100vh;
+        padding: 30px;
+        margin: 0;
+    }
+
+    .heading-text {
+        font-size: 24px;
+        padding-bottom: 20px;
+        font-weight: 500;
+        color: #000;
+    }
+
+    .container-box {
+        max-width: 100%;
+        width: 520px;
+        padding: 30px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        margin: 0 auto;
+    }
+
+    .email-text {
+        font-size: 13px;
+        margin-bottom: 20px;
+    }
+
+    .logo-container {
+        text-align: center;
+        margin: 20px 0 40px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .logo-container img {
+        width: 160px;
+        height: auto;
+    }
+
+    .form-control {
+        background: #E7E7E9;
+        font-size: 13px;
+        border: none !important;
+        padding: 12px 15px !important;
+        height: auto;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    label {
+        font-weight: 500;
+        font-size: 13px;
+        text-align: left;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .btn-light {
+        background-color: #E7E7E9;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .footer-text {
+        text-align: center;
+        margin-top: 30px;
+        color: #6c757d;
+        font-size: 11px;
+    }
+
+    .primary-button {
+        width: 100%;
+        padding: 12px;
+        font-size: 13px;
+        font-weight: 500;
+        background: #3e57da;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 10px 0 20px;
+        transition: background-color 0.3s;
+    }
+
+    .primary-button:hover {
+        background: #344ca8;
+    }
+
+    .text-primary {
+        color: #3e57da !important;
+    }
+
+    @media (max-width: 768px) {
         body {
-            background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
-            background-size: cover;
-            height: 95vh;
-            padding: 30px;
+            padding: 15px;
         }
-        .heading-text{
-            font-size: 24px;
-            padding-bottom: 20px;
-            font-weight: 500;
-            color:#000;
-        }
+        
         .container-box {
-            max-width: 100%;
-            width: 520px;
-            padding: 30px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
         }
-        .email-text{
-            font-size: 13px;
-        }
-        .logo-container {
-            text-align: center;
-            margin-top: 20px;
-            justify-content: center;
-            align-items: left;
-            display: flex;
-            flex-direction: column;
-        }
-        .logo-container img {
-            width: 160px;
-        }
-        .form-control {
-            background: #E7E7E9;
-            font-size: 13px;
-            border: none !important;
-            padding: 0.5em !important;
-        }
-        .d-flex{
-            height: 80vh;
-        }
-        label {
-            font-weight: 500;
-            font-size: 13px;
-            text-align: left;
-            display: block;
-            margin-bottom: 5px;
-        }
-        .btn-light{
-            background-color: #E7E7E9;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        .footer-text{
-            text-align: center;
-        }
-        .primary-button {
-            width: 100%;
-            padding: 10px;
-            font-size: 13px;
-            font-weight: 500;
-            background:rgb(62, 87, 218);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-bottom: 20px;
-        }
-        .text-primary, .footer-text {
-            font-size: 11px;
-            color: #6c757d !important;
-        }
-        @media (max-width: 768px){
-            .d-flex{
-                height: 75vh;
-            }
-        }
-    </style>
-</head>
+    }
+</style>
+
+<div class="container">
+
 <body>
     <div class="logo-container">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
@@ -98,18 +123,18 @@
             <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>
 
             <form method="POST" action="{{ url('/verify-code') }}">
-    @csrf
-    <div class="mb-3">
-        <label for="verification-code">Verification code</label>
-        <input type="text" name="verification_code" id="verification-code" class="form-control" placeholder="Paste verification code" required>
-        @error('verification_code')
-            <span class="invalid-feedback" role="alert">
-                <strong>{{ $message }}</strong>
-            </span>
-        @enderror
-    </div>
-    <button type="submit" class="primary-button">Verify Code</button>
-</form>
+                @csrf
+                <div class="mb-3">
+                    <label for="verification-code">Verification code</label>
+                    <input type="text" name="verification_code" id="verification-code" class="form-control @error('verification_code') is-invalid @enderror" placeholder="Paste verification code" required>
+                    @error('verification_code')
+                    <div class="invalid-feedback d-block text-start">
+                        {{ $message }}
+                    </div>
+                    @enderror
+                </div>
+                <button type="submit" class="primary-button">Verify Code</button>
+            </form>
 
 
             <div class="mb-3">
@@ -134,5 +159,5 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+</div>
+@endsection
