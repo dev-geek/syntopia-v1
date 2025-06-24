@@ -41,7 +41,7 @@ class SubscriptionController extends Controller
     public function index()
     {
         $user = Auth::user();
-        
+
         // Check if user has required role
         if (!$user->hasRole(['User', 'Sub Admin'])) {
             return redirect()->route('admin.dashboard');
@@ -57,10 +57,10 @@ class SubscriptionController extends Controller
         $activeGateway = PaymentGateways::where('is_active', true)->first();
 
         $activeGatewaysByAdmin = PaymentGateways::where('is_active', true)
-                            ->whereNotNull('name')
-                            ->pluck('name')
-                            ->filter() // Removes nulls, empty strings
-                            ->values();
+            ->whereNotNull('name')
+            ->pluck('name')
+            ->filter() // Removes nulls, empty strings
+            ->values();
 
         $packages = Package::select('name', 'price', 'duration', 'features')->get();
 
@@ -72,7 +72,60 @@ class SubscriptionController extends Controller
             'activeGatewaysByAdmin' => $activeGatewaysByAdmin,
             'packages' => $packages,
         ]);
+    }
 
+    public function subscriptionDetails()
+    {
+        $user = Auth::user();
+
+        // Check if user has required role
+        if (!$user->hasRole(['User'])) {
+            return redirect()->route('admin.dashboard');
+        }
+
+        $currentLoggedInUserPackage = $user->package->name ?? null;
+        $package = $user->package;
+        $calculatedEndDate = null;
+
+        // Calculate end date if user has a package and start date
+        if ($package && $user->subscription_starts_at) {
+            // Get duration in days and months
+            $durationInDays = $package->getDurationInDays();
+            $monthlyDuration = $package->getMonthlyDuration();
+
+            // Log debug information to diagnose the issue
+            Log::info('Subscription Details Calculation:', [
+                'package_name' => $package->name,
+                'duration_string' => $package->duration,
+                'monthly_duration' => $monthlyDuration,
+                'duration_in_days' => $durationInDays,
+                'start_date' => $user->subscription_starts_at->toDateTimeString(),
+                'calculated_end_date' => $durationInDays !== null ? $user->subscription_starts_at->copy()->addDays($durationInDays)->toDateTimeString() : null
+            ]);
+
+            // Prioritize monthly duration for monthly packages
+            if ($monthlyDuration !== null) {
+                $calculatedEndDate = $user->subscription_starts_at->copy()->addMonths($monthlyDuration);
+                Log::info('Using monthly duration', ['months' => $monthlyDuration, 'end_date' => $calculatedEndDate->toDateTimeString()]);
+            } elseif ($durationInDays !== null) {
+                $calculatedEndDate = $user->subscription_starts_at->copy()->addDays($durationInDays);
+                Log::info('Using duration in days', ['days' => $durationInDays, 'end_date' => $calculatedEndDate->toDateTimeString()]);
+            } else {
+                Log::warning('No valid duration found for package', ['package_id' => $package->id, 'duration' => $package->duration]);
+            }
+        } else {
+            Log::warning('No package or start date found for user', [
+                'user_id' => $user->id,
+                'has_package' => !is_null($package),
+                'has_start_date' => !is_null($user->subscription_starts_at)
+            ]);
+        }
+
+        return view('subscription.details', [
+            'currentPackage' => $currentLoggedInUserPackage,
+            'user' => $user,
+            'calculatedEndDate' => $calculatedEndDate
+        ]);
     }
 
     /**
@@ -147,7 +200,7 @@ class SubscriptionController extends Controller
         // Handle FastSpring return URL (user is redirected back to our site)
         if ($source === 'fastspring' || $gateway === 'fastspring') {
             $order = null;
-            
+
             if ($orderId) {
                 $order = Order::where('id', $orderId)
                     ->orWhere('transaction_id', $orderId)

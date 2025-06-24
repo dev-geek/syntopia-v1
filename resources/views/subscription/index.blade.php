@@ -7,14 +7,15 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
         content="
-        default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
-        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
-        font-src 'self' https://fonts.gstatic.com;
-        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
-        img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
-        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
-        frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
-        media-src 'self' data: https://sbl.onfastspring.com;">
+      default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
+      font-src 'self' https://fonts.gstatic.com;
+      script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
+      img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
+      connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
+      frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
+      frame-ancestors 'self' https://livebuzzstudio.test;
+      media-src 'self' data: https://sbl.onfastspring.com;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
@@ -605,6 +606,52 @@
     </div>
     <div class="pricing-wrapper">
         <div class="container">
+            @if (session('success') || session('error') || session('warning') || session('info') || $errors->any())
+                @push('scripts')
+                    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            @if (session('success'))
+                                Swal.fire({
+                                    icon: 'success',
+                                    title: 'Success',
+                                    text: '{{ addslashes(session('success')) }}',
+                                    confirmButtonText: 'OK'
+                                });
+                            @elseif (session('error'))
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error',
+                                    text: '{{ addslashes(session('error')) }}',
+                                    confirmButtonText: 'OK'
+                                });
+                            @elseif (session('warning'))
+                                Swal.fire({
+                                    icon: 'warning',
+                                    title: 'Warning',
+                                    text: '{{ addslashes(session('warning')) }}',
+                                    confirmButtonText: 'OK'
+                                });
+                            @elseif (session('info'))
+                                Swal.fire({
+                                    icon: 'info',
+                                    title: 'Information',
+                                    text: '{{ addslashes(session('info')) }}',
+                                    confirmButtonText: 'OK'
+                                });
+                            @elseif ($errors->any())
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Validation Error',
+                                    html: '{!! addslashes(implode('<br>', $errors->all())) !!}',
+                                    confirmButtonText: 'OK'
+                                });
+                            @endif
+                        });
+                    </script>
+                @endpush
+            @endif
+
             <div class="badge-wrapper">
                 <div class="pricing-badge">PRICING PLANS</div>
             </div>
@@ -721,6 +768,7 @@
                 }
             }
 
+
             function processPaddle(productPath) {
                 const packageName = productPath.replace('-plan', '');
                 const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
@@ -730,11 +778,7 @@
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
-                            'Authorization': 'Bearer {{ auth()->user()
-                                ? auth()->user()->createToken('
-                                                                                                                                                                    api ')->plainTextToken
-                                : '
-                                                                                                                                                                    ' }}',
+                            'Authorization': 'Bearer {{ auth()->user() ? auth()->user()->createToken('api')->plainTextToken : '' }}',
                             'X-CSRF-TOKEN': csrfToken,
                             'X-Requested-With': 'XMLHttpRequest'
                         },
@@ -756,7 +800,8 @@
                                 eventCallback: function(eventData) {
                                     console.log(eventData.data.event);
                                     if (eventData.data?.event?.name === 'checkout.completed') {
-                                        window.location.href = '/user/dashboard';
+                                        window.location.href =
+                                            `/payments/paddle/verify?transaction_id=${data.transaction_id}`;
                                     } else if (eventData.data?.event?.name === 'checkout.failed') {
                                         Swal.fire({
                                             icon: 'error',
@@ -768,8 +813,7 @@
                                             window.location.reload();
                                         });
                                     } else if (eventData.data?.event?.name === 'checkout.closed' &&
-                                        !eventData
-                                        .data.success) {
+                                        !eventData.data.success) {
                                         Swal.fire({
                                             icon: 'info',
                                             title: 'Payment Cancelled',
@@ -801,8 +845,6 @@
                         }
                     });
             }
-
-            // Payproglobal processing
             // Payproglobal processing
             function processPayProGlobal(productPath) {
                 console.log('[PayProGlobal] Starting payment process for product:', productPath);
