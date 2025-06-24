@@ -41,15 +41,15 @@ Route::get('/test-log', function () {
     \Log::notice('NOTICE: Test notice message');
     \Log::info('INFO: Test info message');
     \Log::debug('DEBUG: Test debug message');
-    
+
     // Test writing to a custom log file
     \Log::channel('single')->info('Test message to single log file');
-    
+
     // Check log file path
     $logPath = storage_path('logs/laravel.log');
     $logDir = dirname($logPath);
     $isWritable = is_writable($logDir) && (!file_exists($logPath) || is_writable($logPath));
-    
+
     return response()->json([
         'status' => 'success',
         'log_file' => $logPath,
@@ -71,7 +71,7 @@ Route::get('/test-payment-log', function (\Illuminate\Http\Request $request) {
         'user_agent' => $request->userAgent(),
         'test_data' => 'This is a test payment log entry'
     ]);
-    
+
     return response()->json([
         'status' => 'success',
         'message' => 'Test payment log entry created',
@@ -99,7 +99,7 @@ Route::get('/test-payment-callback', function (\Illuminate\Http\Request $request
     \Log::info('Request IP: ' . $request->ip());
     \Log::info('User Agent: ' . $request->userAgent());
     \Log::info('Request Content: ' . $request->getContent());
-    
+
     return response()->json([
         'status' => 'success',
         'message' => 'Test callback received',
@@ -119,7 +119,7 @@ Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
 
 // Guest routes (no authentication required)
 // Pricing route
-Route::get('/pricing', [\App\Http\Controllers\SubscriptionController::class, 'index'])->name('pricing');
+Route::get('/pricing', [SubscriptionController::class, 'index'])->name('pricing');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
@@ -147,6 +147,7 @@ Route::controller(SocialController::class)->group(function () {
 
 // Email Verification Routes (for authenticated but unverified users)
 Route::middleware(['web'])->group(function () {
+    Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
     Route::get('/email/verify', [VerificationController::class, 'show'])->name('verification.notice');
     Route::get('/verify-code', [VerificationController::class, 'show'])->name('verification.code');
     Route::post('/verify-code', [VerificationController::class, 'verifyCode'])->name('verify.code'); // Changed from 'verify' to 'verifyCode'
@@ -185,15 +186,19 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/pro-package-confirmed', [SubscriptionController::class, 'proPackageConfirmed'])->name('pro-package-confirmed');
     Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
 
+    // Upgrade the package
+    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgradePlan'])->name('subscription.upgrade');
+    Route::post('/subscription/upgrade/{packageName}', [SubscriptionController::class, 'processUpgrade'])->name('subscription.processUpgrade');
+
     // Orders
     Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
 });
 
 // Super Admin Only Routes
 Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
-    
 
-    
+
+
 });
 
 // Route::middleware(['auth', 'verified.custom', 'role:User|Sub Admin|Super Admin'])->group(function () {

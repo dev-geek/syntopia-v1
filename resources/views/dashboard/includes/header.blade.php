@@ -219,10 +219,13 @@
                     <li class="nav-item d-none d-sm-inline-block">
                         <a href="{{ route('orders.index') }}" class="nav-link">Orders</a>
                     </li>
+                    <li class="nav-item d-none d-sm-inline-block">
+                        <a href="{{ route('user.subscription.details') }}" class="nav-link">Subscriptions</a>
+                    </li>
 
                 @endif
                 <li class="nav-item d-none d-sm-inline-block">
-                    <a href="#" class="nav-link">ACCESS THE SOFTWARE</a>
+                    <a href="https://live.syntopia.ai" class="nav-link">ACCESS THE SOFTWARE</a>
                 </li>
             </ul>
 

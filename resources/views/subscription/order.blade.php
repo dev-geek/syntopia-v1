@@ -22,7 +22,6 @@
                           <thead>
                             <tr>
                               <th>Sr No</th>
-                              <th>Order ID</th>
                               <th>Package</th>
                               <th>Amount</th>
                               <th>Payment Status</th>
@@ -40,7 +39,6 @@
                               @endphp
                               <tr>
                                 <td>{{ $index + 1 }}</td>
-                                <td>{{ $order['id'] }}</td>
                                 <td>{{ ucfirst($order['package']['name']) }}</td>
                                 <td>${{ number_format($order['amount'], 2) }}</td>
                                 <td>
