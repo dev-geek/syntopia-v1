@@ -16,54 +16,68 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Public routes (no auth required)
-Route::post('/payment/webhook/{gateway}', [SubscriptionController::class, 'handlePaymentWebhook'])
-    ->name('api.payment.webhook');
+// Public webhook routes (no auth required)
+Route::prefix('webhooks')->name('webhooks.')->group(function () {
+    // Generic webhook handler
+    Route::post('/{gateway}', [PaymentController::class, 'handleWebhookWithQueue'])
+        ->name('payment')
+        ->where('gateway', 'paddle|payproglobal|fastspring');
 
-Route::post('/webhooks/paddle', [PaymentController::class, 'handlePaddleWebhook'])
-    ->name('webhooks.paddle');
+    // Legacy webhook routes (for backward compatibility)
+    Route::post('/paddle', [PaymentController::class, 'handlePaddleWebhook'])
+        ->name('paddle');
+    Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])
+        ->name('payproglobal');
+    Route::post('/fastspring', [PaymentController::class, 'handleFastSpringWebhook'])
+        ->name('fastspring');
+});
 
-Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])
-    ->name('payments.success')
-    ->middleware('web');
-
-Route::get('/payments/paddle/verify', [PaymentController::class, 'verifyPaddlePayment'])
-    ->name('payments.paddle.verify')
-    ->middleware('web');
-
-// PayProGlobal specific webhook handler
-Route::post('/webhooks/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])
-    ->name('webhooks.payproglobal');
+// Public success/cancel handlers
+Route::middleware('web')->group(function () {
+    Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])
+        ->name('payments.success');
+    Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])
+        ->name('payments.cancel');
+    Route::get('/payments/paddle/verify', [PaymentController::class, 'verifyPaddlePayment'])
+        ->name('payments.paddle.verify');
+});
 
 // Authenticated API routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
+    // User info
     Route::get('/user', function (Request $request) {
-        return $request->user();
+        return $request->user()->load(['package', 'paymentGateway']);
     });
 
     // Payment routes
-    Route::prefix('payments')->group(function () {
+    Route::prefix('payments')->name('payments.')->group(function () {
+        // Checkout endpoints
         Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])
-            ->name('payments.paddle.checkout');
+            ->name('paddle.checkout')
+            ->middleware('throttle:10,1');
+
         Route::post('/fastspring/checkout/{package}', [PaymentController::class, 'fastspringCheckout'])
-            ->name('payments.fastspring.checkout');
+            ->name('fastspring.checkout')
+            ->middleware('throttle:10,1');
+
         Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])
-            ->name('payments.payproglobal.checkout');
-        Route::post('/save-details', [PaymentController::class, 'savePaymentDetails'])
-            ->name('payments.save-details');
-        
+            ->name('payproglobal.checkout')
+            ->middleware('throttle:10,1');
+
+        // Payment verification and management
         Route::get('/verify-payproglobal/{paymentReference}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])
-            ->name('payments.verify-payproglobal');
-        
+            ->name('verify-payproglobal');
+
         Route::get('/verify-order/{orderId}', [PaymentController::class, 'verifyOrderStatus'])
-            ->name('payments.verify-order');
+            ->name('verify-order');
+
+        Route::post('/save-details', [PaymentController::class, 'savePaymentDetails'])
+            ->name('save-details');
+
+        Route::get('/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('popup-cancel');
     });
 
+    // Orders management
     Route::get('/orders', [PaymentController::class, 'getOrdersList'])
         ->name('orders.index');
 });
-
-// Cancel handler route
-Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])
-    ->name('payments.cancel')
-    ->middleware('web');

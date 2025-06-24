@@ -58,8 +58,10 @@ class Kernel extends HttpKernel
         'signed' => \App\Http\Middleware\ValidateSignature::class,
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
-        'check.admin' => \App\Http\Middleware\CheckAdminRole::class, // Register the custom middleware
+        'check.admin' => \App\Http\Middleware\CheckAdminRole::class,
         'check.login' => \App\Http\Middleware\RedirectIfNotAuthenticated::class,
+        'webhook.ip' => \App\Http\Middleware\WebhookIPFilter::class,
+        'dynamic.throttle' => \App\Http\Middleware\DynamicRateLimit::class,
 
 
         // Custom Middlewares
@@ -67,6 +69,5 @@ class Kernel extends HttpKernel
         'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
         'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
         'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-        'check.login' => \App\Http\Middleware\CheckLogin::class,
     ];
 }
