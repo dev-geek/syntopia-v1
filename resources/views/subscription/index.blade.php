@@ -8,9 +8,9 @@
     <meta http-equiv="Content-Security-Policy"
         content="
       default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://cdnjs.cloudflare.com;
       font-src 'self' https://fonts.gstatic.com;
-      script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
+      script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
       img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
       connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
       frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
@@ -26,6 +26,7 @@
         @endif
     </title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- Payment Gateway Scripts -->
     @php
@@ -46,11 +47,15 @@
     @if (in_array('FastSpring', $activeGateways))
         <script src="https://sbl.onfastspring.com/js/checkout/button.js"
             data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
         <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('Pay Pro Global', $activeGateways))
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
         <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
@@ -229,6 +234,7 @@
 
     <!-- PayProGlobal Integration -->
     @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
         <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
@@ -896,7 +902,7 @@
             
             @if ($isUpgrade)
                 <div class="upgrade-info">
-                    <h3>🚀 Upgrade Your Subscription</h3>
+                    <h3>Upgrade Your Subscription</h3>
                     <p>You're currently on the <strong>{{ $currentPackage }}</strong> plan. Choose a higher tier below to upgrade your subscription.</p>
                     @if ($userOriginalGateway)
                         <p style="margin-top: 8px;">Your upgrade will be processed through <strong>{{ $userOriginalGateway }}</strong> (your original payment gateway).</p>
@@ -906,7 +912,7 @@
                 <p class="section-subtitle">Select a higher tier plan to upgrade your subscription with prorated billing.</p>
             @elseif ($isDowngrade)
                 <div class="downgrade-info">
-                    <h3>⬇️ Downgrade Your Subscription</h3>
+                    <h3>Downgrade Your Subscription</h3>
                     <p>You're currently on the <strong>{{ $currentPackage }}</strong> plan. Choose a lower tier below to downgrade your subscription.</p>
                     @if ($userOriginalGateway)
                         <p style="margin-top: 8px;">Your downgrade will be processed through <strong>{{ $userOriginalGateway }}</strong> (your original payment gateway).</p>
@@ -1571,7 +1577,29 @@
                 document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
             }
         });
+
+        function showAlert(type, title, text, callback = null) {
+            console.log(`Showing ${type} alert:`, {
+                title,
+                text
+            });
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: type,
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    if (callback) callback();
+                });
+            } else {
+                console.warn('SweetAlert2 not available, falling back to native alert');
+                alert(`${title}: ${text}`);
+                if (callback) callback();
+            }
+        }
     </script>
 </body>
 
 </html>
+

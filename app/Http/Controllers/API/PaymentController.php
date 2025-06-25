@@ -994,7 +994,7 @@ class PaymentController extends Controller
                     return response()->json([
                         'status' => 'pending',
                         'message' => 'Thank you! Your payment is being processed. You will be notified once confirmed.',
-                        'redirect' => route('user.dashboard'),
+                        'redirect' => route('user.dashboard')
                     ]);
                 } catch (\Exception $e) {
                     DB::rollBack();
@@ -1523,7 +1523,6 @@ class PaymentController extends Controller
                 throw $e;
             }
         } catch (\Exception $e) {
-
             return response()->json([
                 'error' => "Failed to {$changeType} FastSpring subscription",
                 'message' => $e->getMessage(),

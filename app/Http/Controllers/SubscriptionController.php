@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\API\PaymentController;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\PaymentGateways;
@@ -11,11 +12,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class SubscriptionController extends Controller
 {
     public function __construct(
-        protected PaymentService $paymentService
+        protected PaymentService $paymentService,
+        protected PaymentController $paymentController,
     ) {}
 
     public function handleSubscription()
@@ -111,7 +114,7 @@ class SubscriptionController extends Controller
         if ($type === 'upgrade' || $type === 'downgrade') {
             $targetGateway = $user->paymentGateway;
             $selectedGatewayName = $targetGateway ? $targetGateway->name : null;
-            
+
             // Ensure the user's original gateway is still available/active
             if (!$targetGateway || !$targetGateway->is_active) {
                 return redirect()->route('subscription.details')
@@ -147,7 +150,7 @@ class SubscriptionController extends Controller
             // Only show packages with lower price for downgrades
             $packagesQuery->where('price', '<', $currentPackagePrice);
         }
-        
+
         $packages = $packagesQuery->get();
 
         // Add messaging for empty package list
@@ -194,14 +197,17 @@ class SubscriptionController extends Controller
             $durationInDays = $package->getDurationInDays();
             $monthlyDuration = $package->getMonthlyDuration();
 
+            // Convert datetime to Carbon instance
+            $startDate = Carbon::parse($user->subscription_starts_at);
+
             // Log debug information to diagnose the issue
             Log::info('Subscription Details Calculation:', [
                 'package_name' => $package->name,
                 'duration_string' => $package->duration,
                 'monthly_duration' => $monthlyDuration,
                 'duration_in_days' => $durationInDays,
-                'start_date' => $user->subscription_starts_at->toDateTimeString(),
-                'calculated_end_date' => $durationInDays !== null ? $user->subscription_starts_at->copy()->addDays($durationInDays)->toDateTimeString() : null
+                'start_date' => $startDate->toDateTimeString(),
+                'calculated_end_date' => $durationInDays !== null ? $startDate->copy()->addDays($durationInDays)->toDateTimeString() : null
             ]);
 
             // Prioritize monthly duration for monthly packages
