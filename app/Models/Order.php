@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
@@ -22,18 +23,35 @@ class Order extends Model
      */
     protected $fillable = [
         'user_id',
-        'package',
+        'package_id',
+        'payment_gateway_id',
         'amount',
-        'payment',
+        'transaction_id',
+        'status',
     ];
 
     /**
-     * The relationships to other models.
+     * Get the user that placed the order.
      */
-    
-    // Relationship with User model
     public function user()
     {
         return $this->belongsTo(User::class);
     }
+
+    /**
+     * Get the package associated with the order.
+     */
+    public function package()
+    {
+        return $this->belongsTo(Package::class);
+    }
+
+    /**
+     * Get the payment gateway used for the order.
+     */
+    public function paymentGateway()
+    {
+        return $this->belongsTo(PaymentGateway::class);
+    }
+
 }

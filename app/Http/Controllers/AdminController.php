@@ -4,23 +4,16 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;  // Correct import
+use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use App\Models\Order;
 use Maatwebsite\Excel\Facades\Excel;
-use App\Imports\UsersImport;  // You would create this import class to handle the Excel data
-
-
-
-
+use App\Imports\UsersImport;
+use Spatie\Permission\Models\Role;
 
 
 class AdminController extends Controller
 {
-    public function index()
-    {
-        return view('admin.index');
-    }
     public function login()
     {
         return view('admin.login');
@@ -32,25 +25,33 @@ class AdminController extends Controller
     public function users()
     {
         // $users = User::whereNotNull('role')->where('role', '!=', 1 )->get();
-        $users = User::all();
-        return view('admin.users',compact('users'));
+        $users = User::role('User')
+                    ->with('roles')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+        return view('admin.users', compact('users'));
     }
-    public function destroy($id)
-{
-    $user = User::findOrFail($id);
-    $user->delete();
+   public function destroy(User $user)
+    {
+        $user->delete();
 
-    return redirect()->route('admin.users')->with('success', 'User deleted successfully.');
-}
+        return redirect()->route('admin.users')->with('success', 'User deleted successfully.');
+    }
+
     public function subadmins()
     {
-        $users = User::whereNotNull('role')->where('role', 2)->get();
-        return view('admin.subadmins',compact('users'));
+       $users = User::role('Sub Admin')
+                    ->with('roles')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+
+        return view('admin.subadmins', compact('users'));
     }
+
     public function profile()
     {
         $user = Auth::user();
-        return view('admin.profile',compact('user'));
+        return view('admin.profile', compact('user'));
     }
     public function manageProfile($id)
     {
@@ -104,8 +105,6 @@ class AdminController extends Controller
 
         // Return a success message
         return redirect()->route('admin.users')->with('success', 'User updated successfully.');
-
-
     }
     public function manageAdminProfileUpdate(Request $request, $id)
     {
@@ -145,8 +144,6 @@ class AdminController extends Controller
 
         // Return a success message
         return redirect()->route('subadmins')->with('success', 'Sub Admin   updated successfully.');
-
-
     }
 
     public function adminOrders()
@@ -156,7 +153,7 @@ class AdminController extends Controller
     }
     public function addusers()
     {
-        return view('admin.addusers');
+        return view('admin.users.create');
     }
     public function addExcelUsers(Request $request)
     {
@@ -179,5 +176,28 @@ class AdminController extends Controller
     {
         return view('admin.forgotpassword'); // Ensure you have a Blade file named `forgotpassword.blade.php`
     }
-    
+
+    public function createOrUpdateSubAdmin() {}
+
+    public function storeUser(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        // Create the user
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'status' => $request->input('status'),
+        ]);
+
+        // Assign the role of 'User'
+        $user->assignRole('User');
+
+        return redirect()->route('admin.users')->with('success', 'User created successfully.');
+    }
 }

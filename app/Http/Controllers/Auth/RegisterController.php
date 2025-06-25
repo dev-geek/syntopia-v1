@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\BusinessEmailValidation;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -11,10 +12,15 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\VerifyEmail;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class RegisterController extends Controller
 {
+    use BusinessEmailValidation;
+
     /*
     |--------------------------------------------------------------------------
     | Register Controller
@@ -39,17 +45,20 @@ class RegisterController extends Controller
         if (Auth::check()) {
             $user = Auth::user();
 
-            // Redirect based on the user's role
-            if ($user->role == 1 || $user->role == 2) {
-                return route('admin.index'); // Use the named route
+            // Redirect based on the user's role using Spatie
+            if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
+                return route('admin.dashboard');
             }
+
+            // For regular users, redirect to verification page
+            // After verification, they'll be redirected to subscriptions.index
+            return '/email/verify';
         }
 
-        // Default redirection
-        return $this->redirectTo;
+        return '/email/verify';
     }
 
-    protected $redirectTo = '/home';
+    protected $redirectTo = '/email/verify';
 
     /**
      * Create a new controller instance.
@@ -67,18 +76,45 @@ class RegisterController extends Controller
      * @param  array  $data
      * @return \Illuminate\Contracts\Validation\Validator
      */
+
     protected function validator(array $data)
     {
-        return Validator::make($data, [
+        Log::info('Registration attempt', $data);
+
+        $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => [''],
+            'email' => [
+                'required',
+                'string',
+                'email',
+                'max:255',
+                'unique:users',
+                function ($attribute, $value, $fail) {
+                    $isBusiness = $this->isBusinessEmail($value);
+                    Log::info('Email validation check', [
+                        'email' => $value,
+                        'is_business' => $isBusiness
+                    ]);
+                    if (!$isBusiness) {
+                        $fail('Please use your business email to register.');
+                    }
+                }
+            ],
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:30',
+                'confirmed',
+                'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
+            ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
-            'status' => ['nullable', 'integer'], // Allow status to be nullable
-            'subscriber_password' => ['nullable', 'string'], // Allow subscriber_password to be nullable
+            'status' => ['nullable', 'integer'],
+            'subscriber_password' => ['nullable', 'string'],
         ]);
+
+        return $validator;
     }
 
     /**
@@ -89,14 +125,19 @@ class RegisterController extends Controller
      */
     protected function create(array $data)
     {
-        return User::create([
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
-            'role' => $data['role'] ?? 3,
-            'status' => 1,
+            'status' => 0,
             'subscriber_password' => $data['password'] ?? null,
         ]);
+
+        $user->assignRole('User');
+
+        $this->callXiaoiceApiWithCreds($user, $data['password'] ?? null);
+
+        return $user;
     }
 
     public function showRegistrationForm(Request $request)
@@ -107,10 +148,19 @@ class RegisterController extends Controller
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email|unique:users',
+            'email' => [
+                'required',
+                'email',
+                'unique:users',
+                function ($attribute, $value, $fail) {
+                    if (!$this->isBusinessEmail($value)) {
+                        $fail('Please use your business email to register.');
+                    }
+                }
+            ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
-            'password' => 'required|string|min:8'
+            'password' => 'required|string|min:8|max:30|regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
         ]);
 
         if ($validator->fails()) {
@@ -119,29 +169,50 @@ class RegisterController extends Controller
                 ->withInput();
         }
 
-        // Generate verification code
         $verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-
-        // Combine first_name and last_name into full name
         $full_name = $request->first_name . ' ' . $request->last_name;
 
-        $user = User::create([
-            'email' => $request->email,
-            'name' => $full_name,
-            'password' => Hash::make($request->password),
-            'verification_code' => $verification_code,
-            'email_verified_at' => null
-        ]);
-
-        // Send verification email
         try {
-            Mail::to($user->email)->send(new VerifyEmail($user));
-        } catch (\Exception $e) {
-            \Log::error('Email sending failed: ' . $e->getMessage());
-        }
+            DB::beginTransaction();
 
-        // Log in the user
-        auth()->login($user);
+            $user = User::create([
+                'email' => $request->email,
+                'name' => $full_name,
+                'password' => Hash::make($request->password),
+                'verification_code' => $verification_code,
+                'email_verified_at' => null,
+                'status' => 0
+            ]);
+
+            $user->assignRole('User');           
+
+            DB::commit();
+
+            try {
+                Mail::to($user->email)->send(new VerifyEmail($user));
+            } catch (\Exception $e) {
+                Log::error('Email sending failed: ' . $e->getMessage());
+            }
+
+            auth()->login($user);
+            session(['email' => $user->email]);
+
+            return redirect('/email/verify');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('User registration failed and rolled back: ' . $e->getMessage());
+        
+            return redirect()->back()
+                ->withErrors($e->getMessage())
+                ->withInput();
+        }        
+    }
+
+    protected function registered(Request $request, $user)
+    {
+        // Don't auto-login after registration
+        Auth::logout();
 
         // Store email in session
         session(['email' => $user->email]);

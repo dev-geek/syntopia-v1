@@ -1,5 +1,5 @@
-@include('admin.includes.header')
-@include('admin.includes.sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -7,7 +7,7 @@
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-{{--                    <h1>Users</h1>--}}
+                    {{--                    <h1>Users</h1> --}}
                 </div>
             </div>
         </div><!-- /.container-fluid -->
@@ -21,13 +21,16 @@
                         <div class="card-header">
                             <h3 class="card-title">Users</h3>
                         </div>
-                        @if (session('success'))
-                    <div class="alert alert-success mt-3">
-                        {{ session('success') }}
-                    </div>
-                    @endif
+
+                        {{-- Component --}}
+                        @include('components.alert-messages')
                         <!-- /.card-header -->
                         <div class="card-body">
+                            @if (Auth::user()->hasRole('Super Admin'))
+                                <a href="{{ route('add-users') }}" class="btn btn-success mb-3">
+                                    <i class="fas fa-plus"></i> Add User
+                                </a>
+                            @endif
                             <table id="example1" class="table table-bordered table-striped">
                                 <thead>
                                     <tr>
@@ -35,43 +38,47 @@
                                         <th>Email</th>
                                         <th>Role</th>
                                         <th>Status</th>
-                                        @if(Auth::check() && Auth::user()->role == 1)
-                                        <th>
-                                            Action
-                                            @endif
+                                        @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
+                                            <th>
+                                                Action
+                                        @endif
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        @foreach($users as $user)
-                                        <td>{{$user->name}}</td>
-                                        <td>{{$user->email}} </td>
-                                        @if($user->role == 1)
-                                        <td>Admin</td>
-                                        @elseif($user->role == 2)
-                                        <td>Editor</td>
-                                        @else
-                                        <td>Subscriber</td>
-                                        @endif
-                                        @if($user->status == 1)
-                                        <td>Active</td>
-                                        @else
-                                        <td>Deactive</td>
-                                        @endif
-                                        @if(Auth::check() && Auth::user()->role == 1)
-                                        <td>
-                                            <a href="{{ route('manage.profile', $user->id) }}"><i
-                                                    class="bi bi-pencil-square"></i></a>
-                                            <form action="{{ route('users.destroy', $user->id) }}" method="POST" style="display:inline-block;" onsubmit="return confirm('Are you sure you want to delete this user?');">
-                                                @csrf
-                                                @method('DELETE')
-                                                <button type="submit" class="btn btn-danger btn-sm" title="Delete User">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </form>
-                                        </td>
-                                        @endif
+                                        @foreach ($users as $user)
+                                            <td>{{ $user->name }}</td>
+                                            <td>{{ $user->email }} </td>
+                                            <td>
+                                                @if ($user->hasRole('User'))
+                                                    User
+                                                @else
+                                                    No Role
+                                                @endif
+                                            </td>
+
+                                            @if ($user->status == 1)
+                                                <td>Active</td>
+                                            @else
+                                                <td>Deactive</td>
+                                            @endif
+                                            @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
+                                                <td>
+                                                    <a href="{{ route('manage.profile', $user->id) }}"
+                                                        class="btn btn-sm btn-primary mx-2" title="Edit">
+                                                        <i class="fas fa-edit"></i></a>
+                                                    <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
+                                                        class="delete-form" style="display:inline-block;">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit" class="btn btn-danger btn-sm"
+                                                            title="Delete User">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            @endif
                                     </tr>
                                     @endforeach
                                     </tfoot>
@@ -90,29 +97,52 @@
     <!-- /.content -->
 </div>
 <!-- /.content-wrapper -->
-@include('admin.includes.footer')
+@include('dashboard.includes.footer')
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-$(function() {
-    $("#example1").DataTable({
-        "responsive": true,
-        "lengthChange": false,
-        "autoWidth": false,
-        "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-    }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-    $('#example2').DataTable({
-        "paging": true,
-        "lengthChange": false,
-        "searching": false,
-        "ordering": true,
-        "info": true,
-        "autoWidth": false,
-        "responsive": true,
+    $(function() {
+        $("#example1").DataTable({
+            "responsive": true,
+            "lengthChange": false,
+            "autoWidth": false,
+            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
+        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
+        $('#example2').DataTable({
+            "paging": true,
+            "lengthChange": false,
+            "searching": false,
+            "ordering": true,
+            "info": true,
+            "autoWidth": false,
+            "responsive": true,
+        });
     });
-});
 </script>
+<script>
+    document.querySelectorAll('.delete-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            Swal.fire({
+                title: 'Are you sure?',
+                text: "You won't be able to revert this!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, delete it!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    form.submit();
+                }
+            });
+        });
+    });
+</script>
+
 </body>
 
 </html>

@@ -6,7 +6,7 @@
 </head>
 <body>
     <h2>Enter Verification Code</h2>
-    <form method="POST" action="{{ url('/verify-test-code') }}">
+    <form method="POST" action="{{ url('/verify-code') }}">
         @csrf
         <div>
             <label for="verification-code">Verification code</label>

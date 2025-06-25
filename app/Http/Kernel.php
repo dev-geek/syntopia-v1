@@ -34,7 +34,7 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
         'api' => [
-            // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
@@ -58,8 +58,16 @@ class Kernel extends HttpKernel
         'signed' => \App\Http\Middleware\ValidateSignature::class,
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
-        'check.admin' => \App\Http\Middleware\CheckAdminRole::class, // Register the custom middleware
+        'check.admin' => \App\Http\Middleware\CheckAdminRole::class,
         'check.login' => \App\Http\Middleware\RedirectIfNotAuthenticated::class,
-        'role' => \App\Http\Middleware\CheckUserRole::class,
+        'webhook.ip' => \App\Http\Middleware\WebhookIPFilter::class,
+        'dynamic.throttle' => \App\Http\Middleware\DynamicRateLimit::class,
+
+
+        // Custom Middlewares
+        'verified.custom' => \App\Http\Middleware\EnsureEmailIsVerifiedCustom::class,
+        'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+        'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+        'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
     ];
 }

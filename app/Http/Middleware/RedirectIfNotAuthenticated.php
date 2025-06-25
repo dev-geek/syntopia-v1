@@ -16,27 +16,26 @@ class RedirectIfNotAuthenticated
      */
     public function handle(Request $request, Closure $next)
     {
-
-        $user = Auth::user();     
-
-        if (!Auth::check()) {
-            return redirect()->route('admin-login'); // Redirect to admin-login if not logged in
+    if (!Auth::check()) {
+            return redirect()->route('admin-login');
         }
-        if (is_null(Auth::user()->role)) {
-            return redirect()->back(); // Redirect back if the user doesn't have a role
+
+        $user = Auth::user();
+
+        // Check if the user has any role assigned using Spatie
+        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            return redirect()->back()->with('error', 'Unauthorized access.');
         }
-        
-        if ($user->status =='0' || $user->role == '3') {
-            // dd($user->role);
-            // If the user's status is '0', log them out and invalidate the session
-            Auth::logout();  // Log the user out
-            $request->session()->invalidate(); // Invalidate the session
-            $request->session()->regenerateToken(); // Regenerate the CSRF token
+
+        // Check if the user's account is deactivated
+        if ($user->status == '0') {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
             return redirect()->back()->with('error', 'Your account is deactivated. Please contact support.');
-
         }
 
-        return $next($request); // Continue with the request if the user is authenticated
+        return $next($request);
     }
 }
