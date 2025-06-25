@@ -21,47 +21,23 @@ use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
-    private function validatePackageAndGetUser($package)
+    private function validatePackageAndGetUser($packageName)
     {
-        Log::info('=== VALIDATING PACKAGE AND USER ===', ['package' => $package]);
-        
         $user = Auth::user();
         if (!$user) {
-            Log::error('User validation failed: Not authenticated');
+            Log::error('No authenticated user for FastSpring checkout');
             return response()->json(['error' => 'User not authenticated'], 401);
         }
 
-        Log::info('User found', [
-            'user_id' => $user->id,
-            'email' => $user->email,
-            'name' => $user->name
-        ]);
-
-        $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
-
-        if (!$packageModel) {
-            Log::error('Package validation failed: Package not found', [
-                'requested_package' => $package,
-                'available_packages' => Package::pluck('name')->toArray()
-            ]);
-            return response()->json([
-                'error' => 'Invalid package',
-                'message' => 'Package not found: ' . $package,
-                'available_packages' => Package::pluck('name')->toArray()
-            ], 400);
+        $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
+        if (!$package) {
+            Log::error('Package not found', ['package_name' => $packageName]);
+            return response()->json(['error' => 'Invalid package selected'], 400);
         }
-
-        Log::info('Package found', [
-            'package_id' => $packageModel->id,
-            'package_name' => $packageModel->name,
-            'package_price' => $packageModel->price,
-            'package_duration' => $packageModel->duration
-        ]);
 
         return [
             'user' => $user,
-            'package' => $package,
-            'packageData' => $packageModel
+            'packageData' => $package
         ];
     }
 
@@ -126,7 +102,7 @@ class PaymentController extends Controller
         try {
             // Detect and validate upgrade
             $upgradeInfo = $this->detectAndValidateUpgrade($request, $package);
-            
+
             if ($upgradeInfo['is_upgrade'] && !$upgradeInfo['validation_passed']) {
                 Log::error('Paddle checkout failed: Upgrade validation failed', [
                     'error' => $upgradeInfo['error'] ?? 'Unknown validation error'
@@ -322,8 +298,8 @@ class PaymentController extends Controller
                 'custom_data' => $customData,
                 // Add success redirect URL with upgrade context
                 'checkout' => [
-                    'success_url' => route('payments.paddle.verify') . '?transaction_id={transaction_id}' . 
-                                   ($isUpgrade ? '&is_upgrade=true' : '')
+                    'success_url' => route('payments.paddle.verify') . '?transaction_id={transaction_id}' .
+                        ($isUpgrade ? '&is_upgrade=true' : '')
                 ]
             ];
 
@@ -407,7 +383,6 @@ class PaymentController extends Controller
                 'transaction_id' => $transaction['id'],
                 'is_upgrade' => $isUpgrade
             ]);
-
         } catch (\Exception $e) {
             Log::error('=== PADDLE CHECKOUT ERROR ===', [
                 'error' => $e->getMessage(),
@@ -658,9 +633,21 @@ class PaymentController extends Controller
         ]);
 
         try {
-            // Detect and validate upgrade
-            $upgradeInfo = $this->detectAndValidateUpgrade($request, $package);
-            
+            // Normalize and capitalize package name
+            $processedPackage = str_replace('-plan', '', strtolower($package));
+            $capitalizedPackage = ucfirst($processedPackage); // e.g., 'business' -> 'Business'
+            if (empty($capitalizedPackage)) {
+                Log::error('Invalid package name provided', ['package' => $package]);
+                return response()->json(['error' => 'Invalid package name'], 400);
+            }
+
+            Log::info('Processed package name', [
+                'original' => $package,
+                'processed' => $processedPackage,
+                'capitalized' => $capitalizedPackage
+            ]);
+
+            $upgradeInfo = $this->detectAndValidateUpgrade($request, $capitalizedPackage);
             if ($upgradeInfo['is_upgrade'] && !$upgradeInfo['validation_passed']) {
                 Log::error('FastSpring checkout failed: Upgrade validation failed', [
                     'error' => $upgradeInfo['error'] ?? 'Unknown validation error'
@@ -671,21 +658,15 @@ class PaymentController extends Controller
             $isUpgrade = $upgradeInfo['is_upgrade'];
             Log::info('FastSpring checkout type determined', ['is_upgrade' => $isUpgrade]);
 
-            $processedPackage = str_replace('-plan', '', strtolower($package));
-            Log::info('Processing package name', [
-                'original' => $package,
-                'processed' => $processedPackage
-            ]);
-
-            $validation = $this->validatePackageAndGetUser($processedPackage);
+            $validation = $this->validatePackageAndGetUser($capitalizedPackage);
             if (!is_array($validation)) {
+                Log::error('Package validation failed', ['package' => $capitalizedPackage]);
                 return $validation;
             }
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // For upgrades, ensure we're using the user's original gateway
             if ($isUpgrade) {
                 $originalGateway = $upgradeInfo['original_gateway'];
                 if ($originalGateway->name !== 'FastSpring') {
@@ -698,45 +679,46 @@ class PaymentController extends Controller
                         'error' => "You must use your original payment gateway ({$originalGateway->name}) for upgrades"
                     ], 400);
                 }
-                Log::info('Upgrade gateway validation passed', [
-                    'user_id' => $user->id,
-                    'original_gateway' => $originalGateway->name
-                ]);
+                return $this->upgradeSubscription($request, $capitalizedPackage);
             }
 
             $storefront = config('payment.gateways.FastSpring.storefront');
             if (!$storefront) {
                 Log::error('FastSpring configuration error: Storefront not configured');
-                throw new \Exception('FastSpring storefront not configured');
+                return response()->json(['error' => 'FastSpring storefront not configured'], 500);
             }
-
-            Log::info('FastSpring configuration', [
-                'storefront' => $storefront,
-                'package' => $processedPackage
-            ]);
 
             $secureHash = hash_hmac(
                 'sha256',
-                $user->id . $processedPackage . time(),
+                $user->id . $capitalizedPackage . time(),
                 config('payment.gateways.FastSpring.webhook_secret', '')
             );
 
-            // Note: FastSpring doesn't need specific product ID here, it's handled in the storefront
-            $checkoutUrl = "https://{$storefront}/{$processedPackage}";
+            // Ensure we have a valid package name
+            $validPackageName = $packageData->name ?? $capitalizedPackage;
+            if (!$validPackageName) {
+                Log::error('No valid package name found', [
+                    'package_data' => $packageData,
+                    'capitalized_package' => $capitalizedPackage
+                ]);
+                throw new \Exception('No valid package name found');
+            }
 
-            // Prepare tags with upgrade context
             $tags = [
                 'user_id' => $user->id,
-                'package' => $processedPackage,
-                'secure_hash' => $secureHash
+                'package' => $validPackageName,
+                'package_id' => $packageData->id,
+                'secure_hash' => $secureHash,
+                'is_upgrade' => $isUpgrade ? 'true' : 'false'
             ];
 
-            if ($isUpgrade) {
-                $tags['is_upgrade'] = 'true';
-                $tags['current_package'] = $upgradeInfo['current_package']->name;
-                $tags['current_package_id'] = $upgradeInfo['current_package']->id;
-                Log::info('Adding upgrade context to FastSpring tags', $tags);
-            }
+            Log::info('FastSpring checkout tags', [
+                'tags' => $tags,
+                'package_name' => $validPackageName,
+                'package_data' => $packageData
+            ]);
+
+            Log::info('FastSpring checkout tags', ['tags' => $tags]);
 
             $queryParams = [
                 'referrer' => $user->id,
@@ -744,24 +726,17 @@ class PaymentController extends Controller
                 'contactFirstName' => $user->first_name ?? '',
                 'contactLastName' => $user->last_name ?? '',
                 'tags' => json_encode($tags),
-                'returnUrl' => route('payments.success') . '?gateway=fastspring' . ($isUpgrade ? '&is_upgrade=true' : ''),
-                'cancelUrl' => route('payments.cancel'),
+                'returnUrl' => route('payments.success') . '?gateway=fastspring&orderId={orderReference}&package_id=' . $packageData->id . ($isUpgrade ? '&is_upgrade=true' : ''),
+                'cancelUrl' => route('subscriptions.cancel'),
             ];
 
-            $checkoutUrl .= '?' . http_build_query($queryParams);
+            $checkoutUrl = "https://{$storefront}/{$processedPackage}?" . http_build_query($queryParams); // Use lowercase for URL
 
-            Log::info('=== FASTSPRING CHECKOUT COMPLETED SUCCESSFULLY ===', [
-                'checkout_url_length' => strlen($checkoutUrl),
-                'is_upgrade' => $isUpgrade,
-                'user_id' => $user->id,
-                'package' => $packageData->name,
-                'tags' => $tags
-            ]);
+            Log::info('FastSpring checkout URL', ['url' => $checkoutUrl]);
 
             return response()->json([
                 'success' => true,
                 'checkout_url' => $checkoutUrl,
-                'is_upgrade' => $isUpgrade,
                 'package_details' => [
                     'name' => $packageData->name,
                     'price' => $packageData->price,
@@ -771,14 +746,12 @@ class PaymentController extends Controller
                         : (array) $packageData->features
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('=== FASTSPRING CHECKOUT ERROR ===', [
                 'package' => $package,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-
             return response()->json([
                 'error' => 'Failed to process FastSpring checkout',
                 'message' => $e->getMessage()
@@ -798,7 +771,7 @@ class PaymentController extends Controller
         try {
             // Detect and validate upgrade
             $upgradeInfo = $this->detectAndValidateUpgrade($request, $package);
-            
+
             if ($upgradeInfo['is_upgrade'] && !$upgradeInfo['validation_passed']) {
                 Log::error('PayProGlobal checkout failed: Upgrade validation failed', [
                     'error' => $upgradeInfo['error'] ?? 'Unknown validation error'
@@ -952,7 +925,6 @@ class PaymentController extends Controller
                         : (array) $packageData->features
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('=== PAYPROGLOBAL CHECKOUT ERROR ===', [
                 'package' => $package,
@@ -970,10 +942,11 @@ class PaymentController extends Controller
     public function handleSuccess(Request $request)
     {
         Log::info('Payment success callback received', $request->all());
-
+        // my data from upgrade: [FastSpring API] Event published {event: 'FSC-purchaseComplete', fsc-url: 'https://livebuzzstudio.test.onfastspring.com/popup…4-payment/session/8eqC9sjlTfuHLeWAIVJBJw/complete', fsc-referrer: 'https://livebuzzstudio.test.onfastspring.com/popup-test-87654-payment/session/8eqC9sjlTfuHLeWAIVJBJw', fsc-currency: 'USD', fsc-eventCategory: 'Checkout', …}event: "FSC-purchaseComplete"fsc-currency: "USD"fsc-eventAction: "Purchase Complete"fsc-eventCategory: "Checkout"fsc-eventLabel: "Total Order Value"fsc-eventValue: 2800fsc-referrer: "https://livebuzzstudio.test.onfastspring.com/popup-test-87654-payment/session/8eqC9sjlTfuHLeWAIVJBJw"fsc-url: "https://livebuzzstudio.test.onfastspring.com/popup-test-87654-payment/session/8eqC9sjlTfuHLeWAIVJBJw/complete"[[Prototype]]: Object
         try {
             // Handle both GET and POST requests
             $gateway = $request->input('gateway', $request->query('gateway'));
+            $isUpgrade = $request->input('is_upgrade', $request->query('is_upgrade')) === 'true';
 
             if ($request->query('popup') === 'true' && $gateway === 'payproglobal') {
                 return view('payment.popup-success');
@@ -1021,7 +994,7 @@ class PaymentController extends Controller
                     // Assign license only if not already assigned
                     if (!$user->license_key) {
                         $licenseKey = $this->makeLicense();
-                        $user->update([
+                        $user->updateOrCreate([
                             'payment_gateway_id' => $paymentGatewayId,
                             'package_id' => $package->id,
                             'subscription_starts_at' => now(),
@@ -1033,7 +1006,7 @@ class PaymentController extends Controller
                         $this->addLicenseToExternalAPI($user, $licenseKey);
                     } else {
                         Log::info('License already assigned to user', ['user_id' => $user->id]);
-                        $user->update([
+                        $user->updateOrCreate([
                             'payment_gateway_id' => $paymentGatewayId,
                             'package_id' => $package->id,
                             'subscription_starts_at' => now(),
@@ -1118,23 +1091,23 @@ class PaymentController extends Controller
                     }
 
                     $userId = $transactionData['custom_data']['user_id'] ?? null;
-                    $packageId = $transactionData['custom_data']['package_id'] ?? null;
+                    $packageName = $transactionData['custom_data']['package_name'] ?? $request->input('package_name') ?? null;
+                    $package = Package::where('name', $packageName)->first();
 
-                    if ($userId != $user->id || !$packageId) {
+                    if (!$package) {
+                        Log::error('Package not found with name: ' . $packageName);
+                        return redirect()->route('subscriptions.index')
+                            ->with('error', 'Invalid package selected.');
+                    }
+
+                    if ($userId != $user->id || !$packageName) {
                         Log::error('Invalid user or package in transaction data', [
                             'transaction_id' => $transactionId,
                             'user_id' => $userId,
-                            'package_id' => $packageId
+                            'package_name' => $packageName
                         ]);
                         return redirect()->route('subscriptions.index')
                             ->with('error', 'Invalid payment data.');
-                    }
-
-                    $package = Package::find($packageId);
-                    if (!$package) {
-                        Log::error('Package not found with ID: ' . $packageId);
-                        return redirect()->route('subscriptions.index')
-                            ->with('error', 'Invalid package selected.');
                     }
 
                     DB::beginTransaction();
@@ -1207,16 +1180,32 @@ class PaymentController extends Controller
                         ->with('error', 'Payment verification failed.');
                 }
             } elseif ($gateway === 'fastspring') {
-                $orderId = $request->input('orderId', $request->query('orderId'));
-                $packageId = $request->input('package_id', $request->query('package_id'));
-                $paymentGatewayId = $request->input('payment_gateway_id', $request->query('payment_gateway_id'));
-
-                Log::info('Processing FastSpring success callback', [
-                    'order_id' => $orderId,
-                    'package_id' => $packageId,
-                    'payment_gateway_id' => $paymentGatewayId,
-                    'request_method' => $request->method()
+                $request->validate([
+                    'gateway' => 'required|string|in:fastspring,paddle,payproglobal',
+                    'orderId' => 'required|string',
+                    'package_name' => 'required|string',
+                    'payment_gateway_id' => 'required|exists:payment_gateways,id',
+                ], [
+                    'package_name.required' => 'Package name is missing from the request.',
                 ]);
+
+                $packageName = $request->input('package_name');
+                $orderId = $request->input('orderId');
+                $gateway = $request->input('gateway');
+                $paymentGatewayId = $request->input('payment_gateway_id');
+
+                $package = Package::where('name', $packageName)->first();
+                if (!$package) {
+                    Log::error('Package not found', [
+                        'package_name' => $packageName,
+                        'gateway' => $gateway,
+                        'order_id' => $orderId,
+                        'request_data' => $request->all(),
+                    ]);
+                    return redirect()->route('subscriptions.index')
+                        ->with('error', 'Invalid package selected. Please try again.');
+                }
+
 
                 $user = Auth::user();
                 if (!$user) {
@@ -1224,81 +1213,89 @@ class PaymentController extends Controller
                     return redirect()->route('login')->with('error', 'Please log in to complete your purchase.');
                 }
 
-                $package = Package::find($packageId);
-                if (!$package) {
-                    Log::error('Package not found with ID: ' . $packageId);
+                // Check if order already processed
+                $order = Order::where('transaction_id', $orderId)->first();
+                if ($order && $order->status === 'completed') {
+                    Log::info('FastSpring order already processed', ['order_id' => $orderId]);
+                    return redirect()->route('user.dashboard')
+                        ->with('success', 'Your subscription is active.');
+                }
+                // Verify order with FastSpring API
+                $response = Http::withBasicAuth(
+                    config('payment.gateways.FastSpring.username'),
+                    config('payment.gateways.FastSpring.password')
+                )->get("https://api.fastspring.com/orders/{$orderId}");
+
+                if (!$response->successful()) {
+                    Log::error('Failed to verify FastSpring order', [
+                        'order_id' => $orderId,
+                        'status' => $response->status()
+                    ]);
                     return redirect()->route('subscriptions.index')
-                        ->with('error', 'Invalid package selected. Please try again.');
+                        ->with('error', 'Order verification failed.');
+                }
+
+                $orderData = $response->json();
+                if ($orderData['completed'] !== true) {
+                    Log::warning('FastSpring order not completed', [
+                        'order_id' => $orderId,
+                        'status' => $orderData['completed']
+                    ]);
+                    return redirect()->route('subscriptions.index')
+                        ->with('error', 'Order is not yet completed.');
                 }
 
                 DB::beginTransaction();
                 try {
-                    $order = Order::create([
-                        'user_id' => $user->id,
-                        'package_id' => $package->id,
-                        'amount' => $package->price,
-                        'currency' => 'USD',
-                        'transaction_id' => $orderId ?: 'FS-' . Str::random(10),
+                    $subscriptionId = $orderData['subscription'] ?? null;
+                    $order = Order::updateOrCreate(
+                        ['transaction_id' => $orderId],
+                        [
+                            'user_id' => $user->id,
+                            'package_id' => $package->id,
+                            'amount' => $orderData['total'],
+                            'currency' => $orderData['currency'],
+                            'payment_gateway_id' => $paymentGatewayId,
+                            'status' => 'completed',
+                            'metadata' => $orderData,
+                            'subscription_id' => $subscriptionId,
+                        ]
+                    );
+
+                    $user->update([
                         'payment_gateway_id' => $paymentGatewayId,
-                        'status' => 'pending',
+                        'package_id' => $package->id,
+                        'fastspring_subscription_id' => $subscriptionId ?? $user->fastspring_subscription_id,
+                        'subscription_starts_at' => now(),
+                        'is_subscribed' => true,
                     ]);
 
-                    Log::info('Created pending order for FastSpring payment', [
-                        'order_id' => $order->id,
-                        'transaction_id' => $order->transaction_id,
-                        'user_id' => $user->id,
-                        'package_id' => $package->id
-                    ]);
-
-                    // Assign license only if not already assigned
-                    if (!$user->license_key) {
+                    if (!$user->license_key && !$isUpgrade) {
                         $licenseKey = $this->makeLicense($user);
-                        $user->update([
-                            'payment_gateway_id' => $paymentGatewayId,
-                            'package_id' => $packageId,
-                            'subscription_starts_at' => now(),
-                            'license_key' => $licenseKey,
-                            'is_subscribed' => true,
-                        ]);
-
-                        // Call external API to add license
+                        $user->update(['license_key' => $licenseKey]);
                         $this->addLicenseToExternalAPI($user, $licenseKey);
-                    } else {
-                        Log::info('License already assigned to user', ['user_id' => $user->id]);
-                        $user->update([
-                            'payment_gateway_id' => $paymentGatewayId,
-                            'package_id' => $packageId,
-                            'subscription_starts_at' => now(),
-                            'is_subscribed' => true,
-                        ]);
                     }
 
-                    $order->status = 'completed';
-                    $order->save();
-                    Log::info('User', [
-                        'user_payment_gateway_id' => $user->payment_gateway_id,
-                        'user_package_id' => $user->package_id,
-                        'user_subscription_starts_at' => $user->subscription_starts_at,
-                        'user_is_subscribed' => $user->is_subscribed
-                    ]);
                     DB::commit();
+                    Log::info('FastSpring payment processed', [
+                        'order_id' => $orderId,
+                        'user_id' => $user->id,
+                        'package_id' => $package->id,
+                        'is_upgrade' => $isUpgrade
+                    ]);
+
+                    return redirect()->route('user.dashboard')
+                        ->with('success', $isUpgrade ? 'Your subscription has been upgraded!' : 'Your subscription is active.');
                 } catch (\Exception $e) {
                     DB::rollBack();
                     Log::error('FastSpring callback failed', ['message' => $e->getMessage()]);
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Something went wrong while processing your payment.');
                 }
-
-                return redirect()->route('user.dashboard')
-                    ->with('success', 'Thank you for your payment! Your subscription is being processed and will be activated shortly.');
-            } else {
-                Log::warning('Invalid payment gateway specified', [
-                    'gateway' => $gateway,
-                    'request_data' => $request->all()
-                ]);
-                return redirect()->route('subscriptions.index')
-                    ->with('error', 'Invalid payment gateway. Please try again or contact support.');
             }
+
+            return redirect()->route('user.dashboard')
+                ->with('success', 'Thank you for your payment! Your subscription is being processed and will be activated shortly.');
         } catch (\Exception $e) {
             Log::error('Error processing payment success: ' . $e->getMessage(), [
                 'exception' => $e,
@@ -1307,6 +1304,76 @@ class PaymentController extends Controller
             return redirect()->route('subscriptions.index')
                 ->with('error', 'An error occurred while processing your payment. Please try again or contact support.');
         }
+    }
+
+    public function upgradeSubscription(Request $request, $newPackage)
+    {
+        Log::info('=== FASTSPRING UPGRADE PROCESSING STARTED ===', [
+            'new_package' => $newPackage,
+            'user_id' => Auth::id()
+        ]);
+
+        $user = Auth::user();
+        if (!$user->fastspring_subscription_id) {
+            Log::error('No subscription found for upgrade', ['user_id' => $user->id]);
+            return response()->json(['error' => 'No FastSpring subscription found'], 400);
+        }
+
+        $capitalizedPackage = ucfirst(str_replace('-plan', '', strtolower($newPackage))); // e.g., 'business' -> 'Business'
+        $newProductPath = config('payment.gateways.FastSpring.product_ids.' . strtolower($capitalizedPackage));
+        if (!$newProductPath) {
+            Log::error('Invalid package for upgrade', ['new_package' => $capitalizedPackage]);
+            return response()->json(['error' => 'Invalid package'], 400);
+        }
+
+        $payload = [
+            'subscriptions' => [
+                [
+                    'subscription' => $user->fastspring_subscription_id,
+                    'product' => $newProductPath,
+                    'quantity' => 1,
+                    'prorate' => true,
+                    'preview' => false,
+                    'remainingPeriods' => null,
+                    'end' => '0',
+                    'isEndDateSet' => false,
+                    'manualRenew' => false,
+                    'deactivation' => null,
+                    'coupons' => []
+                ]
+            ]
+        ];
+
+        $response = Http::withBasicAuth(
+            config('payment.gateways.FastSpring.username'),
+            config('payment.gateways.FastSpring.password')
+        )->post('https://api.fastspring.com/subscriptions', $payload);
+
+        if ($response->successful()) {
+            $result = $response->json();
+            if ($result['subscriptions'][0]['result'] === 'success') {
+                Log::info('FastSpring subscription upgrade successful', [
+                    'subscription_id' => $user->fastspring_subscription_id,
+                    'new_package' => $capitalizedPackage,
+                    'proration_details' => $result['subscriptions'][0]['proration'] ?? null
+                ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Subscription upgraded successfully',
+                    'proration' => $result['subscriptions'][0]['proration'] ?? null,
+                    'subscription_data' => $result['subscriptions'][0]
+                ]);
+            }
+        }
+
+        Log::error('FastSpring upgrade failed', [
+            'user_id' => $user->id,
+            'response' => $response->body()
+        ]);
+        return response()->json([
+            'error' => 'Failed to process upgrade',
+            'message' => $response->json()['message'] ?? 'API request failed'
+        ], 500);
     }
 
     private function verifyPayProGlobalPayment($orderId, $paymentId)
@@ -1412,48 +1479,145 @@ class PaymentController extends Controller
             $secret = config('payment.gateways.FastSpring.webhook_secret');
             $signature = $request->header('X-Fs-Signature');
 
-            // Verify webhook signature
             if ($secret && $signature) {
                 $computedSignature = 'sha256=' . hash_hmac('sha256', $request->getContent(), $secret);
                 if (!hash_equals($signature, $computedSignature)) {
-                    Log::error('FastSpring Webhook: Invalid signature', [
-                        'received' => $signature,
-                        'computed' => $computedSignature,
-                        'payload' => $payload
-                    ]);
+                    Log::error('FastSpring Webhook: Invalid signature');
                     return response()->json(['error' => 'Invalid signature'], 403);
                 }
-            } elseif ($secret) {
-                Log::warning('FastSpring Webhook: Missing X-Fs-Signature header', [
-                    'headers' => $request->headers->all(),
-                    'payload' => $payload
-                ]);
-                return response()->json(['error' => 'Missing signature header'], 400);
             }
 
-            // Process the webhook event
             switch ($payload['type'] ?? null) {
                 case 'order.completed':
                 case 'subscription.activated':
                 case 'subscription.charge.completed':
-                    Log::info('Processing FastSpring webhook event', [
-                        'event' => $payload['type'],
-                        'order_id' => $payload['id'] ?? 'unknown'
-                    ]);
+                    // Check if this is an upgrade
+                    $tags = is_string($payload['tags'] ?? '') ? json_decode($payload['tags'], true) : ($payload['tags'] ?? []);
+                    if (isset($tags['is_upgrade']) && $tags['is_upgrade'] === 'true') {
+                        return $this->handleFastSpringUpgradeCompleted($payload);
+                    }
                     return $this->handleFastSpringOrderCompleted($payload);
+                case 'subscription.updated':
+                    $subscriptionId = $payload['subscription'] ?? null;
+                    $newProduct = $payload['product'] ?? null;
+
+                    if ($subscriptionId && $newProduct) {
+                        $user = User::where('order->subscription_id', $subscriptionId)->first();
+                        if ($user) {
+                            $package = Package::where('fastspring_product_path', $newProduct)->first();
+                            if ($package) {
+                                DB::beginTransaction();
+                                try {
+                                    $user->update(['package_id' => $package->id]);
+                                    Order::create([
+                                        'user_id' => $user->id,
+                                        'package_id' => $package->id,
+                                        'amount' => $payload['proration']['amount'] ?? $package->price,
+                                        'currency' => $payload['currency'] ?? 'USD',
+                                        'transaction_id' => 'FS-UPGRADE-' . Str::random(10),
+                                        'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
+                                        'status' => 'completed',
+                                        'metadata' => $payload
+                                    ]);
+                                    DB::commit();
+                                    Log::info('Subscription updated via webhook', [
+                                        'user_id' => $user->id,
+                                        'new_package' => $package->name
+                                    ]);
+                                } catch (\Exception $e) {
+                                    DB::rollBack();
+                                    Log::error('Failed to update subscription via webhook', [
+                                        'user_id' => $user->id,
+                                        'error' => $e->getMessage()
+                                    ]);
+                                }
+                            }
+                        }
+                    }
+                    return response()->json(['status' => 'processed']);
                 default:
-                    Log::debug('Ignoring FastSpring webhook event', [
-                        'event' => $payload['type'] ?? 'unknown'
-                    ]);
                     return response()->json(['status' => 'ignored']);
             }
         } catch (\Exception $e) {
-            Log::error('Error processing FastSpring webhook', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'payload' => $payload
-            ]);
+            Log::error('Error processing FastSpring webhook', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    private function handleFastSpringUpgradeCompleted($payload)
+    {
+        try {
+            $orderId = $payload['id'] ?? null;
+            $tags = is_string($payload['tags'] ?? '') ? json_decode($payload['tags'], true) : ($payload['tags'] ?? []);
+            $userId = $tags['user_id'] ?? null;
+            $package = $tags['package'] ?? null;
+            $subscriptionId = $payload['subscription'] ?? null;
+
+            if (!$userId || !$package || !$orderId) {
+                Log::error('Missing required data for upgrade webhook', [
+                    'order_id' => $orderId,
+                    'user_id' => $userId,
+                    'package' => $package
+                ]);
+                return response()->json(['error' => 'Missing required data'], 400);
+            }
+
+            $user = User::find($userId);
+            if (!$user) {
+                Log::error('User not found for upgrade webhook', ['user_id' => $userId]);
+                return response()->json(['error' => 'User not found'], 404);
+            }
+
+            $packageModel = Package::whereRaw('LOWER(name) = ?', [strtolower($package)])->first();
+            if (!$packageModel) {
+                Log::error('Package not found for upgrade webhook', ['package' => $package]);
+                return response()->json(['error' => 'Package not found'], 404);
+            }
+
+            DB::beginTransaction();
+            try {
+                $order = Order::updateOrCreate(
+                    ['transaction_id' => $orderId],
+                    [
+                        'user_id' => $user->id,
+                        'package_id' => $packageModel->id,
+                        'amount' => $payload['total'] ?? $packageModel->price,
+                        'currency' => $payload['currency'] ?? 'USD',
+                        'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
+                        'status' => 'completed',
+                        'metadata' => $payload,
+                        'subscription_id' => $subscriptionId
+                    ]
+                );
+
+                $user->update([
+                    'package_id' => $packageModel->id,
+                    'subscription_starts_at' => now(),
+                    'is_subscribed' => true
+                ]);
+
+                DB::commit();
+                Log::info('FastSpring upgrade processed via webhook', [
+                    'order_id' => $orderId,
+                    'user_id' => $user->id,
+                    'package' => $package
+                ]);
+
+                return response()->json(['status' => 'processed']);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Failed to process FastSpring upgrade webhook', [
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage()
+                ]);
+                return response()->json(['error' => 'Processing failed'], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error in FastSpring upgrade webhook handler', [
+                'order_id' => $orderId ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => 'Processing failed'], 500);
         }
     }
 
@@ -2138,9 +2302,9 @@ class PaymentController extends Controller
         ]);
 
         // Check if this is an upgrade request
-        $isUpgrade = $request->input('is_upgrade', false) || 
-                    $request->header('X-Is-Upgrade', false) || 
-                    $request->query('is_upgrade', false);
+        $isUpgrade = $request->input('is_upgrade', false) ||
+            $request->header('X-Is-Upgrade', false) ||
+            $request->query('is_upgrade', false);
 
         Log::info('Upgrade detection result', [
             'is_upgrade' => $isUpgrade,
@@ -2161,7 +2325,7 @@ class PaymentController extends Controller
 
         // Validate upgrade eligibility
         $user = Auth::user();
-        
+
         Log::info('User upgrade validation', [
             'user_id' => $user->id,
             'has_package' => !is_null($user->package),

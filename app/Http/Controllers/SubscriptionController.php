@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\API\PaymentController;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\PaymentGateways;
@@ -11,11 +12,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class SubscriptionController extends Controller
 {
     public function __construct(
-        protected PaymentService $paymentService
+        protected PaymentService $paymentService,
+        protected PaymentController $paymentController,
     ) {}
 
     public function handleSubscription()
@@ -43,22 +46,108 @@ class SubscriptionController extends Controller
     /**
      * Show upgrade subscription page
      */
-    public function upgradeSubscription()
+    public function upgradeSubscription(Request $request)
     {
-        $user = Auth::user();
+        Log::info('=== SUBSCRIPTION UPGRADE REQUEST STARTED ===', [
+            'new_package' => $request->new_package,
+            'user_id' => Auth::id()
+        ]);
 
+        $user = Auth::user();
         if (!$user->package || !$user->paymentGateway) {
-            return redirect()->back()
-                ->with('error', 'You need an active subscription before you can upgrade.');
+            Log::error('Upgrade validation failed: No active subscription', ['user_id' => $user->id]);
+            return redirect()->route('user.subscription.details')
+                ->with('error', 'You need an active subscription to upgrade.');
         }
 
-        // Check if user has an active subscription
         if ($user->subscription_starts_at === null) {
-            return redirect()->back()
+            Log::error('Upgrade validation failed: No subscription start date', ['user_id' => $user->id]);
+            return redirect()->route('user.subscription.details')
                 ->with('error', 'Your subscription has expired. Please start a new subscription.');
         }
 
-        return $this->showSubscriptionPage('upgrade');
+        if (!$user->paymentGateway->is_active) {
+            Log::error('Upgrade validation failed: Original gateway inactive', ['user_id' => $user->id]);
+            return redirect()->route('user.subscription.details')
+                ->with('error', 'Your original payment gateway is no longer available.');
+        }
+
+        $newPackage = $request->new_package; // Assuming new_package is passed in the request
+        $targetPackage = Package::whereRaw('LOWER(name) = ?', [strtolower($newPackage)])->first();
+        if (!$targetPackage) {
+            Log::error('Upgrade validation failed: Target package not found', ['package' => $newPackage]);
+            return redirect()->route('user.subscription.details')
+                ->with('error', 'Invalid package selected.');
+        }
+
+        // Validate that this is an upgrade (higher price/tier)
+        $currentPrice = optional($user->package)->price ?? 0;
+        if ($targetPackage->price <= $currentPrice) {
+            Log::error('Upgrade validation failed: Not an upgrade', [
+                'user_id' => $user->id,
+                'current_price' => $currentPrice,
+                'target_price' => $targetPackage->price
+            ]);
+            return redirect()->route('user.subscription.details')
+                ->with('error', 'This is not an upgrade. Contact support for downgrades.');
+        }
+
+        // Call PaymentController to process the upgrade
+        try {
+            $upgradeResult = $this->paymentController->upgradeSubscription($request, $newPackage);
+
+            if ($upgradeResult->getStatusCode() !== 200) {
+                $error = json_decode($upgradeResult->getContent(), true)['error'] ?? 'Upgrade failed';
+                Log::error('PaymentController upgrade failed', [
+                    'user_id' => $user->id,
+                    'error' => $error
+                ]);
+                return redirect()->route('user.subscription.details')
+                    ->with('error', $error);
+            }
+
+            // Update local database
+            DB::beginTransaction();
+            try {
+                $user->update(['package_id' => $targetPackage->id]);
+                $prorationAmount = json_decode($upgradeResult->getContent(), true)['proration']['amount'] ?? $targetPackage->price;
+
+                Order::create([
+                    'user_id' => $user->id,
+                    'package_id' => $targetPackage->id,
+                    'amount' => $prorationAmount,
+                    'currency' => 'USD',
+                    'transaction_id' => 'FS-UPGRADE-' . Str::random(10),
+                    'payment_gateway_id' => $this->paymentController->getPaymentGatewayId('fastspring'),
+                    'status' => 'completed',
+                    'metadata' => json_decode($upgradeResult->getContent(), true)
+                ]);
+
+                DB::commit();
+                Log::info('Subscription upgraded successfully', [
+                    'user_id' => $user->id,
+                    'new_package' => $newPackage
+                ]);
+
+                return redirect()->route('user.dashboard')
+                    ->with('success', 'Your subscription has been upgraded successfully!');
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Failed to update local subscription for upgrade', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+                return redirect()->route('user.subscription.details')
+                    ->with('error', 'Failed to update subscription locally.');
+            }
+        } catch (\Exception $e) {
+            Log::error('Subscription upgrade error', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+            return redirect()->route('user.subscription.details')
+                ->with('error', 'An error occurred during the upgrade process.');
+        }
     }
 
     /**
@@ -78,7 +167,7 @@ class SubscriptionController extends Controller
         if ($type === 'upgrade') {
             $targetGateway = $user->paymentGateway;
             $selectedGatewayName = $targetGateway ? $targetGateway->name : null;
-            
+
             // Ensure the user's original gateway is still available/active
             if (!$targetGateway || !$targetGateway->is_active) {
                 return redirect()->route('subscription.details')
@@ -104,11 +193,11 @@ class SubscriptionController extends Controller
 
         // Get packages and optionally filter for upgrades
         $packagesQuery = Package::select('name', 'price', 'duration', 'features');
-        
+
         if ($type === 'upgrade') {
             $currentPackagePrice = optional($user->package)->price ?? 0;
         }
-        
+
         $packages = $packagesQuery->get();
 
         return view('subscription.index', [
@@ -145,14 +234,17 @@ class SubscriptionController extends Controller
             $durationInDays = $package->getDurationInDays();
             $monthlyDuration = $package->getMonthlyDuration();
 
+            // Convert datetime to Carbon instance
+            $startDate = Carbon::parse($user->subscription_starts_at);
+
             // Log debug information to diagnose the issue
             Log::info('Subscription Details Calculation:', [
                 'package_name' => $package->name,
                 'duration_string' => $package->duration,
                 'monthly_duration' => $monthlyDuration,
                 'duration_in_days' => $durationInDays,
-                'start_date' => $user->subscription_starts_at->toDateTimeString(),
-                'calculated_end_date' => $durationInDays !== null ? $user->subscription_starts_at->copy()->addDays($durationInDays)->toDateTimeString() : null
+                'start_date' => $startDate->toDateTimeString(),
+                'calculated_end_date' => $durationInDays !== null ? $startDate->copy()->addDays($durationInDays)->toDateTimeString() : null
             ]);
 
             // Prioritize monthly duration for monthly packages
