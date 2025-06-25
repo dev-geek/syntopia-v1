@@ -929,17 +929,17 @@
 
             @if ($allPackages->isEmpty())
                 <div class="no-upgrades-message">
-                    <h3>🚫 No Plans Available</h3>
+                    <h3>No Plans Available</h3>
                     <p>There are currently no subscription plans available. Please contact support for assistance.</p>
                 </div>
             @elseif ($isDowngrade && $packages->isEmpty())
                 <div class="no-upgrades-message">
-                    <h3>🎉 You're on the Lowest Plan!</h3>
+                    <h3>You're on the Lowest Plan!</h3>
                     <p>{{ $upgradeMessage ?? 'You are already on the lowest available plan. No downgrades are available at this time.' }}</p>
                 </div>
             @elseif ($isUpgrade && $packages->isEmpty())
                 <div class="no-upgrades-message">
-                    <h3>🎉 You're on the Top Plan!</h3>
+                    <h3>You're on the Top Plan!</h3>
                     <p>{{ $upgradeMessage ?? 'You are already on the highest available plan. No upgrades are available at this time.' }}</p>
                 </div>
             @else
