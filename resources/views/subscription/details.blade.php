@@ -1,4 +1,3 @@
-
 @include('dashboard.includes.header')
 @include('dashboard.includes.sidebar')
 
@@ -26,9 +25,75 @@
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Current Subscription Status</h3>
-                            <a href="{{ route('subscription.upgrade') }}" class="btn btn-primary float-right">Upgrade Subscription</a>
+                            <div class="float-right">
+                                @php
+                                    // Check if user has an active subscription and package
+                                    $hasActiveSubscription = $user->package && $user->subscription_starts_at && $user->is_subscribed;
+                                    $currentPackagePrice = optional($user->package)->price ?? 0;
+                                    
+                                    // Check for available upgrades (packages with higher price)
+                                    $hasUpgrades = false;
+                                    $hasDowngrades = false;
+                                    
+                                    if ($hasActiveSubscription) {
+                                        $hasUpgrades = \App\Models\Package::where('price', '>', $currentPackagePrice)->exists();
+                                        $hasDowngrades = \App\Models\Package::where('price', '<', $currentPackagePrice)->exists();
+                                    }
+                                @endphp
+
+                                @if($hasActiveSubscription)
+                                    @if($hasDowngrades)
+                                        <a href="{{ route('subscription.downgrade') }}" class="btn btn-warning mr-2">
+                                            <i class="fas fa-arrow-down"></i> Downgrade Plan
+                                        </a>
+                                    @endif
+                                    
+                                    @if($hasUpgrades)
+                                        <a href="{{ route('subscription.upgrade') }}" class="btn btn-primary">
+                                            <i class="fas fa-arrow-up"></i> Upgrade Plan
+                                        </a>
+                                    @endif
+                                    
+                                    @if(!$hasUpgrades && !$hasDowngrades)
+                                        <span class="badge badge-info px-3 py-2">
+                                            <i class="fas fa-crown"></i> Only Plan Available
+                                        </span>
+                                    @endif
+                                @else
+                                    <a href="{{ route('subscriptions.index') }}" class="btn btn-success">
+                                        <i class="fas fa-plus"></i> Get Subscription
+                                    </a>
+                                @endif
+                            </div>
                         </div>
                         <div class="card-body">
+                            @if(session('success'))
+                                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                    <i class="fas fa-check-circle"></i> {{ session('success') }}
+                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                            @endif
+
+                            @if(session('error'))
+                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                    <i class="fas fa-exclamation-circle"></i> {{ session('error') }}
+                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                            @endif
+
+                            @if(session('warning'))
+                                <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                    <i class="fas fa-exclamation-triangle"></i> {{ session('warning') }}
+                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                        <span aria-hidden="true">&times;</span>
+                                    </button>
+                                </div>
+                            @endif
+
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="card bg-light mb-3">
@@ -39,10 +104,17 @@
                                             <div class="row">
                                                 <div class="col-12">
                                                     <p class="text-muted mb-2"><strong>Current Package:</strong></p>
-                                                    <p class="mb-2">{{ $currentPackage }}</p>
+                                                    <p class="mb-2">
+                                                        {{ $currentPackage ?? 'No Package' }}
+                                                        @if($user->package)
+                                                            <span class="badge badge-secondary ml-2">
+                                                                ${{ number_format($user->package->price, 0) }}/{{ $user->package->duration }}
+                                                            </span>
+                                                        @endif
+                                                    </p>
                                                     <p class="text-muted mb-2"><strong>Status:</strong></p>
                                                     <span class="badge {{ $user->is_subscribed ? 'badge-success' : 'badge-warning' }} px-3 py-2">
-                                                        {{ $user->is_subscribed ? 'Active' : 'In Active' }}
+                                                        {{ $user->is_subscribed ? 'Active' : 'Inactive' }}
                                                     </span>
                                                 </div>
                                             </div>
@@ -62,8 +134,27 @@
                                                         <p class="mb-2">{{ $user->subscription_starts_at->format('F j, Y') }}</p>
                                                     @endif
                                                     @if ($calculatedEndDate)
-                                                            <p class="text-muted mb-2"><strong>Calculated End Date:</strong></p>
+                                                        <p class="text-muted mb-2"><strong>Calculated End Date:</strong></p>
                                                         <p class="mb-2">{{ $calculatedEndDate->format('F j, Y') }}</p>
+                                                        
+                                                        @php
+                                                            $daysRemaining = now()->diffInDays($calculatedEndDate, false);
+                                                        @endphp
+                                                        
+                                                        @if($daysRemaining > 0)
+                                                            <p class="text-muted mb-2"><strong>Days Remaining:</strong></p>
+                                                            <span class="badge {{ $daysRemaining > 30 ? 'badge-success' : ($daysRemaining > 7 ? 'badge-warning' : 'badge-danger') }} px-3 py-2">
+                                                                {{ $daysRemaining }} days
+                                                            </span>
+                                                        @elseif($daysRemaining < 0)
+                                                            <span class="badge badge-danger px-3 py-2">
+                                                                Expired {{ abs($daysRemaining) }} days ago
+                                                            </span>
+                                                        @else
+                                                            <span class="badge badge-warning px-3 py-2">
+                                                                Expires today
+                                                            </span>
+                                                        @endif
                                                     @else
                                                         <p class="text-muted mb-2"><strong>Calculated End Date:</strong></p>
                                                         <p class="mb-2">Not available</p>
@@ -85,7 +176,48 @@
                                             <div class="row">
                                                 <div class="col-12">
                                                     <p class="text-muted mb-2"><strong>License Key:</strong></p>
-                                                    <p class="mb-2">{{ $user->license_key }}</p>
+                                                    <div class="input-group">
+                                                        <input type="text" class="form-control" value="{{ $user->license_key }}" readonly id="licenseKey">
+                                                        <div class="input-group-append">
+                                                            <button class="btn btn-outline-secondary" type="button" onclick="copyLicenseKey()">
+                                                                <i class="fas fa-copy"></i> Copy
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @endif
+
+                                    <!-- Plan Change Options -->
+                                    @if($hasActiveSubscription && ($hasUpgrades || $hasDowngrades))
+                                    <div class="card bg-light mb-3">
+                                        <div class="card-header">
+                                            <h3 class="card-title">Plan Management</h3>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col-12">
+                                                    @if($hasUpgrades)
+                                                        <div class="mb-3">
+                                                            <h6 class="text-success"><i class="fas fa-arrow-up"></i> Upgrade Available</h6>
+                                                            <p class="text-muted small mb-2">Get access to higher-tier features and benefits.</p>
+                                                            <a href="{{ route('subscription.upgrade') }}" class="btn btn-success btn-sm">
+                                                                View Upgrade Options
+                                                            </a>
+                                                        </div>
+                                                    @endif
+                                                    
+                                                    @if($hasDowngrades)
+                                                        <div class="mb-3">
+                                                            <h6 class="text-warning"><i class="fas fa-arrow-down"></i> Downgrade Available</h6>
+                                                            <p class="text-muted small mb-2">Switch to a lower-cost plan. Changes typically take effect at the end of your current billing cycle.</p>
+                                                            <a href="{{ route('subscription.downgrade') }}" class="btn btn-warning btn-sm">
+                                                                View Downgrade Options
+                                                            </a>
+                                                        </div>
+                                                    @endif
                                                 </div>
                                             </div>
                                         </div>
@@ -95,11 +227,11 @@
                                     @if ($user->orders->count() > 0)
                                     <div class="card bg-light">
                                         <div class="card-header">
-                                            <h3 class="card-title">Order History</h3>
+                                            <h3 class="card-title">Recent Order History</h3>
                                         </div>
                                         <div class="card-body">
                                             <div class="table-responsive">
-                                                <table class="table table-hover">
+                                                <table class="table table-hover table-sm">
                                                     <thead>
                                                         <tr>
                                                             <th>Date</th>
@@ -109,13 +241,13 @@
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        @foreach($user->orders as $order)
+                                                        @foreach($user->orders->take(5) as $order)
                                                         <tr>
-                                                            <td>{{ $order->created_at->format('F j, Y') }}</td>
+                                                            <td>{{ $order->created_at->format('M j, Y') }}</td>
                                                             <td>{{ $order->package->name }}</td>
                                                             <td>${{ number_format($order->amount, 2) }}</td>
                                                             <td>
-                                                                <span class="badge {{ $order->status === 'completed' ? 'bg-success' : 'bg-warning' }}">
+                                                                <span class="badge {{ $order->status === 'completed' ? 'badge-success' : 'badge-warning' }}">
                                                                     {{ ucfirst($order->status) }}
                                                                 </span>
                                                             </td>
@@ -124,6 +256,11 @@
                                                     </tbody>
                                                 </table>
                                             </div>
+                                            @if($user->orders->count() > 5)
+                                                <div class="text-center mt-2">
+                                                    <small class="text-muted">Showing 5 most recent orders</small>
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
                                     @endif
@@ -144,5 +281,31 @@
     <!-- Control sidebar content goes here -->
 </aside>
 <!-- /.control-sidebar -->
+
+<script>
+function copyLicenseKey() {
+    const licenseKeyInput = document.getElementById('licenseKey');
+    licenseKeyInput.select();
+    licenseKeyInput.setSelectionRange(0, 99999); // For mobile devices
+    
+    try {
+        document.execCommand('copy');
+        // Show success message
+        const button = event.target.closest('button');
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        button.classList.remove('btn-outline-secondary');
+        button.classList.add('btn-success');
+        
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    } catch (err) {
+        console.error('Failed to copy license key: ', err);
+    }
+}
+</script>
 
 @include('dashboard.includes.footer')

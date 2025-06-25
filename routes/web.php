@@ -31,22 +31,137 @@ Route::get('/test-verification', function () {
 });
 
 Route::middleware(['auth'])->group(function () {
-    
-    // Check if user can upgrade
+
     Route::get('/subscription/upgrade/check', function () {
         $user = auth()->user();
-        
+
+        $canUpgrade = $user->package &&
+            $user->paymentGateway &&
+            $user->paymentGateway->is_active &&
+            $user->subscription_starts_at !== null;
+
+        $availablePackages = [];
+        $availableUpgrades = [];
+        $availableDowngrades = [];
+
+        if ($canUpgrade) {
+            $currentPrice = $user->package->price ?? 0;
+
+            // Get packages with higher price for upgrades
+            $availableUpgrades = \App\Models\Package::where('price', '>', $currentPrice)
+                ->select('id', 'name', 'price', 'duration', 'features')
+                ->get()
+                ->map(function ($package) {
+                    return [
+                        'id' => $package->id,
+                        'name' => $package->name,
+                        'price' => $package->price,
+                        'duration' => $package->duration,
+                        'features' => is_string($package->features)
+                            ? json_decode($package->features, true) ?? []
+                            : (array) $package->features
+                    ];
+                });
+
+            // Get packages with lower price for downgrades
+            $availableDowngrades = \App\Models\Package::where('price', '<', $currentPrice)
+                ->select('id', 'name', 'price', 'duration', 'features')
+                ->get()
+                ->map(function ($package) {
+                    return [
+                        'id' => $package->id,
+                        'name' => $package->name,
+                        'price' => $package->price,
+                        'duration' => $package->duration,
+                        'features' => is_string($package->features)
+                            ? json_decode($package->features, true) ?? []
+                            : (array) $package->features
+                    ];
+                });
+        }
+
         return response()->json([
-            'eligible' => $user->package && $user->paymentGateway && 
-                         $user->paymentGateway->is_active && 
-                         $user->subscription_starts_at !== null,
-            'current_package' => $user->package->name ?? null,
-            'current_gateway' => $user->paymentGateway->name ?? null,
+            'eligible' => $canUpgrade,
+            'current_package' => [
+                'id' => $user->package->id ?? null,
+                'name' => $user->package->name ?? null,
+                'price' => $user->package->price ?? null,
+            ],
+            'current_gateway' => [
+                'id' => $user->paymentGateway->id ?? null,
+                'name' => $user->paymentGateway->name ?? null,
+                'is_active' => $user->paymentGateway->is_active ?? false,
+            ],
             'subscription_starts_at' => $user->subscription_starts_at,
+            'available_upgrades' => $availableUpgrades,
+            'available_downgrades' => $availableDowngrades,
+            'reasons' => $canUpgrade ? [] : [
+                !$user->package ? 'No active package' : null,
+                !$user->paymentGateway ? 'No payment gateway' : null,
+                !optional($user->paymentGateway)->is_active ? 'Payment gateway inactive' : null,
+                !$user->subscription_starts_at ? 'No active subscription' : null,
+            ]
         ]);
     })->name('subscription.upgrade.check');
+
+    // Add downgrade route
+    Route::get('/subscription/downgrade', [SubscriptionController::class, 'downgradeSubscription'])
+        ->name('subscription.downgrade');
+
+    // Add upgrade route
+    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgradeSubscription'])->name('subscription.upgrade');
 });
 
+// Test logging route
+Route::get('/test-log', function () {
+    // Test different log levels
+    \Log::emergency('EMERGENCY: Test emergency message');
+    \Log::alert('ALERT: Test alert message');
+    \Log::critical('CRITICAL: Test critical message');
+    \Log::error('ERROR: Test error message');
+    \Log::warning('WARNING: Test warning message');
+    \Log::notice('NOTICE: Test notice message');
+    \Log::info('INFO: Test info message');
+    \Log::debug('DEBUG: Test debug message');
+
+    // Test writing to a custom log file
+    \Log::channel('single')->info('Test message to single log file');
+
+    // Check log file path
+    $logPath = storage_path('logs/laravel.log');
+    $logDir = dirname($logPath);
+    $isWritable = is_writable($logDir) && (!file_exists($logPath) || is_writable($logPath));
+
+    return response()->json([
+        'status' => 'success',
+        'log_file' => $logPath,
+        'log_dir_writable' => is_writable($logDir) ? 'yes' : 'no',
+        'log_file_writable' => !file_exists($logPath) ? 'n/a' : (is_writable($logPath) ? 'yes' : 'no'),
+        'log_dir_exists' => file_exists($logDir) ? 'yes' : 'no',
+        'log_file_exists' => file_exists($logPath) ? 'yes' : 'no',
+        'message' => 'Check laravel.log for test messages'
+    ]);
+});
+
+// Test payment logging
+Route::get('/test-payment-log', function (\Illuminate\Http\Request $request) {
+    // Test payment logging
+    \Log::channel('payment')->info('=== PAYMENT LOG TEST ===');
+    \Log::channel('payment')->info('Test payment log entry', [
+        'time' => now()->toDateTimeString(),
+        'ip' => $request->ip(),
+        'user_agent' => $request->userAgent(),
+        'test_data' => 'This is a test payment log entry'
+    ]);
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Test payment log entry created',
+        'log_file' => storage_path('logs/payment.log'),
+        'log_dir_writable' => is_writable(storage_path('logs')) ? 'yes' : 'no',
+        'log_file_exists' => file_exists(storage_path('logs/payment.log')) ? 'yes' : 'no'
+    ]);
+});
 Route::get('/test-fastspring', [SubscriptionController::class, 'createFastSpringSession']);
 Route::get('/test-paddle', [SubscriptionController::class, 'createPaddleSession']);
 Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
@@ -125,14 +240,60 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
 
     // Upgrade Subscription
     Route::get('/user/subscription/upgrade', [SubscriptionController::class, 'upgradeSubscription'])->name('subscription.upgrade');
+    Route::get('/subscription/upgrade/check', function () {
+        $user = auth()->user();
+
+        $canUpgrade = $user->package &&
+            $user->paymentGateway &&
+            $user->paymentGateway->is_active &&
+            $user->subscription_starts_at !== null;
+
+        $availablePackages = [];
+        if ($canUpgrade) {
+            // Get packages with higher price than current
+            $currentPrice = $user->package->price ?? 0;
+            $availablePackages = \App\Models\Package::where('price', '>', $currentPrice)
+                ->select('id', 'name', 'price', 'duration', 'features')
+                ->get()
+                ->map(function ($package) {
+                    return [
+                        'id' => $package->id,
+                        'name' => $package->name,
+                        'price' => $package->price,
+                        'duration' => $package->duration,
+                        'features' => is_string($package->features)
+                            ? json_decode($package->features, true) ?? []
+                            : (array) $package->features
+                    ];
+                });
+        }
+
+        return response()->json([
+            'eligible' => $canUpgrade,
+            'current_package' => [
+                'id' => $user->package->id ?? null,
+                'name' => $user->package->name ?? null,
+                'price' => $user->package->price ?? null,
+            ],
+            'current_gateway' => [
+                'id' => $user->paymentGateway->id ?? null,
+                'name' => $user->paymentGateway->name ?? null,
+                'is_active' => $user->paymentGateway->is_active ?? false,
+            ],
+            'subscription_starts_at' => $user->subscription_starts_at,
+            'available_upgrades' => $availablePackages,
+            'reasons' => $canUpgrade ? [] : [
+                !$user->package ? 'No active package' : null,
+                !$user->paymentGateway ? 'No payment gateway' : null,
+                !optional($user->paymentGateway)->is_active ? 'Payment gateway inactive' : null,
+                !$user->subscription_starts_at ? 'No active subscription' : null,
+            ]
+        ]);
+    })->name('subscription.upgrade.check');
 });
 
 // Super Admin Only Routes
-Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
-
-
-
-});
+Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {});
 
 // Route::middleware(['auth', 'verified.custom', 'role:User|Sub Admin|Super Admin'])->group(function () {
 //     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');

@@ -60,14 +60,19 @@ class LoginController extends Controller
 
         if ($user) {
             if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                return route('admin.dashboard');
+                return redirect()->route('admin.dashboard');
             }
 
             if (!$this->isUserVerified($user)) {
-                return route('verification.code');
+                return redirect()->route('verification.code');
             }
 
-            return route('user.dashboard');
+            if($user->is_subscribed === true || $user->is_subscribed === 1)
+            {
+                return redirect()->route('user.dashboard');
+            }
+
+            return redirect()->route('pricing');
         }
 
         return '/';

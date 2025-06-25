@@ -35,14 +35,15 @@ class SubscriptionController extends Controller
         }
     }
 
+    public function show()
+    {
+        return $this->showSubscriptionPage();
+    }
+
     public function index()
     {
         return $this->showSubscriptionPage('new');
     }
-
-    /**
-     * Show upgrade subscription page
-     */
     public function upgradeSubscription()
     {
         $user = Auth::user();
@@ -58,7 +59,40 @@ class SubscriptionController extends Controller
                 ->with('error', 'Your subscription has expired. Please start a new subscription.');
         }
 
+        // Check if original gateway is still active
+        if (!$user->paymentGateway->is_active) {
+            return redirect()->back()
+                ->with('error', 'Your original payment gateway is no longer available. Please contact support for assistance with upgrades.');
+        }
+
         return $this->showSubscriptionPage('upgrade');
+    }
+
+    /**
+     * Show downgrade subscription page
+     */
+    public function downgradeSubscription()
+    {
+        $user = Auth::user();
+
+        if (!$user->package || !$user->paymentGateway) {
+            return redirect()->back()
+                ->with('error', 'You need an active subscription before you can downgrade.');
+        }
+
+        // Check if user has an active subscription
+        if ($user->subscription_starts_at === null) {
+            return redirect()->back()
+                ->with('error', 'Your subscription has expired. Please start a new subscription.');
+        }
+
+        // Check if original gateway is still active
+        if (!$user->paymentGateway->is_active) {
+            return redirect()->back()
+                ->with('error', 'Your original payment gateway is no longer available. Please contact support for assistance with downgrades.');
+        }
+
+        return $this->showSubscriptionPage('downgrade');
     }
 
     /**
@@ -72,17 +106,16 @@ class SubscriptionController extends Controller
         if (!$user->hasRole(['User', 'Sub Admin'])) {
             return redirect()->route('admin.dashboard');
         }
-
-        // For upgrades, always use the user's original payment gateway
+        
         // For new subscriptions, use the currently active gateway
-        if ($type === 'upgrade') {
+        if ($type === 'upgrade' || $type === 'downgrade') {
             $targetGateway = $user->paymentGateway;
             $selectedGatewayName = $targetGateway ? $targetGateway->name : null;
             
             // Ensure the user's original gateway is still available/active
             if (!$targetGateway || !$targetGateway->is_active) {
                 return redirect()->route('subscription.details')
-                    ->with('error', 'Your original payment gateway is no longer available. Please contact support for assistance with upgrades.');
+                    ->with('error', 'Your original payment gateway is no longer available. Please contact support for assistance with plan changes.');
             }
         } else {
             // For new subscriptions, use currently active gateway
@@ -102,14 +135,28 @@ class SubscriptionController extends Controller
             ->filter()
             ->values();
 
-        // Get packages and optionally filter for upgrades
-        $packagesQuery = Package::select('name', 'price', 'duration', 'features');
+        // Get packages and filter for upgrades/downgrades
+        $packagesQuery = Package::select('id', 'name', 'price', 'duration', 'features');
         
         if ($type === 'upgrade') {
             $currentPackagePrice = optional($user->package)->price ?? 0;
+            // Only show packages with higher price for upgrades
+            $packagesQuery->where('price', '>', $currentPackagePrice);
+        } elseif ($type === 'downgrade') {
+            $currentPackagePrice = optional($user->package)->price ?? 0;
+            // Only show packages with lower price for downgrades
+            $packagesQuery->where('price', '<', $currentPackagePrice);
         }
         
         $packages = $packagesQuery->get();
+
+        // Add messaging for empty package list
+        $message = null;
+        if ($type === 'upgrade' && $packages->isEmpty()) {
+            $message = 'You are already on the highest available plan. No upgrades are available at this time.';
+        } elseif ($type === 'downgrade' && $packages->isEmpty()) {
+            $message = 'You are already on the lowest available plan. No downgrades are available at this time.';
+        }
 
         return view('subscription.index', [
             'payment_gateways' => $gateways,
@@ -117,12 +164,14 @@ class SubscriptionController extends Controller
             'currentPackagePrice' => optional($user->package)->price ?? 0,
             'activeGateway' => $targetGateway,
             'currentLoggedInUserPaymentGateway' => $selectedGatewayName,
-            'userOriginalGateway' => $type === 'upgrade' ? $selectedGatewayName : null,
+            'userOriginalGateway' => ($type === 'upgrade' || $type === 'downgrade') ? $selectedGatewayName : null,
             'activeGatewaysByAdmin' => $activeGatewaysByAdmin,
             'packages' => $packages,
             'pageType' => $type,
             'isUpgrade' => $type === 'upgrade',
-            'upgradeEligible' => $type === 'upgrade' && $targetGateway && $targetGateway->is_active,
+            'isDowngrade' => $type === 'downgrade',
+            'upgradeEligible' => ($type === 'upgrade' || $type === 'downgrade') && $targetGateway && $targetGateway->is_active,
+            'upgradeMessage' => $message, 
         ]);
     }
 
@@ -180,9 +229,6 @@ class SubscriptionController extends Controller
         ]);
     }
 
-    /**
-     * Handle webhook callbacks from payment gateways
-     */
     public function handlePaymentWebhook(Request $request, $gateway)
     {
         Log::info("Webhook received from $gateway", [
@@ -201,9 +247,6 @@ class SubscriptionController extends Controller
         }
     }
 
-    /**
-     * Handle Paddle checkout API request
-     */
     public function paddleCheckout(Request $request, $packageName)
     {
         try {
@@ -217,9 +260,6 @@ class SubscriptionController extends Controller
         }
     }
 
-    /**
-     * Handle PayProGlobal checkout API request
-     */
     public function payProGlobalCheckout(Request $request, $packageName)
     {
         try {
@@ -233,9 +273,6 @@ class SubscriptionController extends Controller
         }
     }
 
-    /**
-     * Handle successful payment
-     */
     public function paymentSuccess(Request $request)
     {
         $gateway = $request->query('gateway');
