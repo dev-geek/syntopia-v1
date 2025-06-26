@@ -39,8 +39,8 @@
                               @endphp
                               <tr>
                                 <td>{{ $index + 1 }}</td>
-                                <td>{{ ucfirst($order['package']['name']) }}</td>
-                                <td>${{ number_format($order['amount'], 2) }}</td>
+                                <td>{{ isset($order['package']) ? ucfirst($order['package']['name']) : 'N/A' }}</td>
+                                <td>${{ number_format($order['amount'], 2) ?? 'N/A' }}</td>
                                 <td>
                                   @if($order->status === 'completed')
                                     <span class="badge badge-success">Completed</span>
@@ -50,8 +50,8 @@
                                     <span class="badge badge-secondary">{{ $order->status }}</span>
                                   @endif
                                 </td>
-                                <td>{{ $startDate->format('M d, Y') }}</td>
-                                <td>{{ $renewalDate->format('M d, Y') }}</td>
+                                <td>{{ $startDate->format('M d, Y') ?? 'N/A' }}</td>
+                                <td>{{ $renewalDate->format('M d, Y') ?? 'N/A' }}</td>
                                 <td>
                                   @if($isActive)
                                     <span class="badge badge-success">Active</span>

@@ -13,6 +13,7 @@ use App\Models\{
     PaymentGateways,
     Order,
 };
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -993,7 +994,7 @@ class PaymentController extends Controller
                     DB::commit();
                     return response()->json([
                         'status' => 'pending',
-                        'message' => 'Thank you! Your payment is being processed. You will be notified once confirmed.',
+                        'message' => 'Thank you! Your payment is being processed. You\'ll be notified once confirmed.',
                         'redirect' => route('user.dashboard')
                     ]);
                 } catch (\Exception $e) {
@@ -1424,14 +1425,43 @@ class PaymentController extends Controller
                 throw new \Exception("We couldn't find your active subscription in our payment system. This might be due to a synchronization issue. Please contact support at support@syntopia.ai for assistance with your plan change, or try creating a new subscription with your desired plan.");
             }
 
-            // Continue with existing plan change logic...
-            $processedPackage = str_replace('-plan', '', strtolower($package));
+            // Retrieve subscription details to verify
+            $response = Http::withBasicAuth($username, $password)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])
+                ->timeout(30)
+                ->get('https://api.fastspring.com/subscriptions/' . $subscriptionId);
 
+            if (!$response->successful()) {
+                $errorData = $response->json();
+                Log::error("FastSpring subscription retrieval failed", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                    'error_data' => $errorData
+                ]);
+                throw new \Exception("Failed to retrieve subscription details: " . ($errorData['error']['message'] ?? "Unknown error"));
+            }
+
+            $subscriptionDetails = $response->json();
+            Log::info("FastSpring subscription details retrieved", [
+                'subscription_id' => $subscriptionId,
+                'details' => $subscriptionDetails
+            ]);
+
+            // Verify the subscription is active
+            $subscription = $subscriptionDetails['subscriptions'][0] ?? null;
+            if (!$subscription || $subscription['state'] !== 'active') {
+                throw new \Exception("Subscription is not active or not found, cannot perform {$changeType}");
+            }
+
+            // Prepare plan change data with correct product path
             $planChangeData = [
                 'subscriptions' => [
                     [
                         'subscription' => $subscriptionId,
-                        'product' => $processedPackage,
+                        'product' => $targetPackage->fastspring_product_id, // Use the correct product path
                         'quantity' => 1,
                         'prorate' => $changeInfo['is_upgrade'] // Only prorate for upgrades, not downgrades
                     ]
@@ -1440,24 +1470,24 @@ class PaymentController extends Controller
 
             Log::info("Sending FastSpring {$changeType} request", [
                 'subscription_id' => $subscriptionId,
-                'new_product' => $processedPackage,
+                'new_product' => $targetPackage->fastspring_product_id,
                 'plan_change_data' => $planChangeData
             ]);
 
-            // Make API call to FastSpring
-            $response = Http::withBasicAuth($username, $password)
+            // Make API call to update subscription
+            $updateResponse = Http::withBasicAuth($username, $password)
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json'
                 ])
-                ->timeout(30) // Add timeout
+                ->timeout(30)
                 ->post('https://api.fastspring.com/subscriptions', $planChangeData);
 
-            if (!$response->successful()) {
-                $errorData = $response->json();
+            if (!$updateResponse->successful()) {
+                $errorData = $updateResponse->json();
                 Log::error("FastSpring {$changeType} API failed", [
-                    'status' => $response->status(),
-                    'response' => $response->body(),
+                    'status' => $updateResponse->status(),
+                    'response' => $updateResponse->body(),
                     'error_data' => $errorData
                 ]);
 
@@ -1465,7 +1495,7 @@ class PaymentController extends Controller
                 throw new \Exception("FastSpring {$changeType} failed: {$errorMessage}");
             }
 
-            $changeResult = $response->json();
+            $changeResult = $updateResponse->json();
             Log::info("FastSpring {$changeType} successful", [
                 'result' => $changeResult,
                 'subscription_id' => $subscriptionId
@@ -1536,7 +1566,7 @@ class PaymentController extends Controller
     }
 
     /**
-     * Find user's active FastSpring subscription - FIXED VERSION
+     * Find user's active FastSpring subscription - FINAL FIXED VERSION
      */
     private function findFastSpringSubscription($user, $username, $password)
     {
@@ -1585,24 +1615,89 @@ class PaymentController extends Controller
 
                     if ($detailResponse->successful()) {
                         $subscriptionDetail = $detailResponse->json();
-                        
-                        // Check if this subscription belongs to the user and is active
-                        $customerEmail = $subscriptionDetail['customer']['email'] ?? '';
                         $state = $subscriptionDetail['state'] ?? '';
                         
-                        Log::debug('Checking subscription details', [
-                            'subscription_id' => $subscriptionId,
-                            'customer_email' => $customerEmail,
-                            'user_email' => $user->email,
-                            'state' => $state
-                        ]);
-
-                        if (strtolower($customerEmail) === strtolower($user->email) && $state === 'active') {
-                            Log::info('Found active FastSpring subscription for user', [
+                        // Skip inactive subscriptions
+                        if ($state !== 'active') {
+                            Log::debug('Skipping inactive subscription', [
                                 'subscription_id' => $subscriptionId,
-                                'customer_email' => $customerEmail,
-                                'state' => $state,
-                                'product' => $subscriptionDetail['product'] ?? 'Unknown'
+                                'state' => $state
+                            ]);
+                            continue;
+                        }
+
+                        // Get the initial order ID to fetch customer details
+                        $initialOrderId = $subscriptionDetail['initialOrderId'] ?? null;
+                        
+                        if ($initialOrderId) {
+                            Log::debug('Fetching initial order details', [
+                                'subscription_id' => $subscriptionId,
+                                'initial_order_id' => $initialOrderId
+                            ]);
+                            
+                            // Fetch the original order to get customer information
+                            $orderResponse = Http::withBasicAuth($username, $password)
+                                ->timeout(30)
+                                ->get("https://api.fastspring.com/orders/{$initialOrderId}");
+                            
+                            if ($orderResponse->successful()) {
+                                $orderDetail = $orderResponse->json();
+                                
+                                // Try multiple possible email field locations in the order
+                                $customerEmail = $orderDetail['customer']['email'] ?? 
+                                               $orderDetail['contact']['email'] ?? 
+                                               $orderDetail['account']['contact']['email'] ?? 
+                                               $orderDetail['recipient']['email'] ?? 
+                                               '';
+                                
+                                Log::debug('Checking order customer details', [
+                                    'subscription_id' => $subscriptionId,
+                                    'initial_order_id' => $initialOrderId,
+                                    'customer_email' => $customerEmail,
+                                    'user_email' => $user->email
+                                ]);
+
+                                if (!empty($customerEmail) && strtolower($customerEmail) === strtolower($user->email)) {
+                                    Log::info('Found active FastSpring subscription for user via order lookup', [
+                                        'subscription_id' => $subscriptionId,
+                                        'customer_email' => $customerEmail,
+                                        'initial_order_id' => $initialOrderId,
+                                        'state' => $state,
+                                        'product' => $subscriptionDetail['product'] ?? 'Unknown'
+                                    ]);
+                                    return $subscriptionId;
+                                }
+                            } else {
+                                Log::warning('Failed to fetch order details', [
+                                    'subscription_id' => $subscriptionId,
+                                    'initial_order_id' => $initialOrderId,
+                                    'status' => $orderResponse->status()
+                                ]);
+                            }
+                        }
+                        
+                        // Fallback: Check if subscription has any reference to the user ID in other fields
+                        $referrer = $subscriptionDetail['referrer'] ?? '';
+                        $initialOrderReference = $subscriptionDetail['initialOrderReference'] ?? '';
+                        
+                        // Check referrer field (often contains user ID)
+                        if ($referrer && $referrer == $user->id) {
+                            Log::info('Found FastSpring subscription by referrer field', [
+                                'subscription_id' => $subscriptionId,
+                                'user_id' => $user->id,
+                                'referrer' => $referrer,
+                                'state' => $state
+                            ]);
+                            return $subscriptionId;
+                        }
+                        
+                        // Check if order reference contains user info
+                        if ($initialOrderReference && strpos($initialOrderReference, (string)$user->id) !== false) {
+                            Log::info('Found FastSpring subscription by order reference', [
+                                'subscription_id' => $subscriptionId,
+                                'user_id' => $user->id,
+                                'order_reference' => $initialOrderReference,
+                                'state' => $state
                             ]);
                             return $subscriptionId;
                         }
@@ -1623,6 +1718,7 @@ class PaymentController extends Controller
 
             Log::warning('No active FastSpring subscription found for user after checking all subscriptions', [
                 'user_email' => $user->email,
+                'user_id' => $user->id,
                 'total_checked' => count($subscriptionIds)
             ]);
 
@@ -2407,6 +2503,167 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
             ]);
             return false;
+        }
+    }
+
+    public function cancelSubscription(Request $request, $billingPeriod = 1)
+    {
+        Log::info('=== FASTSPRING SUBSCRIPTION CANCELLATION STARTED ===', [
+            'user_id' => Auth::id(),
+            'billing_period' => $billingPeriod
+        ]);
+
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                Log::error('Unauthorized attempt to cancel subscription');
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            // Get FastSpring API credentials
+            $username = config('payment.gateways.FastSpring.username');
+            $password = config('payment.gateways.FastSpring.password');
+
+            if (!$username || !$password) {
+                Log::error('FastSpring API credentials not configured');
+                return response()->json(['error' => 'Payment configuration error'], 500);
+            }
+
+            // Find user's active FastSpring subscription
+            $subscriptionId = $this->findFastSpringSubscription($user, $username, $password);
+
+            if (!$subscriptionId) {
+                Log::warning('No active FastSpring subscription found for cancellation', [
+                    'user_id' => $user->id,
+                    'user_email' => $user->email
+                ]);
+                return response()->json(['error' => 'No active subscription found'], 404);
+            }
+
+            // Cancel the subscription
+            $response = Http::withBasicAuth($username, $password)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])
+                ->timeout(30)
+                ->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}?billingPeriod={$billingPeriod}");
+
+            if (!$response->successful()) {
+                $errorData = $response->json();
+                Log::error('FastSpring subscription cancellation failed', [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                    'error_data' => $errorData
+                ]);
+                return response()->json([
+                    'error' => 'Failed to cancel subscription',
+                    'message' => $errorData['error']['message'] ?? 'Unknown error'
+                ], $response->status());
+            }
+
+            $result = $response->json();
+            Log::info('FastSpring subscription cancellation successful', [
+                'result' => $result,
+                'subscription_id' => $subscriptionId
+            ]);
+
+            // Retrieve updated subscription details to get the end date
+            $detailsResponse = Http::withBasicAuth($username, $password)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])
+                ->timeout(30)
+                ->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
+
+            if (!$detailsResponse->successful()) {
+                Log::warning('Failed to retrieve updated subscription details after cancellation', [
+                    'status' => $detailsResponse->status(),
+                    'response' => $detailsResponse->body()
+                ]);
+                // Proceed with default end date (now) if retrieval fails
+                $endDate = now();
+            } else {
+                $subscriptionDetails = $detailsResponse->json();
+                $subscription = $subscriptionDetails['subscriptions'][0] ?? null;
+                $endDate = $subscription && isset($subscription['endInSeconds'])
+                    ? Carbon::createFromTimestamp($subscription['endInSeconds'])
+                    : ($billingPeriod == 1 && isset($subscription['nextInSeconds'])
+                        ? Carbon::createFromTimestamp($subscription['nextInSeconds'])
+                        : now());
+                Log::info('FastSpring subscription details after cancellation', [
+                    'subscription_id' => $subscriptionId,
+                    'end_date' => $endDate->toDateTimeString()
+                ]);
+            }
+
+            // Update user's subscription status
+            DB::beginTransaction();
+            try {
+                $user->update([
+                    'is_subscribed' => false,
+                    'subscription_ends_at' => $endDate,
+                    'package_id' => null,
+                    'payment_gateway_id' => null
+                ]);
+
+                // Create a cancellation order record
+                Order::create([
+                    'user_id' => $user->id,
+                    'package_id' => null,
+                    'amount' => 0,
+                    'currency' => 'USD',
+                    'transaction_id' => 'FS-CANCEL-' . $subscriptionId . '-' . time(),
+                    'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
+                    'status' => 'completed',
+                    'metadata' => [
+                        'is_cancellation' => true,
+                        'subscription_id' => $subscriptionId,
+                        'billing_period' => $billingPeriod,
+                        'fastspring_response' => $result
+                    ]
+                ]);
+
+                DB::commit();
+
+                Log::info('FastSpring subscription cancellation completed successfully', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'end_date' => $endDate->toDateTimeString()
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $billingPeriod == 1
+                        ? "Subscription will be canceled at the end of the current billing period on {$endDate->format('F j, Y')}"
+                        : 'Subscription canceled successfully'
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Failed to update user subscription status after cancellation', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+                return response()->json([
+                    'error' => 'Failed to update subscription status',
+                    'message' => $e->getMessage()
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('FastSpring subscription cancellation error', [
+                'user_id' => $user->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Failed to cancel subscription',
+                'message' => $e->getMessage(),
+                'support_info' => [
+                    'contact_email' => 'support@syntopia.ai',
+                    'user_id' => $user->id ?? null
+                ]
+            ], 500);
         }
     }
 }

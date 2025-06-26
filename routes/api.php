@@ -58,4 +58,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/orders', [PaymentController::class, 'getOrdersList'])
             ->name('orders.index');
     });
+
+    Route::post('/payments/cancel-subscription/{billingPeriod?}', [PaymentController::class, 'cancelSubscription'])->name('payments.cancel-subscription');
 });

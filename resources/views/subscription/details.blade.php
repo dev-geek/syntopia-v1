@@ -49,10 +49,14 @@
                                     @endif
                                     
                                     @if($hasUpgrades)
-                                        <a href="{{ route('subscription.upgrade') }}" class="btn btn-primary">
+                                        <a href="{{ route('subscription.upgrade') }}" class="btn btn-primary mr-2">
                                             <i class="fas fa-arrow-up"></i> Upgrade Plan
                                         </a>
                                     @endif
+                                    
+                                    <button class="btn btn-danger cancel-subscription-btn" data-csrf-token="{{ csrf_token() }}">
+                                        <i class="fas fa-times"></i> Cancel Subscription
+                                    </button>
                                     
                                     @if(!$hasUpgrades && !$hasDowngrades)
                                         <span class="badge badge-info px-3 py-2">
@@ -71,7 +75,7 @@
                                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                                     <i class="fas fa-check-circle"></i> {{ session('success') }}
                                     <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
+                                        <span aria-hidden="true">×</span>
                                     </button>
                                 </div>
                             @endif
@@ -80,7 +84,7 @@
                                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                                     <i class="fas fa-exclamation-circle"></i> {{ session('error') }}
                                     <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
+                                        <span aria-hidden="true">×</span>
                                     </button>
                                 </div>
                             @endif
@@ -89,7 +93,7 @@
                                 <div class="alert alert-warning alert-dismissible fade show" role="alert">
                                     <i class="fas fa-exclamation-triangle"></i> {{ session('warning') }}
                                     <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">&times;</span>
+                                        <span aria-hidden="true">×</span>
                                     </button>
                                 </div>
                             @endif
@@ -244,7 +248,7 @@
                                                         @foreach($user->orders->take(5) as $order)
                                                         <tr>
                                                             <td>{{ $order->created_at->format('M j, Y') }}</td>
-                                                            <td>{{ $order->package->name }}</td>
+                                                            <td>{{ $order->package->name ?? 'N/A' }}</td>
                                                             <td>${{ number_format($order->amount, 2) }}</td>
                                                             <td>
                                                                 <span class="badge {{ $order->status === 'completed' ? 'badge-success' : 'badge-warning' }}">
@@ -304,8 +308,118 @@ function copyLicenseKey() {
         }, 2000);
     } catch (err) {
         console.error('Failed to copy license key: ', err);
+        // Use SweetAlert2 for error if available, otherwise native alert
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Copy Failed',
+                text: 'Failed to copy license key. Please try again.',
+                confirmButtonText: 'OK'
+            });
+        } else {
+            alert('Failed to copy license key. Please try again.');
+        }
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const cancelButton = document.querySelector('.cancel-subscription-btn');
+    if (cancelButton) {
+        cancelButton.addEventListener('click', function() {
+            // Check if SweetAlert2 is loaded
+            if (typeof Swal === 'undefined') {
+                // Fallback to native confirm dialog
+                if (confirm('Are you sure you want to cancel your subscription? It will be canceled at the end of the current billing period, and you will retain access until then.')) {
+                    fetch('/api/payments/cancel-subscription', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': this.getAttribute('data-csrf-token'),
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(err => {
+                                throw new Error(err.message || err.error || `HTTP ${response.status}: ${response.statusText}`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data.success) {
+                            throw new Error(data.message || data.error || 'Cancellation failed');
+                        }
+                        alert(data.message || 'Your subscription has been canceled successfully.');
+                        window.location.href = '/user/dashboard';
+                    })
+                    .catch(error => {
+                        console.error('Cancellation error:', error);
+                        alert(error.message || 'Failed to cancel subscription. Please try again or contact support.');
+                    });
+                }
+                return;
+            }
+
+            // Use SweetAlert2 for confirmation
+            Swal.fire({
+                title: 'Are you sure you want to cancel your subscription?',
+                text: 'It will be canceled at the end of the current billing period, and you will retain access until then.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'Yes, cancel it!',
+                cancelButtonText: 'No, keep it'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch('/api/payments/cancel-subscription', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': this.getAttribute('data-csrf-token'),
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(err => {
+                                throw new Error(err.message || err.error || `HTTP ${response.status}: ${response.statusText}`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data.success) {
+                            throw new Error(data.message || data.error || 'Cancellation failed');
+                        }
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Subscription Canceled',
+                            text: data.message || 'Your subscription has been canceled successfully.',
+                            confirmButtonText: 'Go to Dashboard'
+                        }).then(() => {
+                            window.location.href = '/user/dashboard';
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Cancellation error:', error);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Cancellation Failed',
+                            text: error.message || 'Failed to cancel subscription. Please try again or contact support.',
+                            confirmButtonText: 'OK'
+                        });
+                    });
+                }
+            });
+        });
+    }
+});
 </script>
 
 @include('dashboard.includes.footer')
