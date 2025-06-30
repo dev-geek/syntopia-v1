@@ -118,7 +118,7 @@
                                                     </p>
                                                     <p class="text-muted mb-2"><strong>Status:</strong></p>
                                                     <span class="badge {{ $user->is_subscribed ? 'badge-success' : 'badge-warning' }} px-3 py-2">
-                                                        {{ $user->is_subscribed ? 'Active' : 'Inactive' }}
+                                                        {{ $user->is_subscribed ? 'Active' : 'In Active' }}
                                                     </span>
                                                 </div>
                                             </div>

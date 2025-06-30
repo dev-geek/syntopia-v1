@@ -1616,7 +1616,7 @@ class PaymentController extends Controller
                     if ($detailResponse->successful()) {
                         $subscriptionDetail = $detailResponse->json();
                         $state = $subscriptionDetail['state'] ?? '';
-                        
+
                         // Skip inactive subscriptions
                         if ($state !== 'active') {
                             Log::debug('Skipping inactive subscription', [
@@ -1628,28 +1628,28 @@ class PaymentController extends Controller
 
                         // Get the initial order ID to fetch customer details
                         $initialOrderId = $subscriptionDetail['initialOrderId'] ?? null;
-                        
+
                         if ($initialOrderId) {
                             Log::debug('Fetching initial order details', [
                                 'subscription_id' => $subscriptionId,
                                 'initial_order_id' => $initialOrderId
                             ]);
-                            
+
                             // Fetch the original order to get customer information
                             $orderResponse = Http::withBasicAuth($username, $password)
                                 ->timeout(30)
                                 ->get("https://api.fastspring.com/orders/{$initialOrderId}");
-                            
+
                             if ($orderResponse->successful()) {
                                 $orderDetail = $orderResponse->json();
-                                
+
                                 // Try multiple possible email field locations in the order
-                                $customerEmail = $orderDetail['customer']['email'] ?? 
-                                               $orderDetail['contact']['email'] ?? 
-                                               $orderDetail['account']['contact']['email'] ?? 
-                                               $orderDetail['recipient']['email'] ?? 
-                                               '';
-                                
+                                $customerEmail = $orderDetail['customer']['email'] ??
+                                    $orderDetail['contact']['email'] ??
+                                    $orderDetail['account']['contact']['email'] ??
+                                    $orderDetail['recipient']['email'] ??
+                                    '';
+
                                 Log::debug('Checking order customer details', [
                                     'subscription_id' => $subscriptionId,
                                     'initial_order_id' => $initialOrderId,
@@ -1675,11 +1675,11 @@ class PaymentController extends Controller
                                 ]);
                             }
                         }
-                        
+
                         // Fallback: Check if subscription has any reference to the user ID in other fields
                         $referrer = $subscriptionDetail['referrer'] ?? '';
                         $initialOrderReference = $subscriptionDetail['initialOrderReference'] ?? '';
-                        
+
                         // Check referrer field (often contains user ID)
                         if ($referrer && $referrer == $user->id) {
                             Log::info('Found FastSpring subscription by referrer field', [
@@ -1690,7 +1690,7 @@ class PaymentController extends Controller
                             ]);
                             return $subscriptionId;
                         }
-                        
+
                         // Check if order reference contains user info
                         if ($initialOrderReference && strpos($initialOrderReference, (string)$user->id) !== false) {
                             Log::info('Found FastSpring subscription by order reference', [
@@ -2465,7 +2465,42 @@ class PaymentController extends Controller
 
     private function makeLicense($user = null)
     {
-        return Str::uuid()->toString(); // Generates a UUID as license key
+        $cacheKey = 'license_summary_' . ($user ? $user->id : 'general');
+        $summaryData = Cache::remember($cacheKey, 300, function () {
+            $summary = Http::withHeaders([
+                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/channel/inventory/subscription/summary/search', [
+                'pageIndex' => 1,
+                'pageSize' => 100,
+                'appIds' => [1],
+                'subscriptionType' => 'license',
+            ]);
+
+            if (!$summary->successful() || $summary->json()['code'] !== 200) {
+                Log::error('Failed to fetch subscription summary in makeLicense', [
+                    'response' => $summary->body(),
+                ]);
+                return null;
+            }
+
+            return $summary->json()['data']['data'] ?? [];
+        });
+
+        if (empty($summaryData)) {
+            Log::error('No subscription data found in cached summary response');
+            return null;
+        }
+
+        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        if (!$licenseKey) {
+            Log::error('Subscription code not found in cached summary response');
+            return null;
+        }
+
+        Log::info('License key retrieved from cache or API', ['license_key' => $licenseKey]);
+        return $licenseKey;
     }
 
     private function addLicenseToExternalAPI($user, $licenseKey)
@@ -2477,12 +2512,17 @@ class PaymentController extends Controller
                 return false;
             }
 
+            // Make the license API call with the provided license key
             $response = Http::post(config('payment.gateways.License API.endpoint'), [
                 'tenantId' => $tenantId,
-                'subscriptionCode' => config('payment.gateways.License API.subscription_code'),
+                'subscriptionCode' => $licenseKey,
             ]);
 
+            // Check if the license API call was successful
             if ($response->successful() && $response->json()['code'] === 200) {
+                // Save the subscription code as the license key to the users table
+                $user->update(['license_key' => $licenseKey]);
+
                 Log::info('License added successfully via API', [
                     'user_id' => $user->id,
                     'tenant_id' => $tenantId,

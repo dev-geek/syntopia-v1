@@ -7,8 +7,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
         content="
-      default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://cdnjs.cloudflare.com;
+      default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test https://cdn.jsdelivr.net;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
       font-src 'self' https://fonts.gstatic.com;
       script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
       img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
@@ -26,7 +26,6 @@
         @endif
     </title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- Payment Gateway Scripts -->
     @php
@@ -843,69 +842,18 @@
     </div>
     <div class="pricing-wrapper">
         <div class="container">
-            @if (session('success') || session('error') || session('warning') || session('info') || $errors->any())
-            @push('scripts')
-            <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    @if(session('success'))
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Success',
-                        text: '{{ addslashes(session('
-                        success ')) }}',
-                        confirmButtonText: 'OK'
-                    });
-                    @elseif(session('error'))
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: '{{ addslashes(session('
-                        error ')) }}',
-                        confirmButtonText: 'OK'
-                    });
-                    @elseif(session('warning'))
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Warning',
-                        text: '{{ addslashes(session('
-                        warning ')) }}',
-                        confirmButtonText: 'OK'
-                    });
-                    @elseif(session('info'))
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Information',
-                        text: '{{ addslashes(session('
-                        info ')) }}',
-                        confirmButtonText: 'OK'
-                    });
-                    @elseif($errors->any())
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Validation Error',
-                        html: '{!! addslashes(implode(' < br > ', $errors->all())) !!}',
-                        confirmButtonText: 'OK'
-                    });
-                    @endif
-                });
-            </script>
-            @endpush
-            @endif
-
+            @include('components.alert-messages')
             <div class="badge-wrapper">
                 <div class="pricing-badge {{ $isUpgrade ? 'upgrade-badge' : ($isDowngrade ? 'downgrade-badge' : '') }}">
                     @if($isUpgrade)
-                    UPGRADE SUBSCRIPTION
+                    Upgrade Subscription
                     @elseif($isDowngrade)
-                    DOWNGRADE SUBSCRIPTION
+                    Downgrade Subscription
                     @else
-                    PRICING PLANS
+                    Pricing Plans
                     @endif
                 </div>
             </div>
-
-            @include('components.alert-messages')
 
             @if ($isUpgrade)
             <div class="upgrade-info">
@@ -1040,8 +988,6 @@
         Having trouble? Contact us at
         <a href="mailto:support@syntopia.ai">support@syntopia.ai</a>
     </footer>
-
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const isUpgrade = {{ ($isUpgrade ?? false) ? 'true' : 'false' }};
@@ -1287,7 +1233,7 @@
             }
         }
 
-        // Modified processPaddle to handle spinner
+        // processPaddle to handle spinner
         function processPaddle(productPath, isPlanChange = false) {
             const packageName = productPath.replace('-plan', '');
             const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
@@ -1630,27 +1576,6 @@
                 document.querySelector('.dropdown-toggle').setAttribute('aria-expanded', 'false');
             }
         });
-
-        function showAlert(type, title, text, callback = null) {
-            console.log(`Showing ${type} alert:`, {
-                title,
-                text
-            });
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon: type,
-                    title: title,
-                    text: text,
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    if (callback) callback();
-                });
-            } else {
-                console.warn('SweetAlert2 not available, falling back to native alert');
-                alert(`${title}: ${text}`);
-                if (callback) callback();
-            }
-        }
     </script>
 </body>
 

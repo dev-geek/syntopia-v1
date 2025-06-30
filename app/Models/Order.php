@@ -51,7 +51,7 @@ class Order extends Model
      */
     public function paymentGateway()
     {
-        return $this->belongsTo(PaymentGateway::class);
+        return $this->belongsTo(PaymentGateways::class);
     }
 
 }
