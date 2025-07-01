@@ -14,6 +14,7 @@ use App\Models\{
     Order,
 };
 use Carbon\Carbon;
+use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -614,7 +615,7 @@ class PaymentController extends Controller
      * FastSpring Checkout
      */
     public function fastspringCheckout(Request $request, $package)
-    {
+    {die;
         Log::info('=== FASTSPRING CHECKOUT STARTED ===', [
             'package' => $package,
             'request_method' => $request->method(),
@@ -705,6 +706,8 @@ class PaymentController extends Controller
                 'package' => $packageData->name,
                 'tags' => $tags
             ]);
+
+            // we shoud get the subscription id here and send it in response to frontend
 
             return response()->json([
                 'success' => true,
@@ -916,7 +919,12 @@ class PaymentController extends Controller
 
     public function handleSuccess(Request $request)
     {
-        Log::info('Payment success callback received', $request->all());
+        // "_token" => "gXVWxk1pVm4jLKKcbIA4ViJRcjofe95i9aN7djJT"
+        // "gateway" => "fastspring"
+        // "orderId" => "rMYxwLrLQ7-7bUkcXyCPMQ"
+        // "package_id" => "1"
+        // "package_name" => "free"
+        // "payment_gateway_id" => "2"
 
         try {
             // Handle both GET and POST requests
@@ -1154,18 +1162,20 @@ class PaymentController extends Controller
                         ->with('error', 'Payment verification failed.');
                 }
             } elseif ($gateway === 'fastspring') {
+                // "_token" => "gXVWxk1pVm4jLKKcbIA4ViJRcjofe95i9aN7djJT"
+                // "gateway" => "fastspring"
+                // "orderId" => "rMYxwLrLQ7-7bUkcXyCPMQ"
+                // "package_id" => "1"
+                // "package_name" => "free"
+                // "payment_gateway_id" => "2"
+
+            // let's check the site by placing order
+
                 $orderId = $request->input('orderId', $request->query('orderId'));
                 $packageId = $request->input('package_id', $request->query('package_id'));
                 $paymentGatewayId = $request->input('payment_gateway_id', $request->query('payment_gateway_id'));
-
-                Log::info('Processing FastSpring success callback', [
-                    'order_id' => $orderId,
-                    'package_id' => $packageId,
-                    'payment_gateway_id' => $paymentGatewayId,
-                    'request_method' => $request->method(),
-                    'all_request_data' => $request->all()
-                ]);
-
+                $username = config('payment.gateways.FastSpring.username');
+                $password = config('payment.gateways.FastSpring.password');
                 $user = Auth::user();
                 if (!$user) {
                     Log::error('No authenticated user for FastSpring success callback');
@@ -1175,7 +1185,7 @@ class PaymentController extends Controller
                 // Find package by ID first, then fallback to name
                 $package = null;
                 if ($packageId) {
-                    $package = \App\Models\Package::find($packageId);
+                    $package = Package::find($packageId);
                     Log::info('Found package by ID', [
                         'package_id' => $packageId,
                         'package_found' => !is_null($package),
@@ -1186,7 +1196,7 @@ class PaymentController extends Controller
                 // Fallback to finding by name if ID lookup failed
                 if (!$package && $request->input('package_name')) {
                     $packageName = $request->input('package_name');
-                    $package = \App\Models\Package::where('name', 'LIKE', '%' . $packageName . '%')
+                    $package = Package::where('name', 'LIKE', '%' . $packageName . '%')
                         ->orWhere('name', '=', ucfirst(strtolower($packageName)))
                         ->orWhere('name', '=', strtolower($packageName))
                         ->orWhere('name', '=', ucwords(strtolower($packageName)))
@@ -1208,6 +1218,10 @@ class PaymentController extends Controller
                     return redirect()->route('subscriptions.index')
                         ->with('error', 'Invalid package selected. Please try again.');
                 }
+
+                // Get FastSpring API credentials
+                $getSubscriptionId = $this->handleFastSpringWebhook($request);
+                // dd($getSubscriptionId);
 
                 DB::beginTransaction();
                 try {
@@ -1237,6 +1251,7 @@ class PaymentController extends Controller
                             'subscription_starts_at' => now(),
                             'license_key' => $licenseKey,
                             'is_subscribed' => true,
+                            'subscription_id' => $orderId,
                         ]);
 
                         // Call external API to add license
@@ -1784,12 +1799,13 @@ class PaymentController extends Controller
 
     public function handleFastSpringWebhook(Request $request)
     {
+        dd($request->all());
         $payload = $request->all();
         Log::info('FastSpring Webhook Received:', $payload);
 
         try {
             $secret = config('payment.gateways.FastSpring.webhook_secret');
-            $signature = $request->header('X-Fs-Signature');
+            $signature = $request->header('X-Fs-Signature'); 
 
             // Verify webhook signature
             if ($secret && $signature) {
@@ -1814,6 +1830,7 @@ class PaymentController extends Controller
             switch ($payload['type'] ?? null) {
                 case 'order.completed':
                 case 'subscription.activated':
+                    return $payload;
                 case 'subscription.charge.completed':
                     Log::info('Processing FastSpring webhook event', [
                         'event' => $payload['type'],

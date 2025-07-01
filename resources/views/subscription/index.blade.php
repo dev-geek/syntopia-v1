@@ -46,11 +46,8 @@
     @if (in_array('FastSpring', $activeGateways))
     <script src="https://sbl.onfastspring.com/js/checkout/button.js"
         data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
-    <script src="https://sbl.onfastspring.com/js/checkout/button.js"
-        data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('Pay Pro Global', $activeGateways))
@@ -60,9 +57,10 @@
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring' && !($isUpgrade || $isDowngrade))
-    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-        data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-        data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+    <script id="fsc-api"
+    src="https://sbl.onfastspring.com/sbl/1.0.5/fastspring-builder.min.js"
+    type="text/javascript"
+    data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment"></script>
     <script>
         // Package mapping for dynamic package ID lookup
         const packageMapping = @json($packageMapping);
@@ -70,6 +68,7 @@
         let currentPackageId = null;
 
         function processFastSpring(productPath) {
+            //this is for new? yesok
             try {
                 if (typeof fastspring === 'undefined' || !fastspring.builder) {
                     throw new Error('FastSpring is not properly initialized');
@@ -102,9 +101,10 @@
         }
 
         function onFSPopupClosed(orderData) {
-            try {
-                if (orderData && (orderData.reference || orderData.id)) {
-                    const orderId = orderData.reference || orderData.id;
+            // try {
+                alert(orderData.id);
+                if (orderData && orderData.id) {
+                    const orderId = orderData.id;
 
                     console.log('FastSpring popup closed with order data:', {
                         orderData: orderData,
@@ -187,22 +187,22 @@
                         window.location.href = "/pricing";
                     }
                 }
-            } catch (err) {
-                console.error('Error in FastSpring popup closed handler:', err);
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Processing Error',
-                        text: 'There was an error processing your payment. Please contact support if your payment was charged.',
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = "/pricing";
-                    });
-                } else {
-                    alert('Processing Error: There was an error processing your payment. Please contact support.');
-                    window.location.href = "/pricing";
-                }
-            }
+            // } catch (err) {
+            //     console.error('Error in FastSpring popup closed handler:', err);
+            //     if (typeof Swal !== 'undefined') {
+            //         Swal.fire({
+            //             icon: 'error',
+            //             title: 'Processing Error',
+            //             text: 'There was an error processing your payment. Please contact support if your payment was charged.',
+            //             confirmButtonText: 'OK'
+            //         }).then(() => {
+            //             window.location.href = "/pricing";
+            //         });
+            //     } else {
+            //         alert('Processing Error: There was an error processing your payment. Please contact support.');
+            //         window.location.href = "/pricing";
+            //     }
+            // }
         }
     </script>
     @endif
@@ -1138,6 +1138,8 @@
         }
 
         function processFastSpring(productPath, isPlanChange = false) {
+            // First time purchases
+            //one
             try {
                 if (isPlanChange) {
                     // For upgrades/downgrades, call the API directly
@@ -1455,12 +1457,25 @@
                     });
                 });
         }
-
-        // Updated FastSpring popup closed handler (for non-upgrade/downgrade FastSpring checkouts)
+        function handleFastSpringSuccess(checkoutData){
+            console.log(checkoutData, "checkoutData");return false;
+        }
+        // for non-upgrade/downgrade FastSpring checkouts
         function onFSPopupClosed(orderData) {
+            console.log('order data: ')
+            console.log(orderData);return;
+            //this is for new? 
+
+            // the main issue is that after subscription, when user tries to upgrade, he is unable to upgrade
+            //currently , in case of new subscription, we are not saving saving the subscripiton to database, right? 
+            //  yes subscription_id does not get saved in db. If it does not save, we wont be able to upgrade 
+            // that's what I am checking that we are saving or not. if not , then we have to get the id from 
+            //fast spring response , save to database and then go to dashboard. Thats correct
             try {
-                if (orderData && (orderData.reference || orderData.id)) {
-                    const orderId = orderData.reference || orderData.id;
+                if (orderData && orderData.id) {
+                    // idr ksi trah subscription id a jaye to sara msla solve ho jayega
+                    // 
+                    const orderId = orderData.id;
 
                     console.log('FastSpring popup closed with order data:', {
                         orderData: orderData,
@@ -1497,15 +1512,13 @@
                     orderIdInput.name = 'orderId';
                     orderIdInput.value = orderId;
                     form.appendChild(orderIdInput);
-
-                    // Use the dynamic package ID instead of hardcoded 3
+                    
                     const packageIdInput = document.createElement('input');
                     packageIdInput.type = 'hidden';
                     packageIdInput.name = 'package_id';
                     packageIdInput.value = currentSelectedPackageId || '';
                     form.appendChild(packageIdInput);
-
-                    // Also send the package name for additional validation
+                    
                     const packageNameInput = document.createElement('input');
                     packageNameInput.type = 'hidden';
                     packageNameInput.name = 'package_name';

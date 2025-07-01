@@ -215,7 +215,6 @@ Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name
 // Protected Routes for VERIFIED USERS ONLY
 Route::middleware(['auth', 'verified.custom'])->group(function () {
     // Main application routes
-    Route::get('/', [SubscriptionController::class, 'index'])->name('home');
 
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');
@@ -227,6 +226,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/confirm', [SubscriptionController::class, 'confirmSubscription'])->name('confirm');
     Route::get('/package/{package_name}', [ProfileController::class, 'package'])->name('package');
     Route::get('/pricing', [SubscriptionController::class, 'index'])->name('subscriptions.index');
+    //which route run after payment is done?
     Route::get('/subscription', [SubscriptionController::class, 'handleSubscription'])->name('subscription.general');
     Route::get('/login-sub', [SubscriptionController::class, 'login'])->name('login-sub');
 
