@@ -1,23 +1,20 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Admin\SubAdminController;
+use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\VerificationController;
 use App\Http\Controllers\SocialController;
-use App\Models\User;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\API\PaymentController;
-use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\UserLogController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Auth\AdminForgotPasswordController;
 use App\Http\Controllers\Auth\AdminResetPasswordController;
-use App\Http\Controllers\Auth\VerificationController;
-use App\Http\Controllers\Dashboard\DashboardController;
-use App\Http\Controllers\VerificationTestController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\PaymentGatewaysController;
+use App\Models\Package;
+use Illuminate\Support\Facades\Auth;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,82 +22,53 @@ use App\Http\Controllers\PaymentGatewaysController;
 |--------------------------------------------------------------------------
 */
 
-// Test routes (remove in production)
-Route::get('/test-verification', function () {
-    return view('verify-form');
-});
-
-Route::middleware(['auth'])->group(function () {
-    
-    // Check if user can upgrade
-    Route::get('/subscription/upgrade/check', function () {
-        $user = auth()->user();
-        
-        return response()->json([
-            'eligible' => $user->package && $user->paymentGateway && 
-                         $user->paymentGateway->is_active && 
-                         $user->subscription_starts_at !== null,
-            'current_package' => $user->package->name ?? null,
-            'current_gateway' => $user->paymentGateway->name ?? null,
-            'subscription_starts_at' => $user->subscription_starts_at,
-        ]);
-    })->name('subscription.upgrade.check');
-});
-
-Route::get('/test-fastspring', [SubscriptionController::class, 'createFastSpringSession']);
-Route::get('/test-paddle', [SubscriptionController::class, 'createPaddleSession']);
-Route::get('/paddle-token', [SubscriptionController::class, 'getPaddleToken']);
-
 // Guest routes (no authentication required)
-// Pricing route
-Route::get('/pricing', [SubscriptionController::class, 'index'])->name('pricing');
-
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
-    Route::post('/login-user', [LoginController::class, 'customLogin'])->name('login.user');
-    Route::get('/register', [App\Http\Controllers\Auth\RegisterController::class, 'showRegistrationForm'])->name('register');
-    Route::post('/register', [App\Http\Controllers\Auth\RegisterController::class, 'register'])->name('register.user');
+    Route::post('/login', [LoginController::class, 'customLogin'])->name('login.user');
+    Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
+    Route::post('/register', [RegisterController::class, 'register'])->name('register.user');
     Route::get('/admin-login', [AdminController::class, 'login'])->name('admin-login');
     Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
 });
 
-// Admin Password Reset Routes (for guests)
-Route::get('/admin/forgotpassword', [AdminController::class, 'AdminForgotPassword'])->name('admin.forgotpassword');
-Route::get('/admin/password/reset', [AdminForgotPasswordController::class, 'showLinkRequestForm'])->name('admin.password.request');
-Route::post('/admin/password/email', [AdminForgotPasswordController::class, 'sendResetLinkEmail'])->name('admin.password.email');
-Route::post('/admin/password/reset', [AdminResetPasswordController::class, 'reset'])->name('admin.password.update');
-Route::get('/admin/password/reset/{token}', [AdminResetPasswordController::class, 'showResetForm'])->name('admin.password.reset');
+// Admin Password Reset Routes
+Route::prefix('admin')->group(function () {
+    Route::get('/forgotpassword', [AdminController::class, 'AdminForgotPassword'])->name('admin.forgotpassword');
+    Route::get('/password/reset', [AdminForgotPasswordController::class, 'showLinkRequestForm'])->name('admin.password.request');
+    Route::post('/password/email', [AdminForgotPasswordController::class, 'sendResetLinkEmail'])->name('admin.password.email');
+    Route::post('/password/reset', [AdminResetPasswordController::class, 'reset'])->name('admin.password.update');
+    Route::get('/password/reset/{token}', [AdminResetPasswordController::class, 'showResetForm'])->name('admin.password.reset');
+});
 
 // Social Authentication Routes
 Route::controller(SocialController::class)->group(function () {
     Route::get('auth/google', 'googleLogin')->name('auth.google');
     Route::get('auth/google-callback', 'googleAuthentication')->name('auth.google-callback');
     Route::get('login/facebook', 'redirectToFacebook')->name('login.facebook');
-    Route::get('login/facebook/callback', 'handleFacebookCallback');
+    Route::get('login/facebook/callback', 'handleFacebookCallback')->name('auth.facebook-callback');
 });
 
-// Email Verification Routes (for authenticated but unverified users)
+// Public routes
+Route::get('/pricing', [SubscriptionController::class, 'index'])->name('pricing');
+Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check-email');
+
+// Payment callback routes
+Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payments.success');
+Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payments.cancel');
+Route::get('/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
+
+// Email Verification Routes
 Route::middleware(['web'])->group(function () {
-    Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
     Route::get('/email/verify', [VerificationController::class, 'show'])->name('verification.notice');
-    Route::get('/verify-code', [VerificationController::class, 'show'])->name('verification.code');
-    Route::post('/verify-code', [VerificationController::class, 'verifyCode'])->name('verify.code'); // Changed from 'verify' to 'verifyCode'
-    Route::get('/resend-code', [VerificationController::class, 'resend'])->name('resend.code');
-    Route::post('/email/verify', [VerificationController::class, 'verifyCode'])->name('verification.verify'); // Changed from 'verify' to 'verifyCode'
+    Route::post('/verify-code', [VerificationController::class, 'verifyCode'])->name('verification.verify');
     Route::post('/email/resend', [VerificationController::class, 'resend'])->name('verification.resend');
 });
 
-// AJAX Routes
-Route::post('/check-email', [LoginController::class, 'checkEmail']);
-
-// Payment callback routes (no auth required)
-// Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payment.success');
-Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payment.cancel');
-
-// Protected Routes for VERIFIED USERS ONLY
+// Protected Routes (Authenticated and Verified Users)
 Route::middleware(['auth', 'verified.custom'])->group(function () {
-    // Main application routes
     Route::get('/', [SubscriptionController::class, 'index'])->name('home');
+    Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
 
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');
@@ -108,36 +76,31 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/update-password', [ProfileController::class, 'updatePassword'])->name('update-password');
 
     // Subscription routes
-    Route::get('/select-sub', [SubscriptionController::class, 'selectSub'])->name('select-sub');
-    Route::get('/confirm', [SubscriptionController::class, 'confirmSubscription'])->name('confirm');
-    Route::get('/package/{package_name}', [ProfileController::class, 'package'])->name('package');
-    Route::get('/pricing', [SubscriptionController::class, 'index'])->name('subscriptions.index');
-    Route::get('/subscription', [SubscriptionController::class, 'handleSubscription'])->name('subscription.general');
-    Route::get('/login-sub', [SubscriptionController::class, 'login'])->name('login-sub');
+    Route::get('/subscriptions', function () {
+        $user = auth()->user();
+        $hasActiveSubscription = $user && $user->is_subscribed;
+        $canUpgrade = $hasActiveSubscription && $user->package && strtolower($user->package->name) !== 'enterprise'; // Example logic
+        $isExpired = $user && $user->subscription_ends_at && $user->subscription_ends_at->isPast();
+        $currentPackage = $user && $user->package ? $user->package->name : null;
+        $calculatedEndDate = $user && $user->subscription_ends_at ? $user->subscription_ends_at : null;
+        $packages = Package::all();
 
-    // Package confirmation routes
-    Route::get('/starter-package-confirmed', [SubscriptionController::class, 'starterPackageConfirmed'])->name('starter-package-confirmed');
-    Route::get('/pro-package-confirmed', [SubscriptionController::class, 'proPackageConfirmed'])->name('pro-package-confirmed');
-    Route::get('/business-package-confirmed', [SubscriptionController::class, 'businessPackageConfirmed'])->name('business-package-confirmed');
+        return view('subscription.index', [
+            'hasActiveSubscription' => $hasActiveSubscription,
+            'packages' => $packages,
+            'canUpgrade' => $canUpgrade,
+            'isExpired' => $isExpired,
+            'currentPackage' => $currentPackage,
+            'calculatedEndDate' => $calculatedEndDate,
+            'user' => $user,
+            'activeGateway' => $user && $user->paymentGateway ? $user->paymentGateway : null,
+        ]);
+    })->name('subscriptions.index');
+    Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
 
     // Orders
-    Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders.index');
-
-    // Upgrade Subscription
-    Route::get('/user/subscription/upgrade', [SubscriptionController::class, 'upgradeSubscription'])->name('subscription.upgrade');
+    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
 });
 
-// Super Admin Only Routes
-Route::middleware(['auth', 'role:Super Admin|Admin'])->group(function () {
-
-
-
-});
-
-// Route::middleware(['auth', 'verified.custom', 'role:User|Sub Admin|Super Admin'])->group(function () {
-//     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
-// });
-
-
-// Keep the default Laravel auth routes but remove verify
+// Laravel Auth Routes (customized)
 Auth::routes(['verify' => false]);

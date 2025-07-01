@@ -37,351 +37,192 @@
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
-        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-            data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
-        <script>
-            let currentProductPath = '';
+    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+        data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
+        data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+    <script>
+        let currentProductPath = '';
 
-            function processFastSpring(packageName, isUpgradeRequest = false) {
-                // alert('FastSpring integration loaded', 'processFastSpring');
-                console.log('=== processFastSpring ===', {
-                    packageName,
-                    isUpgradeRequest
-                });
-                try {
-                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                        throw new Error('FastSpring is not properly initialized');
-                    }
-                    fastspring.builder.reset();
-                    console.log('FastSpring builder reset');
-
-                    // Validate packageName
-                    if (!packageName || typeof packageName !== 'string') {
-                        throw new Error('Invalid package name: ' + packageName);
-                    }
-
-                    // Set currentProductPath
-                    currentProductPath = packageName.toLowerCase();
-                    console.log('Set currentProductPath:', currentProductPath);
-
-                    // Store in sessionStorage as a backup
-                    sessionStorage.setItem('currentProductPath', currentProductPath);
-                    console.log('Stored in sessionStorage:', sessionStorage.getItem('currentProductPath'));
-
-                    // Add product to FastSpring cart
-                    fastspring.builder.add(currentProductPath);
-                    console.log('Added product to FastSpring:', currentProductPath);
-
-                    // Set upgrade context if applicable
-                    if (isUpgradeRequest) {
-                        window.fastspringUpgradeContext = {
-                            isUpgrade: true,
-                            currentPackage: currentPackage,
-                            targetPackage: packageName
-                        };
-                        console.log('FastSpring upgrade context set:', window.fastspringUpgradeContext);
-                    }
-
-                    // Launch checkout
-                    setTimeout(() => {
-                        fastspring.builder.checkout();
-                        console.log('FastSpring checkout launched');
-                    }, 500);
-                } catch (error) {
-                    console.error('FastSpring processing error:', error);
-                    showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
+        function processFastSpring(packageName, action = 'new') {
+            console.log('=== processFastSpring ===', { packageName, action });
+            try {
+                if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                    throw new Error('FastSpring is not properly initialized');
                 }
-            }
-
-
-            function initiateFastSpringUpgrade(newPackage, isUpgradeRequest = true) {
-
-            // alert('FastSpring integration loaded', "initiateFastSpringUpgrade");
-                if (!newPackage || typeof newPackage !== 'string' || newPackage.trim() === '') {
-                    console.error('Invalid package name for upgrade:', newPackage);
-                    showAlert('error', 'Invalid Package', 'Please select a valid package.', () => {
-                        window.location.href = '/subscriptions';
-                    });
-                    return;
-                }
-
-                console.log('Initiating FastSpring upgrade:', newPackage);
-                currentProductPath = newPackage.toLowerCase().replace('-plan', '');
-                sessionStorage.setItem('currentProductPath', currentProductPath);
-
-                fetch('/api/payments/fastspring/checkout/' + encodeURIComponent(newPackage) + '?is_upgrade=true', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                        },
-                        credentials: 'include'
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            console.log('Upgrade successful:', data);
-                            showAlert('success', 'Upgrade Successful', 'Your subscription has been upgraded!', () => {
-                                window.location.href = '/dashboard';
-                            });
-                        } else {
-                            console.error('Upgrade failed:', data.error);
-                            showAlert('error', 'Upgrade Failed', data.error || 'Unable to process upgrade.', () => {
-                                window.location.href = '/subscriptions';
-                            });
-                        }
-                        sessionStorage.removeItem('currentProductPath');
-                        currentProductPath = '';
-                    })
-                    .catch(error => {
-                        console.error('Error initiating upgrade:', error);
-                        showAlert('error', 'Network Error', 'Unable to connect to the server. Please try again.', () => {
-                            window.location.href = '/subscriptions';
-                        });
-                        sessionStorage.removeItem('currentProductPath');
-                        currentProductPath = '';
-                    });
-            }
-
-            function initiateFastSpringCheckout(packageName) {
-                alert('FastSpring integration loaded', 'initiateFastSpringCheckout');
-                if (!packageName || typeof packageName !== 'string' || packageName.trim() === '') {
-                    console.error('Invalid package name provided:', packageName);
-                    showAlert('error', 'Invalid Package', 'Please select a valid package.', () => {
-                        window.location.href = '/subscriptions';
-                    });
-                    return;
-                }
-
-                // Capitalize package name (e.g., 'business' -> 'Business')
-                const capitalizedPackageName = packageName.charAt(0).toUpperCase() + packageName.slice(1).toLowerCase();
-                currentProductPath = capitalizedPackageName;
-                sessionStorage.setItem('currentProductPath', currentProductPath);
-                console.log('Setting currentProductPath:', currentProductPath);
-
-                // Prepare FastSpring payload
                 fastspring.builder.reset();
-                fastspring.builder.add(capitalizedPackageName); // Use capitalized name (e.g., 'Business')
-                console.log('FastSpring payload prepared:', {
-                    items: [{
-                        path: capitalizedPackageName,
-                        quantity: null
-                    }],
-                    sblVersion: 'sbl/1.0.3'
-                });
+                console.log('FastSpring builder reset');
 
-                fetch('/api/payments/fastspring/checkout/' + encodeURIComponent(capitalizedPackageName), {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                        },
-                        credentials: 'include'
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success && data.checkout_url) {
-                            console.log('Checkout URL received:', data.checkout_url);
-                            // Trigger FastSpring popup
-                            fastspring.builder.checkout();
-                        } else {
-                            console.error('Checkout failed:', data.error);
-                            showAlert('error', 'Checkout Failed', data.error || 'Unable to initiate checkout.', () => {
-                                window.location.href = '/subscriptions';
-                            });
-                            sessionStorage.removeItem('currentProductPath');
-                            currentProductPath = '';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error initiating checkout:', error);
-                        showAlert('error', 'Network Error', 'Unable to connect to the server. Please try again.', () => {
-                            window.location.href = '/subscriptions';
-                        });
-                        sessionStorage.removeItem('currentProductPath');
-                        currentProductPath = '';
-                    });
-            }
-
-            function onFSPopupClosed(orderData) {alert('FastSpring integration loaded', 'onFSPopupClosed');
-                console.log('=== onFSPopupClosed ===', {
-                    orderData: JSON.stringify(orderData, null, 2),
-                    currentProductPath,
-                    sessionProductPath: sessionStorage.getItem('currentProductPath')
-                });
-
-                try {
-                    let packageName = '';
-                    console.log(orderData && orderData.items && orderData.items.length);
-                    // Try to get package name from orderData.items
-                    if (orderData && orderData.items && orderData.items.length > 0) {
-                        const itemName = orderData.items[0].product;
-                        console.log('Raw item name:', itemName);
-                        packageName = itemName
-                            ?.toLowerCase()
-                            .replace('-plan', '')
-                            .replace(/^\w/, c => c.toUpperCase())
-                            .trim() || ''; // Capitalize first letter and trim whitespace
-                        console.log('Extracted packageName from orderData.items:', packageName);
-                    }
-
-                    // Try to get package name from orderData.tags
-                    if (!packageName && orderData && orderData.tags) {
-                        const tags = typeof orderData.tags === 'string' ? JSON.parse(orderData.tags) : orderData.tags;
-                        console.log('Tags data:', JSON.stringify(tags, null, 2));
-
-                        // Try multiple potential package name fields
-                        const possiblePackageNames = [
-                            tags?.package,
-                            tags?.package_name,
-                            tags?.packageName,
-                            tags?.packageId,
-                            tags?.package_id
-                        ];
-
-                        for (const name of possiblePackageNames) {
-                            if (name) {
-                                packageName = name
-                                    ?.toLowerCase()
-                                    .replace('-plan', '')
-                                    .replace(/^\w/, c => c.toUpperCase())
-                                    .trim() || '';
-                                console.log('Extracted packageName from tags:', packageName);
-                                break;
-                            }
-                        }
-                    }
-
-                    // Fallback to global variable or sessionStorage
-                    if (!packageName) {
-                        packageName = currentProductPath || sessionStorage.getItem('currentProductPath') || '';
-                        console.log('Retrieved packageName from global/session:', packageName);
-                    }
-
-                    // If still no package name, try to get from URL parameters
-                    if (!packageName) {
-                        const urlParams = new URLSearchParams(window.location.search);
-                        packageName = urlParams.get('package') || '';
-                        console.log('Retrieved packageName from URL params:', packageName);
-                    }
-
-                    // If still no package name, try to get from form data
-                    if (!packageName) {
-                        const formData = new FormData(document.querySelector('form'));
-                        packageName = formData.get('package_name') || '';
-                        console.log('Retrieved packageName from form data:', packageName);
-                    }
-
-                    // If still no package name, try to get from data attributes
-                    if (!packageName) {
-                        const packageBtn = document.querySelector('[data-package]');
-                        packageName = packageBtn?.dataset.package || '';
-                        console.log('Retrieved packageName from data attribute:', packageName);
-                    }
-
-                    // Validate final package name
-                    if (!packageName || packageName.trim() === '') {
-                        console.error('Final package name is invalid:', packageName);
-                        showAlert('error', 'Package Error', 'Could not determine package name. Please try again or contact support.', () => {
-                            window.location.href = '/subscriptions?error=package';
-                        });
-                        return;
-                    }
-
-                    // Check if order was cancelled or incomplete
-                    if (!orderData || (!orderData.reference && !orderData.id)) {
-                        console.log('No order data or cancelled payment');
-                        showAlert('info', 'Payment Cancelled', 'Your payment was cancelled. You can try again anytime.', () => {
-                            window.location.href = '/subscriptions';
-                        });
-                        sessionStorage.removeItem('currentProductPath');
-                        currentProductPath = '';
-                        return;
-                    }
-
-                    // Validate packageName
-                    if (!packageName) {
-                        console.warn('Package name is missing, redirecting to subscriptions');
-                        showAlert('error', 'Processing Error',
-                            'Unable to identify package. Please try again or contact support.', () => {
-                                window.location.href = '/pricing';
-                            });
-                        sessionStorage.removeItem('currentProductPath');
-                        currentProductPath = '';
-                        return;
-                    }
-
-                    // Clean up storage
-                    sessionStorage.removeItem('currentProductPath');
-                    currentProductPath = '';
-
-                    // Process successful order
-                    const orderId = orderData.reference || orderData.id;
-                    console.log('Processing successful order:', {
-                        orderId,
-                        packageName
-                    });
-
-                    if (typeof fastspring !== 'undefined' && fastspring.builder) {
-                        fastspring.builder.reset();
-                        console.log('FastSpring builder reset');
-                    }
-
-                    // Create form for submission
-                    const form = document.createElement('form');
-                    form.method = 'POST';
-                    form.action = '/api/payments/success';
-                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-                    if (csrfToken) {
-                        const csrfInput = document.createElement('input');
-                        csrfInput.type = 'hidden';
-                        csrfInput.name = '_token';
-                        csrfInput.value = csrfToken;
-                        form.appendChild(csrfInput);
-                    }
-                    const gatewayInput = document.createElement('input');
-                    gatewayInput.type = 'hidden';
-                    gatewayInput.name = 'gateway';
-                    gatewayInput.value = 'fastspring';
-                    form.appendChild(gatewayInput);
-                    const orderIdInput = document.createElement('input');
-                    orderIdInput.type = 'hidden';
-                    orderIdInput.name = 'orderId';
-                    orderIdInput.value = orderId;
-                    form.appendChild(orderIdInput);
-                    const packageNameInput = document.createElement('input');
-                    packageNameInput.type = 'hidden';
-                    packageNameInput.name = 'package_name';
-                    packageNameInput.value = packageName; // Use capitalized name (e.g., 'Business')
-                    form.appendChild(packageNameInput);
-                    const paymentGatewayIdInput = document.createElement('input');
-                    paymentGatewayIdInput.type = 'hidden';
-                    paymentGatewayIdInput.name = 'payment_gateway_id';
-                    paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
-                    form.appendChild(paymentGatewayIdInput);
-
-                    document.body.appendChild(form);
-                    console.log('Submitting form with data:', {
-                        _token: csrfToken,
-                        gateway: 'fastspring',
-                        orderId: orderId,
-                        package_name: packageName,
-                        payment_gateway_id: "{{ $activeGateway->id ?? '' }}"
-                    });
-                    form.submit();
-                } catch (err) {
-                    console.error('Error in onFSPopupClosed:', err);
-                    showAlert('error', 'Processing Error',
-                        'There was an error processing your payment. Please contact support.', () => {
-                            window.location.href = '/subscriptions?error=processing';
-                        });
-                    sessionStorage.removeItem('currentProductPath');
-                    currentProductPath = '';
+                if (!packageName || typeof packageName !== 'string') {
+                    throw new Error('Invalid package name: ' + packageName);
                 }
+
+                currentProductPath = packageName.toLowerCase();
+                sessionStorage.setItem('currentProductPath', currentProductPath);
+                fastspring.builder.add(currentProductPath);
+
+                if (action === 'upgrade' || action === 'downgrade') {
+                    window.fastspringUpgradeContext = {
+                        isUpgrade: action === 'upgrade',
+                        isDowngrade: action === 'downgrade',
+                        currentPackage: currentPackage,
+                        targetPackage: packageName
+                    };
+                    console.log('FastSpring context set:', window.fastspringUpgradeContext);
+                }
+
+                setTimeout(() => {
+                    fastspring.builder.checkout();
+                    console.log('FastSpring checkout launched');
+                }, 500);
+            } catch (error) {
+                console.error('FastSpring processing error:', error);
+                showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
             }
-        </script>
-    @endif
+        }
+
+        function onFSPopupClosed(orderData) {
+            console.log('=== onFSPopupClosed ===', {
+                orderData: JSON.stringify(orderData, null, 2),
+                currentProductPath,
+                sessionProductPath: sessionStorage.getItem('currentProductPath')
+            });
+
+            try {
+                let packageName = '';
+                let subscriptionId = '';
+
+                if (orderData && orderData.items && orderData.items.length > 0) {
+                    packageName = orderData.items[0].product
+                        ?.toLowerCase()
+                        .replace('-plan', '')
+                        .replace(/^\w/, c => c.toUpperCase())
+                        .trim() || '';
+                    subscriptionId = orderData.subscription || '';
+                }
+
+                if (!packageName && orderData && orderData.tags) {
+                    const tags = typeof orderData.tags === 'string' ? JSON.parse(orderData.tags) : orderData.tags;
+                    const possiblePackageNames = [
+                        tags?.package,
+                        tags?.package_name,
+                        tags?.packageName,
+                        tags?.packageId,
+                        tags?.package_id
+                    ];
+                    for (const name of possiblePackageNames) {
+                        if (name) {
+                            packageName = name
+                                .toLowerCase()
+                                .replace('-plan', '')
+                                .replace(/^\w/, c => c.toUpperCase())
+                                .trim() || '';
+                            break;
+                        }
+                    }
+                    subscriptionId = tags?.subscription_id || orderData.subscription || '';
+                }
+
+                if (!packageName) {
+                    packageName = currentProductPath || sessionStorage.getItem('currentProductPath') || '';
+                }
+
+                if (!packageName) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    packageName = urlParams.get('package') || '';
+                }
+
+                if (!packageName) {
+                    const formData = new FormData(document.querySelector('form'));
+                    packageName = formData.get('package_name') || '';
+                }
+
+                if (!packageName) {
+                    const packageBtn = document.querySelector('[data-package]');
+                    packageName = packageBtn?.dataset.package || '';
+                }
+
+                if (!packageName || packageName.trim() === '') {
+                    console.error('Final package name is invalid:', packageName);
+                    showAlert('error', 'Package Error', 'Could not determine package name.', () => {
+                        window.location.href = '/subscriptions?error=package';
+                    });
+                    return;
+                }
+
+                if (!orderData || (!orderData.reference && !orderData.id)) {
+                    console.log('No order data or cancelled payment');
+                    showAlert('info', 'Payment Cancelled', 'Your payment was cancelled.', () => {
+                        window.location.href = '/subscriptions';
+                    });
+                    sessionStorage.removeItem('currentProductPath');
+                    currentProductPath = '';
+                    return;
+                }
+
+                sessionStorage.removeItem('currentProductPath');
+                currentProductPath = '';
+
+                const orderId = orderData.id;
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/payments/success';
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                if (csrfToken) {
+                    const csrfInput = document.createElement('input');
+                    csrfInput.type = 'hidden';
+                    csrfInput.name = '_token';
+                    csrfInput.value = csrfToken;
+                    form.appendChild(csrfInput);
+                }
+                const gatewayInput = document.createElement('input');
+                gatewayInput.type = 'hidden';
+                gatewayInput.name = 'gateway';
+                gatewayInput.value = 'fastspring';
+                form.appendChild(gatewayInput);
+                const orderIdInput = document.createElement('input');
+                orderIdInput.type = 'hidden';
+                orderIdInput.name = 'orderId';
+                orderIdInput.value = orderId;
+                form.appendChild(orderIdInput);
+                const packageNameInput = document.createElement('input');
+                packageNameInput.type = 'hidden';
+                packageNameInput.name = 'package_name';
+                packageNameInput.value = packageName;
+                form.appendChild(packageNameInput);
+                const paymentGatewayIdInput = document.createElement('input');
+                paymentGatewayIdInput.type = 'hidden';
+                paymentGatewayIdInput.name = 'payment_gateway_id';
+                paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
+                form.appendChild(paymentGatewayIdInput);
+                if (subscriptionId) {
+                    const subscriptionIdInput = document.createElement('input');
+                    subscriptionIdInput.type = 'hidden';
+                    subscriptionIdInput.name = 'subscription_id';
+                    subscriptionIdInput.value = subscriptionId;
+                    form.appendChild(subscriptionIdInput);
+                }
+
+                document.body.appendChild(form);
+                console.log('Submitting form with data:', {
+                    _token: csrfToken,
+                    gateway: 'fastspring',
+                    orderId: orderId,
+                    package_name: packageName,
+                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
+                    subscription_id: subscriptionId
+                });
+                form.submit();
+            } catch (err) {
+                console.error('Error in onFSPopupClosed:', err);
+                showAlert('error', 'Processing Error', 'There was an error processing your payment.', () => {
+                    window.location.href = '/subscriptions?error=processing';
+                });
+                sessionStorage.removeItem('currentProductPath');
+                currentProductPath = '';
+            }
+        }
+    </script>
+@endif
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
@@ -389,10 +230,7 @@
         <script>
             document.addEventListener('DOMContentLoaded', function() {
                 try {
-                    // Set the Paddle environment
-                    Paddle.Environment.set(
-                        '{{ config('payment.gateways.Paddle.environment', 'sandbox') }}'
-                    );
+                    Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
                     Paddle.Setup({
                         token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
                     });
@@ -400,7 +238,7 @@
                     Swal.fire({
                         icon: 'error',
                         title: 'Payment System Error',
-                        text: 'We cannot process payments at this moment. Our team has been notified. Please try again later.',
+                        text: 'We cannot process payments at this moment.',
                         confirmButtonText: 'OK'
                     });
                 }
@@ -426,6 +264,22 @@
             color: white !important;
         }
 
+        .btn.disabled {
+            background: #6b7280 !important;
+            color: white !important;
+            cursor: not-allowed !important;
+            opacity: 0.8;
+        }
+
+        .btn.cancel {
+            background: #ef4444 !important;
+            color: white !important;
+        }
+
+        .btn.cancel:hover {
+            background: #dc2626 !important;
+        }
+
         .ppg-checkout-modal {
             z-index: 99999;
             display: none;
@@ -434,7 +288,6 @@
             visibility: visible;
             margin: 0px;
             padding: 0px;
-            -webkit-tap-highlight-color: transparent;
             position: fixed;
             left: 0px;
             top: 0px;
@@ -457,7 +310,6 @@
             height: 50px;
             width: 50px;
             border: none;
-            outline: none;
             cursor: pointer;
             z-index: 100000;
         }
@@ -733,6 +585,17 @@
             color: white;
         }
 
+        .cancel-section {
+            text-align: center;
+            margin-top: 40px;
+        }
+
+        .cancel-section p {
+            font-size: 16px;
+            color: #555;
+            margin-bottom: 20px;
+        }
+
         @media (max-width: 1024px) {
             .pricing-grid {
                 grid-template-columns: repeat(2, 1fr);
@@ -759,58 +622,6 @@
 
         footer a:hover {
             text-decoration: underline;
-        }
-
-        .addons-wrapper {
-            width: 100%;
-            padding: 0px;
-            border-bottom: 1px solid #EFE7FB;
-        }
-
-        .addons-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-top: 40px;
-        }
-
-        .addon-card {
-            background: linear-gradient(180deg, white 0%, #F2F2F7 100%);
-            color: black;
-            border: 1px solid #EFE7FB;
-            border-radius: 10px;
-            padding: 24px;
-        }
-
-        .addon-card h3 {
-            font-size: 26px;
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-
-        .addon-price {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 12px;
-        }
-
-        .addons-grid-wrapper {
-            max-width: 65%;
-            margin: 0 auto;
-        }
-
-        @media (max-width: 768px) {
-            .addons-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .addons-grid-wrapper {
-                max-width: 100%;
-            }
-
-            .pricing-wrapper h2 {
-                font-size: 40px;
-            }
         }
 
         .dropdown {
@@ -872,9 +683,25 @@
                 <div class="pricing-badge">PRICING PLANS</div>
             </div>
             @include('components.alert-messages')
-            <h2 class="section-title">Plans For Every Type of Business</h2>
-            <p class="section-subtitle">SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how
-                businesses and individuals connect with their audiences. Our avatars can:</p>
+            <h2 class="section-title">
+                @if (isset($isUpgrade) && $isUpgrade)
+                    Upgrade Your Subscription
+                @elseif (isset($pageType) && $pageType === 'downgrade')
+                    Downgrade Your Subscription
+                @else
+                    Plans For Every Type of Business
+                @endif
+            </h2>
+            <p class="section-subtitle">
+                @if (isset($isUpgrade) && $isUpgrade)
+                    Choose a higher-tier plan to unlock more features. Your current subscription will be prorated.
+                @elseif (isset($pageType) && $pageType === 'downgrade')
+                    Select a lower-tier plan. The change will take effect at the end of your current billing cycle.
+                @else
+                    SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
+                    individuals connect with their audiences.
+                @endif
+            </p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
                     <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
@@ -884,14 +711,19 @@
 
                         <button class="btn {{ $currentPackage == $package->name ? 'active' : 'dark' }} checkout-button"
                             data-package="{{ $package->name }}"
-                            {{ $currentPackage == $package->name ? 'disabled' : '' }}>
-                            {{ $package->name == 'Enterprise'
-                                ? 'Get in Touch'
-                                : ($currentPackage == $package->name
-                                    ? '✓ Current Plan'
-                                    : (isset($isUpgrade) && $isUpgrade
-                                        ? 'Upgrade to ' . $package->name
-                                        : 'Get Started')) }}
+                            data-action="{{ $currentPackage == $package->name ? 'current' : (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice ? 'upgrade' : (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice ? 'downgrade' : 'new')) }}"
+                            {{ $currentPackage == $package->name || (isset($isUpgrade) && $isUpgrade && $package->price <= $currentPackagePrice && $package->name !== 'Enterprise') || (isset($pageType) && $pageType === 'downgrade' && $package->price >= $currentPackagePrice && $package->name !== 'Enterprise') ? 'disabled' : '' }}>
+                            @if ($package->name == 'Enterprise')
+                                Get in Touch
+                            @elseif ($currentPackage == $package->name)
+                                ✓ Current Plan
+                            @elseif (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice)
+                                Upgrade to {{ $package->name }}
+                            @elseif (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice)
+                                Downgrade to {{ $package->name }}
+                            @else
+                                Get Started
+                            @endif
                         </button>
 
                         <p class="included-title">What's included</p>
@@ -903,6 +735,12 @@
                     </div>
                 @endforeach
             </div>
+            @if (isset($hasActiveSubscription) && $hasActiveSubscription)
+                <div class="cancel-section">
+                    <p>Want to cancel your current subscription?</p>
+                    <button class="btn cancel" id="cancel-subscription">Cancel Subscription</button>
+                </div>
+            @endif
         </div>
     </div>
     @include('subscription.includes._addons')
@@ -913,570 +751,385 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        const currentPackage = "{{ $currentPackage ?? '' }}";
+        const currentPackagePrice = parseFloat("{{ $currentPackagePrice ?? 0 }}");
+        const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
+        const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
+        const isUpgrade = '{{ isset($isUpgrade) && $isUpgrade ? 'true' : 'false' }}';
+        const pageType = '{{ $pageType ?? 'new' }}';
+        const hasActiveSubscription = '{{ isset($hasActiveSubscription) && $hasActiveSubscription ? 'true' : 'false' }}';
 
         document.addEventListener("DOMContentLoaded", function() {
-            const currentPackage = "{{ $currentPackage ?? '' }}";
-            const currentPackagePrice = parseFloat("{{ $currentPackagePrice ?? 0 }}");
-            const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
-            const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
-            const isUpgrade = '{{ isset($isUpgrade) && $isUpgrade ? 'true' : 'false' }}';
-            const upgradeEligible = '{{ isset($upgradeEligible) && $upgradeEligible ? 'true' : 'false' }}';
-
             console.log('Page configuration:', {
                 currentPackage,
                 currentPackagePrice,
                 userOriginalGateway,
                 activeGatewaysByAdmin,
                 isUpgrade,
-                upgradeEligible
+                pageType,
+                hasActiveSubscription
             });
 
-            // Gateway selection logic - UNIFIED for both new and upgrade
-            let selectedGateway;
-            if (isUpgrade && userOriginalGateway) {
-                // For upgrades, ALWAYS use the user's original gateway
-                selectedGateway = userOriginalGateway;
-                console.log(`[${isUpgrade ? 'UPGRADE' : 'NEW'}] Using user's original gateway:`, selectedGateway);
-            } else {
-                // For new subscriptions, use the first available active gateway
-                selectedGateway = activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null;
-                console.log(`[${isUpgrade ? 'UPGRADE' : 'NEW'}] Using active gateway:`, selectedGateway);
+            let selectedGateway = isUpgrade === 'true' && userOriginalGateway ?
+                userOriginalGateway :
+                activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null; console.log('Selected gateway:', selectedGateway);
+
+            console.log(`[${isUpgrade === 'true' ? 'UPGRADE' : pageType.toUpperCase()}] Using gateway:`,
+                selectedGateway);
+
+            if (isUpgrade === 'true' || pageType === 'downgrade') {
+                setupSubscriptionUI();
             }
 
-            if (!selectedGateway) {
-                console.error('No payment gateway available!', {
-                    isUpgrade,
-                    userOriginalGateway,
-                    activeGatewaysByAdmin
-                });
-            }
-
-            // Add upgrade-specific styling and messaging if needed
-            if (isUpgrade) {
-                console.log('Setting up upgrade UI...');
-                setupUpgradeUI();
-            }
-
-            // UNIFIED button click handler
-            console.log('Setting up checkout button listeners...');
-
-            document.querySelectorAll('.checkout-button').forEach((button, index) => {
-                console.log(`Setting up button ${index + 1}:`, {
-                    package: button.getAttribute('data-package'),
-                    disabled: button.disabled,
-                    hasActiveClass: button.classList.contains('active')
-                });
-
+            document.querySelectorAll('.checkout-button').forEach(button => {
                 button.addEventListener('click', function() {
                     const packageName = this.getAttribute('data-package');
-                    console.log(`Button clicked for package: ${packageName}`);
-
-                    // Prevent clicking on active/disabled buttons
+                    const action = this.getAttribute('data-action');
                     if (this.disabled || this.classList.contains('active')) {
                         console.warn('Button click ignored - button is disabled or active', {
-                            disabled: this.disabled,
-                            hasActiveClass: this.classList.contains('active'),
-                            package: packageName
+                            packageName,
+                            action
                         });
-                        return false;
+                        return;
                     }
-
-                    console.log(`Processing checkout for: ${packageName}`);
                     this.disabled = true;
-
-                    // UNIFIED checkout processing
-                    processCheckout(packageName, isUpgrade);
-
-                    // Re-enable button after timeout
-                    setTimeout(() => {
-                        this.disabled = false;
-                        console.log(`Re-enabled button for: ${packageName}`);
-                    }, 3000);
+                    processCheckout(packageName, action);
+                    setTimeout(() => this.disabled = false, 3000);
                 });
             });
 
-            function processCheckout(packageName, isUpgradeRequest = false) {
+            if (hasActiveSubscription === 'true') {
+                const cancelButton = document.getElementById('cancel-subscription');
+                if (cancelButton) {
+                    cancelButton.addEventListener('click', function() {
+                        cancelSubscription();
+                    });
+                }
+            }
+
+            function processCheckout(packageName, action) {
                 console.log('=== PROCESSING CHECKOUT ===', {
                     packageName,
-                    isUpgradeRequest,
-                    selectedGateway,
-                    currentPackage
+                    action,
+                    selectedGateway
                 });
-
                 try {
                     if (!selectedGateway) {
                         throw new Error('No payment gateway available');
                     }
-
-                    console.log(
-                        `Starting ${isUpgradeRequest ? 'upgrade' : 'new subscription'} checkout for ${packageName} with ${selectedGateway}`
-                    );
-
-                    // Show confirmation for upgrades
-                    if (isUpgradeRequest) {
-                        console.log('Showing upgrade confirmation dialog...');
-                        showUpgradeConfirmation(packageName, selectedGateway);
+                    if (action === 'upgrade' || action === 'downgrade') {
+                        showConfirmation(packageName, action, selectedGateway);
                     } else {
-                        console.log('Proceeding directly to checkout...');
-                        executeCheckout(packageName, isUpgradeRequest);
+                        executeCheckout(packageName, action);
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
-                    showError('Checkout Error', error.message || 'Failed to process checkout. Please try again.');
+                    showError('Checkout Error', error.message || 'Failed to process checkout.');
                 }
             }
 
-            function showUpgradeConfirmation(packageName, gateway) {
-                console.log('Displaying upgrade confirmation:', {
-                    from: currentPackage,
-                    to: packageName,
-                    gateway
-                });
-
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        title: 'Confirm Upgrade',
-                        html: `
-                    <p>You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong></p>
-                    <p style="color: #666; font-size: 14px;">Your current subscription will be prorated and the new plan will take effect immediately.</p>
-                `,
-                        icon: 'question',
-                        showCancelButton: true,
-                        confirmButtonText: 'Proceed with Upgrade',
-                        cancelButtonText: 'Cancel',
-                        confirmButtonColor: '#5b0dd5'
-                    }).then((result) => {
-                        console.log('Upgrade confirmation result:', result);
-                        if (result.isConfirmed) {
-                            console.log('User confirmed upgrade - proceeding...');
-                            executeCheckout(packageName, true);
-                        } else {
-                            console.log('User cancelled upgrade');
-                        }
-                    });
-                } else {
-                    console.log('SweetAlert not available, using native confirm dialog');
-                    if (confirm(`Upgrade from ${currentPackage} to ${packageName} using ${gateway}?`)) {
-                        console.log('User confirmed upgrade via native dialog - proceeding...');
-                        executeCheckout(packageName, true);
-                    } else {
-                        console.log('User cancelled upgrade via native dialog');
-                    }
+            function showConfirmation(packageName, action, gateway) {
+            const title = action === 'upgrade' ? 'Confirm Upgrade' : 'Confirm Downgrade';
+            const text = action === 'upgrade' ?
+                `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be prorated.` :
+                `You're about to downgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. The change will take effect at the end of your current billing cycle.`;
+            Swal.fire({
+                title: title,
+                html: text,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: `Proceed with ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#5b0dd5'
+            }).then(result => {
+                if (result.isConfirmed) {
+                    executeCheckout(packageName, action);
                 }
+            });
+        }
+
+        function executeCheckout(packageName, action) {
+            console.log('=== EXECUTING CHECKOUT ===', { packageName, action, selectedGateway });
+            let apiUrl;
+            if (action === 'upgrade') {
+                apiUrl = `/api/payments/upgrade/${packageName}`;
+            } else if (action === 'downgrade') {
+                apiUrl = `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
+            } else {
+                apiUrl = `/api/payments/${selectedGateway.toLowerCase().replace(' ', '')}/checkout/${packageName}`;
             }
 
-            function executeCheckout(packageName, isUpgradeRequest) {
-                console.log('=== EXECUTING CHECKOUT ===', {
-                    packageName,
-                    isUpgradeRequest,
-                    selectedGateway
-                });
+            const requestBody = {
+                package: packageName,
+                is_upgrade: action === 'upgrade',
+                is_downgrade: action === 'downgrade'
+            };
 
-                switch (selectedGateway) {
-                    case 'FastSpring':
-                        console.log('Executing FastSpring checkout...');
-                        processFastSpring(packageName, isUpgradeRequest);
-                        break;
-                    case 'Paddle':
-                        console.log('Executing Paddle checkout...');
-                        processPaddle(packageName, isUpgradeRequest);
-                        break;
-                    case 'Pay Pro Global':
-                        console.log('Executing PayProGlobal checkout...');
-                        processPayProGlobal(packageName, isUpgradeRequest);
-                        break;
-                    default:
-                        console.error('Unsupported payment gateway:', selectedGateway);
-                        throw new Error(`Unsupported payment gateway: ${selectedGateway}`);
-                }
-            }
-
-            function processFastSpring(packageName, isUpgradeRequest = false) {
-                console.log('=== FASTSPRING PROCESSING ===', {
-                    packageName,
-                    isUpgradeRequest,
-                    fastspringAvailable: typeof fastspring !== 'undefined'
-                });
-
-                try {
-                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                        console.error('FastSpring not properly initialized');
-                        throw new Error('FastSpring is not properly initialized');
-                    }
-
-                    console.log('FastSpring available, preparing checkout...');
-
-                    fastspring.builder.reset();
-                    console.log('FastSpring builder reset');
-
-                    const productPath = packageName.toLowerCase();
-                    console.log('Adding product to FastSpring cart:', productPath);
-                    fastspring.builder.add(productPath);
-
-                    // Set upgrade context in FastSpring custom data if needed
-                    if (isUpgradeRequest) {
-                        console.log('Setting upgrade context for FastSpring...');
-                        window.fastspringUpgradeContext = {
-                            isUpgrade: true,
-                            currentPackage: currentPackage,
-                            targetPackage: packageName
-                        };
-                        console.log('FastSpring upgrade context set:', window.fastspringUpgradeContext);
-                    }
-
-                    console.log('Launching FastSpring checkout...');
-                    setTimeout(() => {
-                        fastspring.builder.checkout();
-                        console.log('FastSpring checkout launched');
-                    }, 500);
-
-                } catch (error) {
-                    console.error('FastSpring processing error:', error);
-                    throw error;
-                }
-            }
-
-            /**
-             * UNIFIED Paddle processing
-             */
-            function processPaddle(packageName, isUpgradeRequest = false) {
-                console.log('=== PADDLE PROCESSING ===', {
-                    packageName,
-                    isUpgradeRequest
-                });
-
-                const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
-                console.log('Making Paddle API request to:', apiUrl);
-
-                const requestBody = {
-                    package: packageName,
-                    is_upgrade: isUpgradeRequest
-                };
-
-                const requestHeaders = {
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
-                    'X-Is-Upgrade': isUpgradeRequest ? 'true' : 'false'
-                };
+                    'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
+                    'X-Is-Downgrade': action === 'downgrade' ? 'false' : 'false'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || `HTTP ${response.status}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.success || !data.checkout_url) {
+                    throw new Error(data.error || 'No checkout URL received');
+                }
+                console.log('Checkout URL received:', data.checkout_url);
+                if (selectedGateway === 'FastSpring') {
+                    processFastSpring(packageName, action);
+                } else if (selectedGateway === 'Paddle') {
+                    Paddle.Checkout.open({
+                        transactionId: data.transaction_id,
+                        eventCallback: eventData => handlePaddleEvent(eventData, action)
+                    });
+                } else if (selectedGateway === 'Pay Pro Global') {
+                    const popup = window.open(
+                        data.checkout_url,
+                        action === 'upgrade' ? 'PayProGlobal Upgrade' : action === 'downgrade' ? 'PayProGlobal Downgrade' : 'PayProGlobal Checkout',
+                        'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
+                    );
+                    if (!popup) {
+                        showError('Popup Blocked', 'Please allow popups for this site.');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error(`${action.charAt(0).toUpperCase() + action.slice(1)} error:`, error);
+                showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
+            });
+        }
 
-                console.log('Paddle request details:', {
-                    url: apiUrl,
-                    method: 'POST',
-                    headers: requestHeaders,
-                    body: requestBody
+            function processPaddle(packageName, action) {
+                console.log('=== PADDLE PROCESSING ===', {
+                    packageName,
+                    action
                 });
-
+                const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
+                const requestBody = {
+                    package: packageName,
+                    is_upgrade: action === 'upgrade',
+                    is_downgrade: action === 'downgrade'
+                };
                 fetch(apiUrl, {
                         method: 'POST',
-                        headers: requestHeaders,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
+                            'X-Is-Downgrade': action === 'downgrade' ? 'true' : 'false'
+                        },
                         credentials: 'same-origin',
                         body: JSON.stringify(requestBody)
                     })
                     .then(response => {
-                        console.log('Paddle API response received:', {
-                            status: response.status,
-                            statusText: response.statusText,
-                            ok: response.ok
-                        });
-
                         if (!response.ok) {
                             return response.json().then(data => {
-                                console.error('Paddle API error response:', data);
-                                throw new Error(data.error ||
-                                    `HTTP ${response.status}: ${response.statusText}`);
+                                throw new Error(data.error || `HTTP ${response.status}`);
                             });
                         }
                         return response.json();
                     })
                     .then(data => {
-                        console.log('Paddle API success response:', data);
-
-                        if (!data.success) {
-                            console.error('Paddle checkout failed:', data.error);
-                            throw new Error(data.error || 'Checkout failed');
+                        if (!data.success || !data.transaction_id) {
+                            throw new Error(data.error || 'No transaction ID provided');
                         }
-
-                        if (data.transaction_id && typeof Paddle !== 'undefined') {
-                            console.log('Opening Paddle checkout with transaction ID:', data.transaction_id);
-                            Paddle.Checkout.open({
-                                transactionId: data.transaction_id,
-                                eventCallback: function(eventData) {
-                                    console.log('Paddle event received:', eventData);
-                                    handlePaddleEvent(eventData, isUpgradeRequest);
-                                }
-                            });
-                        } else {
-                            console.error('No transaction ID provided or Paddle not available:', {
-                                hasTransactionId: !!data.transaction_id,
-                                paddleAvailable: typeof Paddle !== 'undefined'
-                            });
-                            throw new Error('No transaction ID provided');
-                        }
+                        Paddle.Checkout.open({
+                            transactionId: data.transaction_id,
+                            eventCallback: eventData => handlePaddleEvent(eventData, action)
+                        });
                     })
                     .catch(error => {
                         console.error('Paddle processing error:', error);
-                        const actionText = isUpgradeRequest ? 'upgrade' : 'checkout';
-                        showError(`Paddle ${actionText} Failed`, error.message ||
-                            `Failed to process ${actionText}. Please try again.`);
+                        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
                     });
             }
 
-            /**
-             * UNIFIED PayProGlobal processing
-             */
-            function processPayProGlobal(packageName, isUpgradeRequest = false) {
+            function processPayProGlobal(packageName, action) {
                 console.log('=== PAYPROGLOBAL PROCESSING ===', {
                     packageName,
-                    isUpgradeRequest
+                    action
                 });
-
                 const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
-                console.log('Making PayProGlobal API request to:', apiUrl);
-
                 const requestBody = {
                     package: packageName,
-                    is_upgrade: isUpgradeRequest
+                    is_upgrade: action === 'upgrade',
+                    is_downgrade: action === 'downgrade'
                 };
-
-                const requestHeaders = {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-Is-Upgrade': isUpgradeRequest ? 'true' : 'false'
-                };
-
-                console.log('PayProGlobal request details:', {
-                    url: apiUrl,
-                    method: 'POST',
-                    headers: requestHeaders,
-                    body: requestBody
-                });
-
                 fetch(apiUrl, {
                         method: 'POST',
-                        headers: requestHeaders,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
+                            'X-Is-Downgrade': action === 'downgrade' ? 'true' : 'false'
+                        },
                         credentials: 'same-origin',
                         body: JSON.stringify(requestBody)
                     })
                     .then(response => {
-                        console.log('PayProGlobal API response received:', {
-                            status: response.status,
-                            statusText: response.statusText,
-                            ok: response.ok
-                        });
-
                         if (!response.ok) {
                             return response.json().then(data => {
-                                console.error('PayProGlobal API error response:', data);
-                                throw new Error(data.error ||
-                                    `HTTP ${response.status}: ${response.statusText}`);
+                                throw new Error(data.error || `HTTP ${response.status}`);
                             });
                         }
                         return response.json();
                     })
                     .then(data => {
-                        console.log('PayProGlobal API success response:', data);
-
                         if (!data.success || !data.checkoutUrl) {
-                            console.error('PayProGlobal checkout failed:', {
-                                success: data.success,
-                                hasCheckoutUrl: !!data.checkoutUrl,
-                                error: data.error
-                            });
                             throw new Error(data.error || 'No checkout URL received');
                         }
-
-                        console.log('Opening PayProGlobal popup with URL:', data.checkoutUrl);
                         const popup = window.open(
                             data.checkoutUrl,
-                            isUpgradeRequest ? 'PayProGlobal Upgrade' : 'PayProGlobal Checkout',
+                            action === 'upgrade' ? 'PayProGlobal Upgrade' : action === 'downgrade' ?
+                            'PayProGlobal Downgrade' : 'PayProGlobal Checkout',
                             'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
                         );
-
                         if (!popup) {
-                            console.error('❌ PayProGlobal popup blocked');
-                            showError('Popup Blocked', 'Please allow popups for this site and try again.');
-                        } else {
-                            console.log('✅ PayProGlobal popup opened successfully');
+                            showError('Popup Blocked', 'Please allow popups for this site.');
                         }
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
-                        const actionText = isUpgradeRequest ? 'upgrade' : 'checkout';
-                        showError(`PayProGlobal ${actionText} Failed`, error.message ||
-                            `Failed to process ${actionText}. Please try again.`);
+                        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
                     });
             }
 
-            function handlePaddleEvent(eventData, isUpgradeRequest) {
+            function handlePaddleEvent(eventData, action) {
                 console.log('=== PADDLE EVENT HANDLER ===', {
                     event: eventData.data?.event?.name,
-                    isUpgradeRequest,
-                    eventData
+                    action
                 });
-
                 if (eventData.data?.event?.name === 'checkout.completed') {
-                    console.log('Paddle checkout completed successfully');
-                    const isUpgrade = isUpgradeRequest === 'true' || isUpgradeRequest === true;
-                    const message = isUpgrade ? 'Upgrade Successful!' : 'Payment Successful!';
-                    const text = isUpgrade ? 'Your subscription has been upgraded successfully.' :
-                        'Your subscription has been activated successfully.';
+                    const message = action === 'upgrade' ? 'Upgrade Successful!' : action === 'downgrade' ?
+                        'Downgrade Successful!' : 'Payment Successful!';
+                    const text = action === 'upgrade' ? 'Your subscription has been upgraded.' : action ===
+                        'downgrade' ?
+                        'Your subscription downgrade will take effect at the end of the current billing cycle.' :
+                        'Your subscription has been activated.';
+                    showSuccess(message, text).then(() => {
+                        window.location.href = '/user/dashboard';
+                    });
+                } else if (eventData.data?.event?.name === 'checkout.failed') {
+                    showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+                        'Your action failed. Please try again.');
+                } else if (eventData.data?.event?.name === 'checkout.closed' && !eventData.data.success) {
+                    showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
+                        'Your action was cancelled.');
+                }
+            }
 
-                    // Log detailed upgrade information
-                    if (isUpgrade) {
-                        console.group('UPGRADE SUCCESSFUL');
-                        console.log('From Package:', currentPackage);
-                        console.log('To Package:', eventData.data?.event?.data?.items?.[0]?.product?.name ||
-                            'Unknown');
-                        console.log('Payment Method:', 'Paddle');
-                        console.log('Amount:', eventData.data?.event?.data?.order?.total_formatted || 'N/A');
-                        console.log('Order ID:', eventData.data?.event?.data?.order?.id || 'N/A');
-                        console.log('Timestamp:', new Date().toISOString());
-                        console.groupEnd();
-
-                        // You can also log this to your analytics or send to your backend
-                        try {
-                            fetch('/api/logs/upgrade', {
+            function cancelSubscription() {
+                console.log('=== CANCEL SUBSCRIPTION ===');
+                Swal.fire({
+                    title: 'Confirm Cancellation',
+                    html: `Are you sure you want to cancel your <strong>${currentPackage}</strong> subscription? This action cannot be undone.`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Cancel Subscription',
+                    cancelButtonText: 'Keep Subscription',
+                    confirmButtonColor: '#ef4444'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        fetch('/api/subscriptions/cancel', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
-                                    'X-CSRF-TOKEN': csrfToken
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken,
+                                    'X-Requested-With': 'XMLHttpRequest'
                                 },
-                                body: JSON.stringify({
-                                    event: 'subscription_upgraded',
-                                    from_package: currentPackage,
-                                    to_package: eventData.data?.event?.data?.items?.[0]?.product
-                                        ?.name || 'Unknown',
-                                    gateway: 'Paddle',
-                                    amount: eventData.data?.event?.data?.order?.total,
-                                    currency: eventData.data?.event?.data?.order?.currency,
-                                    order_id: eventData.data?.event?.data?.order?.id,
-                                    timestamp: new Date().toISOString()
-                                })
+                                credentials: 'same-origin'
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    return response.json().then(data => {
+                                        throw new Error(data.error ||
+                                        `HTTP ${response.status}`);
+                                    });
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                if (data.success) {
+                                    showSuccess('Subscription Cancelled',
+                                        'Your subscription has been cancelled.').then(() => {
+                                        window.location.href = '/user/dashboard';
+                                    });
+                                } else {
+                                    throw new Error(data.error || 'Cancellation failed.');
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Cancellation error:', error);
+                                showError('Cancellation Failed', error.message);
                             });
-                        } catch (logError) {
-                            console.error('Failed to log upgrade:', logError);
-                        }
                     }
-
-                    showSuccess(message, text).then(() => {
-                        console.log('🔄 Redirecting to dashboard...');
-                        window.location.href = '/user/dashboard';
-                    });
-
-                } else if (eventData.data?.event?.name === 'checkout.failed') {
-                    console.error('❌ Paddle checkout failed');
-                    const actionText = isUpgradeRequest ? 'upgrade' : 'payment';
-                    showError(`${actionText.charAt(0).toUpperCase() + actionText.slice(1)} Failed`,
-                        `Your ${actionText} failed. Please try again.`);
-
-                } else if (eventData.data?.event?.name === 'checkout.closed' && !eventData.data.success) {
-                    console.log('ℹ️ Paddle checkout cancelled by user');
-                    const actionText = isUpgradeRequest ? 'upgrade' : 'payment';
-                    showInfo(`${actionText.charAt(0).toUpperCase() + actionText.slice(1)} Cancelled`,
-                        `Your ${actionText} was cancelled. You can try again anytime.`);
-
-                } else {
-                    console.log('ℹ️ Paddle event not handled:', eventData.data?.event?.name);
-                }
+                });
             }
 
-            /**
-             * Setup upgrade-specific UI elements
-             */
-            function setupUpgradeUI() {
-                console.log('=== SETTING UP UPGRADE UI ===');
-
-                // Add upgrade notice
-                const container = document.querySelector('.container');
-                if (container) {
-                    const upgradeNotice = document.createElement('div');
-                    upgradeNotice.className = 'upgrade-notice';
-                    upgradeNotice.innerHTML = `
-                <div style="background: #e0f2fe; border: 1px solid #0288d1; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center;">
-                    <strong>Upgrade Mode</strong><br>
-                    <span style="color: #0277bd;">You're upgrading from <strong>${currentPackage}</strong></span>
-                </div>
-            `;
-                    container.insertBefore(upgradeNotice, container.querySelector('.pricing-grid'));
-                    console.log('Upgrade notice added to page');
-                }
-
-                // Update button text and disable lower-tier packages
-                let buttonsProcessed = 0;
+            function setupSubscriptionUI() {
                 document.querySelectorAll('.checkout-button').forEach(button => {
                     const packageElement = button.closest('.card');
                     const packageName = button.getAttribute('data-package');
+                    const action = button.getAttribute('data-action');
                     const priceElement = packageElement.querySelector('.price');
-                    // Get only the text content before the span
                     const priceText = priceElement.firstChild.nodeValue;
                     const packagePrice = parseFloat(priceText.replace(/[^0-9.]/g, ''));
 
-                    // Log upgrade information
-                    if (packagePrice > currentPackagePrice) {
-                        console.log('Upgrade opportunity detected:', {
-                            fromPackage: currentPackage,
-                            toPackage: packageName,
-                            currentPrice: currentPackagePrice,
-                            upgradePrice: packagePrice
-                        });
-                    }
-
-                    console.log(`Processing upgrade UI for button ${++buttonsProcessed}:`, {
-                        packageName,
-                        packagePrice,
-                        currentPackagePrice,
-                        isUpgrade: packagePrice > currentPackagePrice
-                    });
-
-                    // Disable packages that aren't upgrades (same or lower price)
-                    if (packagePrice <= currentPackagePrice && packageName !== 'Enterprise') {
-                        button.disabled = true;
-                        button.innerHTML = '<span class="not-upgrade-text">Not an Upgrade</span>';
-                        button.classList.remove('dark');
-                        button.classList.add('disabled-package');
-                        packageElement.style.opacity = '0.6';
-                        console.log(`Disabled ${packageName} - not an upgrade`);
-
-                    } else if (packageName === currentPackage) {
-                        // Current package
+                    if (action === 'current') {
                         button.classList.add('active');
                         button.disabled = true;
-                        button.innerHTML = '<span class="current-package-text">Current Package</span>';
-                        console.log(`Marked ${packageName} as current package`);
-
-                    } else {
-                        // Valid upgrade
-                        button.innerHTML = `<span class="upgrade-text">Upgrade to ${packageName}</span>`;
-                        console.log(`Enabled ${packageName} as upgrade option`);
+                        button.innerHTML = '<span class="current-package-text">Current Plan</span>';
+                    } else if ((isUpgrade === 'true' && packagePrice <= currentPackagePrice &&
+                            packageName !== 'Enterprise') ||
+                        (pageType === 'downgrade' && packagePrice >= currentPackagePrice && packageName !==
+                            'Enterprise')) {
+                        button.classList.add('disabled');
+                        button.disabled = true;
+                        button.innerHTML = '<span class="not-upgrade-text">Not an ' + (isUpgrade ===
+                            'true' ? 'Upgrade' : 'Downgrade') + '</span>';
+                        packageElement.style.opacity = '0.6';
+                    } else if (action === 'upgrade') {
+                        button.innerHTML = '<span class="upgrade-text">Upgrade to ' + packageName +
+                            '</span>';
+                    } else if (action === 'downgrade') {
+                        button.innerHTML = '<span class="downgrade-text">Downgrade to ' + packageName +
+                            '</span>';
                     }
                 });
-
-                console.log(`Processed ${buttonsProcessed} buttons for upgrade UI`);
             }
 
-            /**
-             * Utility functions for showing alerts
-             */
             function showSuccess(title, text) {
                 console.log('Showing success message:', {
                     title,
                     text
                 });
-                if (typeof Swal !== 'undefined') {
-                    return Swal.fire({
-                        icon: 'success',
-                        title: title,
-                        text: text,
-                        confirmButtonText: 'OK'
-                    });
-                } else {
-                    alert(`${title}: ${text}`);
-                    return Promise.resolve();
-                }
+                return Swal.fire({
+                    icon: 'success',
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                });
             }
 
             function showError(title, text) {
@@ -1484,16 +1137,12 @@
                     title,
                     text
                 });
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        icon: 'error',
-                        title: title,
-                        text: text,
-                        confirmButtonText: 'OK'
-                    });
-                } else {
-                    alert(`${title}: ${text}`);
-                }
+                Swal.fire({
+                    icon: 'error',
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                });
             }
 
             function showInfo(title, text) {
@@ -1501,91 +1150,15 @@
                     title,
                     text
                 });
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        icon: 'info',
-                        title: title,
-                        text: text,
-                        confirmButtonText: 'OK'
-                    });
-                } else {
-                    alert(`${title}: ${text}`);
-                }
+                Swal.fire({
+                    icon: 'info',
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                });
             }
-
-            // Add CSS for upgrade UI elements
-            const style = document.createElement('style');
-            style.textContent = `
-        /* Disabled packages */
-        .btn.disabled-package {
-            background: #6b7280 !important;
-            color: white !important;
-            cursor: not-allowed !important;
-            opacity: 0.8;
-            border: none;
-            transition: opacity 0.2s ease;
-        }
-        .btn.disabled-package:hover {
-            background: #6b7280 !important;
-            opacity: 1;
-        }
-
-        /* Current package */
-        .btn.active {
-            background: #22c55e !important;
-            color: white !important;
-            cursor: not-allowed !important;
-            border: none;
-            font-weight: bold;
-        }
-
-        /* Button text spans */
-        .btn span {
-            display: block;
-            width: 100%;
-            text-align: center;
-        }
-        .btn .current-package-text {
-            font-weight: bold;
-        }
-        .btn .not-upgrade-text {
-            color: #fff;
-        }
-        .btn .upgrade-text {
-            color: #fff;
-        }
-
-        /* Card opacity for disabled packages */
-        .card.disabled {
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
-        }
-
-        /* Upgrade notice */
-        .upgrade-notice {
-            background: #e0f2fe;
-            margin: 20px 0;
-            text-align: center;
-        }
-        .upgrade-notice strong {
-            color: #0277bd;
-            font-weight: bold;
-        }
-        .upgrade-notice span {
-            color: #0277bd;
-        }
-        .upgrade-notice span strong {
-            color: #0277bd;
-            font-weight: bold;
-        }
-    `;
-            document.head.appendChild(style);
-            console.log('Upgrade CSS styles added');
-
-            console.log('SUBSCRIPTION PAGE INITIALIZATION COMPLETE');
         });
-    </script>
-    <script>
+
         document.querySelector('.dropdown-toggle').addEventListener('click', function() {
             const menu = document.querySelector('.dropdown-menu');
             const isOpen = menu.style.display === 'block';
@@ -1606,20 +1179,14 @@
                 title,
                 text
             });
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon: type,
-                    title: title,
-                    text: text,
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    if (callback) callback();
-                });
-            } else {
-                console.warn('SweetAlert2 not available, falling back to native alert');
-                alert(`${title}: ${text}`);
+            Swal.fire({
+                icon: type,
+                title: title,
+                text: text,
+                confirmButtonText: 'OK'
+            }).then(() => {
                 if (callback) callback();
-            }
+            });
         }
     </script>
 </body>
