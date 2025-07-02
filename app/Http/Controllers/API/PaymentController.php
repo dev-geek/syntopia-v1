@@ -130,124 +130,123 @@ class PaymentController extends Controller
     }
 
     public function paddleCheckout(Request $request, string $package)
-    {
-        Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
+{
+    Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
-        try {
-            $processedPackage = str_replace('-plan', '', strtolower($package));
-            $validation = $this->validatePackageAndGetUser($processedPackage);
-            if (!is_array($validation)) {
-                return $validation;
-            }
-
-            $user = $validation['user'];
-            $packageData = $validation['packageData'];
-
-            $apiKey = config('payment.gateways.Paddle.api_key');
-            if (empty($apiKey)) {
-                Log::error('Paddle API key missing');
-                return response()->json(['error' => 'Payment configuration error'], 500);
-            }
-
-            $headers = [
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json',
-            ];
-
-            if (!$user->paddle_customer_id) {
-                $customerResponse = Http::withHeaders($headers)->post('https://sandbox-api.paddle.com/customers', [
-                    'email' => $user->email,
-                    'name' => $user->name,
-                    'custom_data' => ['user_id' => (string) $user->id]
-                ]);
-
-                if (!$customerResponse->successful()) {
-                    Log::error('Paddle customer creation failed', ['user_id' => $user->id]);
-                    return response()->json(['error' => 'Customer setup failed'], 500);
-                }
-
-                $user->paddle_customer_id = $customerResponse->json()['data']['id'];
-                $user->save();
-            }
-
-            $productsResponse = Http::withHeaders($headers)
-                ->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
-
-            if (!$productsResponse->successful()) {
-                Log::error('Paddle products fetch failed', ['status' => $productsResponse->status()]);
-                return response()->json(['error' => 'Product fetch failed'], 500);
-            }
-
-            $products = $productsResponse->json()['data'];
-            $matchingProduct = collect($products)->firstWhere('name', $processedPackage);
-
-            if (!$matchingProduct) {
-                Log::error('Paddle product not found', ['package' => $processedPackage]);
-                return response()->json(['error' => 'Unavailable package'], 400);
-            }
-
-            $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
-            if (!$price) {
-                Log::error('No active prices found', ['product_id' => $matchingProduct['id']]);
-                return response()->json(['error' => 'No active price'], 400);
-            }
-
-            $transactionData = [
-                'items' => [['price_id' => $price['id'], 'quantity' => 1]],
-                'customer_id' => $user->paddle_customer_id,
-                'currency_code' => 'USD',
-                'custom_data' => [
-                    'user_id' => (string) $user->id,
-                    'package_id' => (string) $packageData->id,
-                    'package' => $processedPackage
-                ],
-                'checkout' => [
-                    'settings' => ['display_mode' => 'overlay'],
-                    'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}', 'popup' => 'true'])
-                ]
-            ];
-
-            $response = Http::withHeaders($headers)
-                ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
-
-            if (!$response->successful()) {
-                Log::error('Paddle transaction creation failed', ['status' => $response->status(), 'response' => $response->body()]);
-                return response()->json(['error' => 'Transaction creation failed'], $response->status());
-            }
-
-            $transaction = $response->json()['data'];
-
-            $order = Order::create([
-                'user_id' => $user->id,
-                'package_id' => $packageData->id,
-                'amount' => $transaction['details']['totals']['total'] / 100,
-                'currency' => $transaction['currency_code'],
-                'transaction_id' => $transaction['id'],
-                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
-                'status' => 'pending',
-                'metadata' => ['checkout_url' => $transaction['checkout']['url']]
-            ]);
-
-            Log::info('Paddle checkout created', [
-                'user_id' => $user->id,
-                'transaction_id' => $transaction['id'],
-                'checkout_url' => $transaction['checkout']['url']
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'checkout_url' => $transaction['checkout']['url'],
-                'transaction_id' => $transaction['id']
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Paddle checkout error', [
-                'error' => $e->getMessage(),
-                'package' => $package,
-                'user_id' => Auth::id()
-            ]);
-            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
+    try {
+        $validation = $this->validatePackageAndGetUser($package);
+        if (!is_array($validation)) {
+            return $validation;
         }
+
+        $user = $validation['user'];
+        $packageData = $validation['packageData'];
+
+        $apiKey = config('payment.gateways.Paddle.api_key');
+        if (empty($apiKey)) {
+            Log::error('Paddle API key missing');
+            return response()->json(['error' => 'Payment configuration error'], 500);
+        }
+
+        $headers = [
+            'Authorization' => 'Bearer ' . $apiKey,
+            'Content-Type' => 'application/json',
+        ];
+
+        if (!$user->paddle_customer_id) {
+            $customerResponse = Http::withHeaders($headers)->post('https://sandbox-api.paddle.com/customers', [
+                'email' => $user->email,
+                'name' => $user->name,
+                'custom_data' => ['user_id' => (string) $user->id]
+            ]);
+
+            if (!$customerResponse->successful()) {
+                Log::error('Paddle customer creation failed', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Customer setup failed'], 500);
+            }
+
+            $user->paddle_customer_id = $customerResponse->json()['data']['id'];
+            $user->save();
+        }
+
+        $productsResponse = Http::withHeaders($headers)
+            ->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
+
+        if (!$productsResponse->successful()) {
+            Log::error('Paddle products fetch failed', ['status' => $productsResponse->status()]);
+            return response()->json(['error' => 'Product fetch failed'], 500);
+        }
+
+        $products = $productsResponse->json()['data'];
+        $matchingProduct = collect($products)->firstWhere('name', $package);
+
+        if (!$matchingProduct) {
+            Log::error('Paddle product not found', ['package' => $package]);
+            return response()->json(['error' => 'Unavailable package'], 400);
+        }
+
+        $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
+        if (!$price) {
+            Log::error('No active prices found', ['product_id' => $matchingProduct['id']]);
+            return response()->json(['error' => 'No active price'], 400);
+        }
+
+        $transactionData = [
+            'items' => [['price_id' => $price['id'], 'quantity' => 1]],
+            'customer_id' => $user->paddle_customer_id,
+            'currency_code' => 'USD',
+            'custom_data' => [
+                'user_id' => (string) $user->id,
+                'package_id' => (string) $packageData->id,
+                'package' => $package
+            ],
+            'checkout' => [
+                'settings' => ['display_mode' => 'overlay'],
+                'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']) // Removed popup=true
+            ]
+        ];
+
+        $response = Http::withHeaders($headers)
+            ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
+
+        if (!$response->successful()) {
+            Log::error('Paddle transaction creation failed', ['status' => $response->status(), 'response' => $response->body()]);
+            return response()->json(['error' => 'Transaction creation failed'], $response->status());
+        }
+
+        $transaction = $response->json()['data'];
+
+        $order = Order::create([
+            'user_id' => $user->id,
+            'package_id' => $packageData->id,
+            'amount' => $transaction['details']['totals']['total'] / 100,
+            'currency' => $transaction['currency_code'],
+            'transaction_id' => $transaction['id'],
+            'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+            'status' => 'pending',
+            'metadata' => ['checkout_url' => $transaction['checkout']['url']]
+        ]);
+
+        Log::info('Paddle checkout created', [
+            'user_id' => $user->id,
+            'transaction_id' => $transaction['id'],
+            'checkout_url' => $transaction['checkout']['url']
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'checkout_url' => $transaction['checkout']['url'],
+            'transaction_id' => $transaction['id']
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Paddle checkout error', [
+            'error' => $e->getMessage(),
+            'package' => $package,
+            'user_id' => Auth::id()
+        ]);
+        return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
     }
+}
 
     public function fastspringCheckout(Request $request, $package)
     {
@@ -507,6 +506,7 @@ class PaymentController extends Controller
                 }
 
                 $transactionData = $response->json()['data'];
+                // Process the payment and redirect to dashboard
                 return $this->processPayment($transactionData, 'paddle');
             }
 
@@ -722,24 +722,39 @@ class PaymentController extends Controller
     }
 
     public function handlePaddleWebhook(Request $request)
-    {
-        try {
-            $payload = $request->all();
-            Log::info('Paddle webhook received', ['payload' => $payload]);
+{
+    try {
+        $payload = $request->all();
+        Log::info('Paddle webhook received', ['payload' => $payload]);
 
-            if ($payload['event_type'] === 'transaction.completed' || $payload['event_type'] === 'transaction.paid') {
-                return $this->processPayment($payload['data'], 'paddle');
-            }
-            Log::info('Paddle webhook ignored', ['event_type' => $payload['event_type']]);
-            return response()->json(['status' => 'ignored']);
-        } catch (\Exception $e) {
-            Log::error('Paddle webhook error', [
-                'error' => $e->getMessage(),
-                'payload' => $request->all()
-            ]);
-            return response()->json(['error' => 'Processing failed'], 500);
+        // Verify webhook signature
+        $publicKey = config('payment.gateways.Paddle.public_key');
+        $signature = base64_decode($payload['p_signature'] ?? '');
+        $fields = $payload;
+        unset($fields['p_signature']);
+        ksort($fields);
+        $dataToVerify = serialize($fields);
+        $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA1);
+
+        if ($verified !== 1) {
+            Log::error('Invalid Paddle webhook signature', ['payload' => $payload]);
+            return response()->json(['error' => 'Invalid signature'], 401);
         }
+
+        if ($payload['event_type'] === 'transaction.completed' || $payload['event_type'] === 'transaction.paid') {
+            return $this->processPayment($payload['data'], 'paddle');
+        }
+
+        Log::info('Paddle webhook ignored', ['event_type' => $payload['event_type']]);
+        return response()->json(['status' => 'ignored']);
+    } catch (\Exception $e) {
+        Log::error('Paddle webhook error', [
+            'error' => $e->getMessage(),
+            'payload' => $request->all()
+        ]);
+        return response()->json(['error' => 'Processing failed'], 500);
     }
+}
 
     public function handleFastSpringWebhook(Request $request)
     {

@@ -103,7 +103,7 @@
         body {
             padding: 15px;
         }
-        
+
         .container-box {
             padding: 20px;
         }
@@ -139,7 +139,11 @@
 
             <div class="mb-3">
                 <p class="email-text">
-                    Can't find the email? <a href="{{ route('resend.code') }}" class="text-secondary">Resend code</a>
+                    Can't find the email?
+                    <form method="POST" action="{{ route('verification.resend') }}" style="display:inline;">
+                        @csrf
+                        <button type="submit" class="btn btn-link p-0 m-0 align-baseline text-secondary" style="font-size: inherit;">Resend code</button>
+                    </form>
                 </p>
             </div>
 

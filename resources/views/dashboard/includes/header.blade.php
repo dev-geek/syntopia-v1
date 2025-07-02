@@ -224,10 +224,10 @@
                         <a href="{{ route('user.subscription.details') }}" class="nav-link">Subscriptions</a>
                     </li>
 
+                    <li class="nav-item d-none d-sm-inline-block">
+                        <a href="https://live.syntopia.ai" class="nav-link">ACCESS THE SOFTWARE</a>
+                    </li>
                 @endif
-                <li class="nav-item d-none d-sm-inline-block">
-                    <a href="https://live.syntopia.ai" class="nav-link">ACCESS THE SOFTWARE</a>
-                </li>
             </ul>
 
             {{-- <!-- SEARCH FORM --> --}}
@@ -279,7 +279,7 @@
                     </a>
                     <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
                         <div class="dropdown-divider"></div>
-                        @if(auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))
+                        @if (auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))
                             <a href="{{ route('admin.profile') }}" class="dropdown-item">Edit Profile</a>
                         @else
                             <a href="{{ route('user.profile') }}" class="dropdown-item">Edit Profile</a>

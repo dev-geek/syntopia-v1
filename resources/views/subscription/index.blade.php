@@ -13,7 +13,7 @@
       script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
       img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
       connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
-      frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
+      frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
       frame-ancestors 'self' https://livebuzzstudio.test;
       media-src 'self' data: https://sbl.onfastspring.com;">
     <title>Syntopia Pricing</title>
@@ -225,12 +225,9 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             try {
-                Paddle.Environment.set('{{ config('
-                    payment.gateways.Paddle.environment ', '
-                    sandbox ') }}');
+                Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
                 Paddle.Setup({
-                    token: '{{ config('
-                    payment.gateways.Paddle.client_side_token ') }}',
+                    token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
                 });
             } catch (error) {
                 Swal.fire({
@@ -896,10 +893,8 @@
                         if (selectedGateway === 'FastSpring') {
                             processFastSpring(packageName, action);
                         } else if (selectedGateway === 'Paddle') {
-                            Paddle.Checkout.open({
-                                transactionId: data.transaction_id,
-                                eventCallback: eventData => handlePaddleEvent(eventData, action)
-                            });
+                            console.log('Executing Paddle checkout...');
+                            processPaddle(packageName, action);
                         } else if (selectedGateway === 'Pay Pro Global') {
                             const popup = window.open(
                                 data.checkout_url,
@@ -1017,28 +1012,52 @@
             }
 
             function handlePaddleEvent(eventData, action) {
-                console.log('=== PADDLE EVENT HANDLER ===', {
-                    event: eventData.data?.event?.name,
-                    action
+    console.log('=== PADDLE EVENT HANDLER ===', {
+        event: eventData.data?.event?.name,
+        action
+    });
+    if (eventData.data?.event?.name === 'checkout.completed') {
+        const transactionId = eventData.data.event.data.transaction_id;
+        const message = action === 'upgrade' ? 'Upgrade Successful!' : action === 'downgrade' ?
+            'Downgrade Successful!' : 'Payment Successful!';
+        const text = action === 'upgrade' ? 'Your subscription has been upgraded.' : action ===
+            'downgrade' ?
+            'Your subscription downgrade will take effect at the end of the current billing cycle.' :
+            'Your subscription has been activated.';
+
+        // Verify order status with backend
+        fetch(`/api/payments/verify-order/${transactionId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.status === 'completed') {
+                showSuccess(message, text).then(() => {
+                    window.location.href = '/user/dashboard';
                 });
-                if (eventData.data?.event?.name === 'checkout.completed') {
-                    const message = action === 'upgrade' ? 'Upgrade Successful!' : action === 'downgrade' ?
-                        'Downgrade Successful!' : 'Payment Successful!';
-                    const text = action === 'upgrade' ? 'Your subscription has been upgraded.' : action ===
-                        'downgrade' ?
-                        'Your subscription downgrade will take effect at the end of the current billing cycle.' :
-                        'Your subscription has been activated.';
-                    showSuccess(message, text).then(() => {
-                        window.location.href = '/user/dashboard';
-                    });
-                } else if (eventData.data?.event?.name === 'checkout.failed') {
-                    showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
-                        'Your action failed. Please try again.');
-                } else if (eventData.data?.event?.name === 'checkout.closed' && !eventData.data.success) {
-                    showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
-                        'Your action was cancelled.');
-                }
+            } else {
+                throw new Error('Order not completed');
             }
+        })
+        .catch(error => {
+            console.error('Order verification error:', error);
+            showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, 'Payment processing not completed. Please try again.');
+        });
+    } else if (eventData.data?.event?.name === 'checkout.failed') {
+        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+            'Your action failed. Please try again.');
+    } else if (eventData.data?.event?.name === 'checkout.closed' && !eventData.data.success) {
+        showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
+            'Your action was cancelled.');
+    }
+}
 
             function cancelSubscription() {
                 console.log('=== CANCEL SUBSCRIPTION ===');

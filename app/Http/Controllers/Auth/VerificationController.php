@@ -102,10 +102,13 @@ class VerificationController extends Controller
             Auth::login($user);
 
             if ($user->hasRole('User')) {
-                return redirect()->route('subscriptions.index')
+                return redirect()->route('pricing')
                     ->with('success', 'Email verified successfully!');
             }
-
+            if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+                return redirect()->route('admin.dashboard')
+                    ->with('success', 'Email verified successfully!');
+            }
             return redirect()->route('login')
                 ->with('success', 'Email verified successfully! You can now login.');
         } catch (\Exception $e) {
@@ -152,7 +155,7 @@ class VerificationController extends Controller
                     'user_id' => $user->id,
                     'response' => $response->json()
                 ]);
-                return $response->json(); 
+                return $response->json();
             }
 
             // Log error if not successful
