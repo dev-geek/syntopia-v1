@@ -35,6 +35,8 @@ return [
                 'enterprise' => 'enterprise-plan',
             ],
             'use_redirect_callback' => true,
+            'api_base_url' => env('FASTSPRING_API_URL', 'https://api.fastspring.com'),
+            'proration_enabled' => env('FASTSPRING_PRORATION_ENABLED', false),
         ],
 
         'Paddle' => [

@@ -1,6 +1,5 @@
 @include('dashboard.includes.header')
 @include('dashboard.includes.sidebar')
-
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -16,7 +15,6 @@
         </div>
     </div>
     <!-- /.content-header -->
-
     <!-- Main content -->
     <section class="content">
         <div class="container-fluid">
@@ -25,80 +23,89 @@
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Current Subscription Status</h3>
-                            <div class="float-right">
-                                @php
-                                    // Check if user has an active subscription and package
-                                    $hasActiveSubscription = $user->package && $user->subscription_starts_at && $user->is_subscribed;
-                                    $currentPackagePrice = optional($user->package)->price ?? 0;
-                                    
-                                    // Check for available upgrades (packages with higher price)
-                                    $hasUpgrades = false;
-                                    $hasDowngrades = false;
-                                    
-                                    if ($hasActiveSubscription) {
-                                        $hasUpgrades = \App\Models\Package::where('price', '>', $currentPackagePrice)->exists();
-                                        $hasDowngrades = \App\Models\Package::where('price', '<', $currentPackagePrice)->exists();
-                                    }
-                                @endphp
 
-                                @if($hasActiveSubscription)
-                                    @if($hasDowngrades)
-                                        <a href="{{ route('subscription.downgrade') }}" class="btn btn-warning mr-2">
-                                            <i class="fas fa-arrow-down"></i> Downgrade Plan
-                                        </a>
-                                    @endif
-                                    
-                                    @if($hasUpgrades)
-                                        <a href="{{ route('subscription.upgrade') }}" class="btn btn-primary mr-2">
-                                            <i class="fas fa-arrow-up"></i> Upgrade Plan
-                                        </a>
-                                    @endif
-                                    
-                                    <button class="btn btn-danger cancel-subscription-btn" data-csrf-token="{{ csrf_token() }}">
-                                        <i class="fas fa-times"></i> Cancel Subscription
+                            <div class="float-right">
+                                @if ($hasActiveSubscription && $canUpgrade)
+                                    <a class="btn btn-primary"
+                                        href="{{ route('pricing', ['type' => 'downgrade']) }}">Downgrade
+                                        Subscription</a>
+                                    <button class="btn btn-danger" id="cancelSubscriptionBtn">
+                                        Cancel Subscription
                                     </button>
-                                    
-                                    @if(!$hasUpgrades && !$hasDowngrades)
-                                        <span class="badge badge-info px-3 py-2">
-                                            <i class="fas fa-crown"></i> Only Plan Available
-                                        </span>
-                                    @endif
-                                @else
-                                    <a href="{{ route('subscriptions.index') }}" class="btn btn-success">
-                                        <i class="fas fa-plus"></i> Get Subscription
-                                    </a>
+                                @elseif ($hasActiveSubscription && !$canUpgrade)
+                                    <a class="btn btn-success"
+                                        href="{{ route('pricing', ['type' => 'upgrade']) }}">Upgrade Subscription</a>
+                                    <button class="btn btn-danger" id="cancelSubscriptionBtn">
+                                        Cancel Subscription
+                                    </button>
+                                @elseif (!$hasActiveSubscription)
+                                    <a class="btn btn-warning" href="{{ route('pricing', ['type' => 'new']) }}">Buy
+                                        Subscription</a>
                                 @endif
                             </div>
                         </div>
                         <div class="card-body">
-                            @if(session('success'))
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    <i class="fas fa-check-circle"></i> {{ session('success') }}
-                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">×</span>
-                                    </button>
+                            {{-- Subscription Status Alert --}}
+                            @if (!$hasActiveSubscription)
+                                <div class="alert alert-warning alert-dismissible">
+                                    <button type="button" class="close" data-dismiss="alert"
+                                        aria-hidden="true">&times;</button>
+                                    <h5><i class="icon fas fa-exclamation-triangle"></i> No Active Subscription!</h5>
+                                    @if ($isExpired)
+                                        Your subscription has expired. Please purchase a new subscription to continue
+                                        using our services.
+                                    @else
+                                        You don't have an active subscription. Please purchase a subscription to access
+                                        our services.
+                                    @endif
                                 </div>
-                            @endif
-
-                            @if(session('error'))
-                                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                    <i class="fas fa-exclamation-circle"></i> {{ session('error') }}
-                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">×</span>
-                                    </button>
+                            @elseif ($hasActiveSubscription && !$canUpgrade && strtolower($currentPackage) === 'free')
+                                <div class="alert alert-info alert-dismissible">
+                                    <button type="button" class="close" data-dismiss="alert"
+                                        aria-hidden="true">&times;</button>
+                                    <h5><i class="icon fas fa-info-circle"></i> Free Plan Active</h5>
+                                    You're currently on the free plan. Upgrade to a paid subscription to unlock premium
+                                    features.
                                 </div>
-                            @endif
-
-                            @if(session('warning'))
-                                <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                                    <i class="fas fa-exclamation-triangle"></i> {{ session('warning') }}
-                                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                                        <span aria-hidden="true">×</span>
-                                    </button>
+                            @elseif ($hasActiveSubscription && $canUpgrade)
+                                <div class="alert alert-success alert-dismissible">
+                                    <button type="button" class="close" data-dismiss="alert"
+                                        aria-hidden="true">&times;</button>
+                                    <h5><i class="icon fas fa-check-circle"></i> Subscription Active</h5>
+                                    Your subscription is active. You can upgrade to a higher plan anytime.
                                 </div>
                             @endif
 
                             <div class="row">
+                                <div class="modal fade" id="cancelSubscriptionModal" tabindex="-1" role="dialog"
+                                    aria-labelledby="cancelSubscriptionModalLabel" aria-hidden="true">
+                                    <div class="modal-dialog" role="document">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="cancelSubscriptionModalLabel">Confirm
+                                                    Subscription Cancellation</h5>
+                                                <button type="button" class="close" data-dismiss="modal"
+                                                    aria-label="Close">
+                                                    <span aria-hidden="true">&times;</span>
+                                                </button>
+                                            </div>
+                                            <div class="modal-body">
+                                                Are you sure you want to cancel your subscription? This action cannot be
+                                                undone, and you will lose access to premium features.
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary"
+                                                    data-dismiss="modal">Close</button>
+                                                <form action="{{ route('payments.cancel-subscription') }}"
+                                                    method="POST">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-danger">Confirm
+                                                        Cancellation</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="col-md-6">
                                     <div class="card bg-light mb-3">
                                         <div class="card-header">
@@ -110,163 +117,171 @@
                                                     <p class="text-muted mb-2"><strong>Current Package:</strong></p>
                                                     <p class="mb-2">
                                                         {{ $currentPackage ?? 'No Package' }}
-                                                        @if($user->package)
-                                                            <span class="badge badge-secondary ml-2">
-                                                                ${{ number_format($user->package->price, 0) }}/{{ $user->package->duration }}
-                                                            </span>
+                                                        @if ($currentPackage && strtolower($currentPackage) === 'free')
+                                                            <span class="badge badge-secondary ml-2">Free Plan</span>
                                                         @endif
                                                     </p>
                                                     <p class="text-muted mb-2"><strong>Status:</strong></p>
-                                                    <span class="badge {{ $user->is_subscribed ? 'badge-success' : 'badge-warning' }} px-3 py-2">
-                                                        {{ $user->is_subscribed ? 'Active' : 'In Active' }}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    @if ($user->subscription_starts_at || $user->subscription_ends_at)
-                                    <div class="card bg-light">
-                                        <div class="card-header">
-                                            <h3 class="card-title">Subscription Period</h3>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="row">
-                                                <div class="col-12">
-                                                    @if ($user->subscription_starts_at)
-                                                        <p class="text-muted mb-2"><strong>Start Date:</strong></p>
-                                                        <p class="mb-2">{{ $user->subscription_starts_at->format('F j, Y') }}</p>
-                                                    @endif
-                                                    @if ($calculatedEndDate)
-                                                        <p class="text-muted mb-2"><strong>Calculated End Date:</strong></p>
-                                                        <p class="mb-2">{{ $calculatedEndDate->format('F j, Y') }}</p>
-                                                        
-                                                        @php
-                                                            $daysRemaining = now()->diffInDays($calculatedEndDate, false);
-                                                        @endphp
-                                                        
-                                                        @if($daysRemaining > 0)
-                                                            <p class="text-muted mb-2"><strong>Days Remaining:</strong></p>
-                                                            <span class="badge {{ $daysRemaining > 30 ? 'badge-success' : ($daysRemaining > 7 ? 'badge-warning' : 'badge-danger') }} px-3 py-2">
-                                                                {{ $daysRemaining }} days
-                                                            </span>
-                                                        @elseif($daysRemaining < 0)
-                                                            <span class="badge badge-danger px-3 py-2">
-                                                                Expired {{ abs($daysRemaining) }} days ago
-                                                            </span>
-                                                        @else
-                                                            <span class="badge badge-warning px-3 py-2">
-                                                                Expires today
-                                                            </span>
-                                                        @endif
+                                                    @if ($hasActiveSubscription)
+                                                        <span class="badge badge-success px-3 py-2">
+                                                            <i class="fas fa-check-circle"></i> Active
+                                                        </span>
+                                                    @elseif ($isExpired)
+                                                        <span class="badge badge-danger px-3 py-2">
+                                                            <i class="fas fa-times-circle"></i> Expired
+                                                        </span>
                                                     @else
-                                                        <p class="text-muted mb-2"><strong>Calculated End Date:</strong></p>
-                                                        <p class="mb-2">Not available</p>
+                                                        <span class="badge badge-warning px-3 py-2">
+                                                            <i class="fas fa-exclamation-circle"></i> Inactive
+                                                        </span>
                                                     @endif
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+                                    @if ($user->subscription_starts_at || $user->subscription_ends_at)
+                                        <div class="card bg-light">
+                                            <div class="card-header">
+                                                <h3 class="card-title">Subscription Period</h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col-12">
+                                                        @if ($user->subscription_starts_at)
+                                                            <p class="text-muted mb-2"><strong>Start Date:</strong></p>
+                                                            <p class="mb-2">
+                                                                {{ $user->subscription_starts_at->format('F j, Y') }}
+                                                            </p>
+                                                        @endif
+                                                        @if ($calculatedEndDate)
+                                                            <p class="text-muted mb-2"><strong>End Date:</strong></p>
+                                                            <p class="mb-2 {{ $isExpired ? 'text-danger' : '' }}">
+                                                                {{ $calculatedEndDate->format('F j, Y') }}
+                                                                @if ($isExpired)
+                                                                    <span
+                                                                        class="badge badge-danger ml-2">Expired</span>
+                                                                @elseif ($calculatedEndDate->diffInDays(now()) <= 7)
+                                                                    <span class="badge badge-warning ml-2">Expires
+                                                                        Soon</span>
+                                                                @endif
+                                                            </p>
+                                                            @if (!$isExpired && $calculatedEndDate)
+                                                                <p class="text-muted mb-2"><strong>Days
+                                                                        Remaining:</strong></p>
+                                                                <p class="mb-2">
+                                                                    {{ $calculatedEndDate->diffInDays(now()) }} days
+                                                                </p>
+                                                            @endif
+                                                        @else
+                                                            <p class="text-muted mb-2"><strong>End Date:</strong></p>
+                                                            <p class="mb-2">Not available</p>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     @endif
                                 </div>
-
                                 <div class="col-md-6">
                                     @if ($user->license_key)
-                                    <div class="card bg-light mb-3">
-                                        <div class="card-header">
-                                            <h3 class="card-title">License Information</h3>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="row">
-                                                <div class="col-12">
-                                                    <p class="text-muted mb-2"><strong>License Key:</strong></p>
-                                                    <div class="input-group">
-                                                        <input type="text" class="form-control" value="{{ $user->license_key }}" readonly id="licenseKey">
-                                                        <div class="input-group-append">
-                                                            <button class="btn btn-outline-secondary" type="button" onclick="copyLicenseKey()">
-                                                                <i class="fas fa-copy"></i> Copy
-                                                            </button>
+                                        <div class="card bg-light mb-3">
+                                            <div class="card-header">
+                                                <h3 class="card-title">License Information</h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col-12">
+                                                        <p class="text-muted mb-2"><strong>License Key:</strong></p>
+                                                        <div class="input-group">
+                                                            <input type="text" class="form-control"
+                                                                value="{{ $user->license_key }}" readonly
+                                                                id="licenseKey">
+                                                            <div class="input-group-append">
+                                                                <button class="btn btn-outline-secondary"
+                                                                    type="button"
+                                                                    onclick="copyToClipboard('licenseKey')">
+                                                                    <i class="fas fa-copy"></i>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
                                     @endif
 
-                                    <!-- Plan Change Options -->
-                                    @if($hasActiveSubscription && ($hasUpgrades || $hasDowngrades))
-                                    <div class="card bg-light mb-3">
-                                        <div class="card-header">
-                                            <h3 class="card-title">Plan Management</h3>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="row">
-                                                <div class="col-12">
-                                                    @if($hasUpgrades)
-                                                        <div class="mb-3">
-                                                            <h6 class="text-success"><i class="fas fa-arrow-up"></i> Upgrade Available</h6>
-                                                            <p class="text-muted small mb-2">Get access to higher-tier features and benefits.</p>
-                                                            <a href="{{ route('subscription.upgrade') }}" class="btn btn-success btn-sm">
-                                                                View Upgrade Options
-                                                            </a>
-                                                        </div>
-                                                    @endif
-                                                    
-                                                    @if($hasDowngrades)
-                                                        <div class="mb-3">
-                                                            <h6 class="text-warning"><i class="fas fa-arrow-down"></i> Downgrade Available</h6>
-                                                            <p class="text-muted small mb-2">Switch to a lower-cost plan. Changes typically take effect at the end of your current billing cycle.</p>
-                                                            <a href="{{ route('subscription.downgrade') }}" class="btn btn-warning btn-sm">
-                                                                View Downgrade Options
-                                                            </a>
-                                                        </div>
-                                                    @endif
-                                                </div>
+                                    {{-- Action Cards based on subscription status --}}
+                                    @if (!$hasActiveSubscription)
+                                        <div class="card bg-warning text-white mb-3">
+                                            <div class="card-header">
+                                                <h3 class="card-title">
+                                                    <i class="fas fa-shopping-cart"></i> Get Started
+                                                </h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <p>Choose from our available subscription plans to get started.</p>
+                                                <a href="{{ route('pricing') }}" class="btn btn-light">
+                                                    <i class="fas fa-eye"></i> View Plans
+                                                </a>
                                             </div>
                                         </div>
-                                    </div>
+                                    @elseif ($hasActiveSubscription && strtolower($currentPackage) === 'free')
+                                        <div class="card bg-info text-white mb-3">
+                                            <div class="card-header">
+                                                <h3 class="card-title">
+                                                    <i class="fas fa-star"></i> Upgrade to Premium
+                                                </h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <p>Unlock premium features with our paid plans.</p>
+                                                <a href="{{ route('pricing') }}" class="btn btn-light">
+                                                    <i class="fas fa-star"></i> View Premium Plans
+                                                </a>
+                                            </div>
+                                        </div>
                                     @endif
 
                                     @if ($user->orders->count() > 0)
-                                    <div class="card bg-light">
-                                        <div class="card-header">
-                                            <h3 class="card-title">Recent Order History</h3>
-                                        </div>
-                                        <div class="card-body">
-                                            <div class="table-responsive">
-                                                <table class="table table-hover table-sm">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Date</th>
-                                                            <th>Package</th>
-                                                            <th>Amount</th>
-                                                            <th>Status</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        @foreach($user->orders->take(5) as $order)
-                                                        <tr>
-                                                            <td>{{ $order->created_at->format('M j, Y') }}</td>
-                                                            <td>{{ $order->package->name ?? 'N/A' }}</td>
-                                                            <td>${{ number_format($order->amount, 2) }}</td>
-                                                            <td>
-                                                                <span class="badge {{ $order->status === 'completed' ? 'badge-success' : 'badge-warning' }}">
-                                                                    {{ ucfirst($order->status) }}
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                        @endforeach
-                                                    </tbody>
-                                                </table>
+                                        <div class="card bg-light">
+                                            <div class="card-header">
+                                                <h3 class="card-title">Order History</h3>
                                             </div>
-                                            @if($user->orders->count() > 5)
-                                                <div class="text-center mt-2">
-                                                    <small class="text-muted">Showing 5 most recent orders</small>
+                                            <div class="card-body">
+                                                <div class="table-responsive">
+                                                    <table class="table table-hover">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Date</th>
+                                                                <th>Package</th>
+                                                                <th>Amount</th>
+                                                                <th>Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach ($user->orders->sortByDesc('created_at')->take(5) as $order)
+                                                                <tr>
+                                                                    <td>{{ $order->created_at->format('M j, Y') }}</td>
+                                                                    <td>{{ $order->package->name }}</td>
+                                                                    <td>${{ number_format($order->amount, 2) }}</td>
+                                                                    <td>
+                                                                        <span
+                                                                            class="badge {{ $order->status === 'completed' ? 'badge-success' : 'badge-warning' }}">
+                                                                            {{ ucfirst($order->status) }}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            @endforeach
+                                                        </tbody>
+                                                    </table>
+                                                    @if ($user->orders->count() > 5)
+                                                        <p class="text-muted text-center mt-2">
+                                                            Showing latest 5 orders. <a href="#">View all
+                                                                orders</a>
+                                                        </p>
+                                                    @endif
                                                 </div>
-                                            @endif
+                                            </div>
                                         </div>
-                                    </div>
                                     @endif
                                 </div>
                             </div>
@@ -278,148 +293,69 @@
     </section>
     <!-- /.content -->
 </div>
-<!-- /.content-wrapper -->
 
+
+
+<!-- /.content-wrapper -->
 <!-- Control Sidebar -->
 <aside class="control-sidebar control-sidebar-dark">
     <!-- Control sidebar content goes here -->
 </aside>
 <!-- /.control-sidebar -->
+@include('dashboard.includes.footer')
+
+<!-- Hidden form for cancellation -->
+<form id="cancelSubscriptionForm" action="{{ route('payments.cancel-subscription') }}" method="POST" style="display: none;">
+    @csrf
+</form>
 
 <script>
-function copyLicenseKey() {
-    const licenseKeyInput = document.getElementById('licenseKey');
-    licenseKeyInput.select();
-    licenseKeyInput.setSelectionRange(0, 99999); // For mobile devices
-    
-    try {
-        document.execCommand('copy');
-        // Show success message
-        const button = event.target.closest('button');
-        const originalHTML = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
-        button.classList.remove('btn-outline-secondary');
-        button.classList.add('btn-success');
-        
-        setTimeout(() => {
-            button.innerHTML = originalHTML;
-            button.classList.remove('btn-success');
-            button.classList.add('btn-outline-secondary');
-        }, 2000);
-    } catch (err) {
-        console.error('Failed to copy license key: ', err);
-        // Use SweetAlert2 for error if available, otherwise native alert
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({
-                icon: 'error',
-                title: 'Copy Failed',
-                text: 'Failed to copy license key. Please try again.',
-                confirmButtonText: 'OK'
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text)
+            .then(() => {
+                alert('Text copied to clipboard!');
+            })
+            .catch(err => {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy text. Please try again.');
             });
-        } else {
-            alert('Failed to copy license key. Please try again.');
-        }
     }
-}
 
-document.addEventListener('DOMContentLoaded', function() {
-    const cancelButton = document.querySelector('.cancel-subscription-btn');
-    if (cancelButton) {
-        cancelButton.addEventListener('click', function() {
-            // Check if SweetAlert2 is loaded
-            if (typeof Swal === 'undefined') {
-                // Fallback to native confirm dialog
-                if (confirm('Are you sure you want to cancel your subscription? It will be canceled at the end of the current billing period, and you will retain access until then.')) {
-                    fetch('/api/payments/cancel-subscription', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': this.getAttribute('data-csrf-token'),
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        credentials: 'same-origin'
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            return response.json().then(err => {
-                                throw new Error(err.message || err.error || `HTTP ${response.status}: ${response.statusText}`);
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (!data.success) {
-                            throw new Error(data.message || data.error || 'Cancellation failed');
-                        }
-                        alert(data.message || 'Your subscription has been canceled successfully.');
-                        window.location.href = '/user/dashboard';
-                    })
-                    .catch(error => {
-                        console.error('Cancellation error:', error);
-                        alert(error.message || 'Failed to cancel subscription. Please try again or contact support.');
-                    });
-                }
-                return;
+    // Initialize SweetAlert for cancellation
+    document.getElementById('cancelSubscriptionBtn')?.addEventListener('click', function() {
+        Swal.fire({
+            title: 'Confirm Subscription Cancellation',
+            text: "Are you sure you want to cancel your subscription? This action cannot be undone, and you will lose access to premium features.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, cancel it!',
+            cancelButtonText: 'No, keep it',
+            reverseButtons: true,
+            showLoaderOnConfirm: true,
+            preConfirm: () => {
+                return new Promise((resolve) => {
+                    // Submit the form
+                    document.getElementById('cancelSubscriptionForm').submit();
+                });
+            },
+            allowOutsideClick: () => !Swal.isLoading()
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.fire({
+                    title: 'Canceling...',
+                    text: 'Your subscription is being canceled',
+                    timer: 2000,
+                    timerProgressBar: true,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
             }
-
-            // Use SweetAlert2 for confirmation
-            Swal.fire({
-                title: 'Are you sure you want to cancel your subscription?',
-                text: 'It will be canceled at the end of the current billing period, and you will retain access until then.',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#dc2626',
-                cancelButtonColor: '#6b7280',
-                confirmButtonText: 'Yes, cancel it!',
-                cancelButtonText: 'No, keep it'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    fetch('/api/payments/cancel-subscription', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': this.getAttribute('data-csrf-token'),
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        credentials: 'same-origin'
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            return response.json().then(err => {
-                                throw new Error(err.message || err.error || `HTTP ${response.status}: ${response.statusText}`);
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (!data.success) {
-                            throw new Error(data.message || data.error || 'Cancellation failed');
-                        }
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Subscription Canceled',
-                            text: data.message || 'Your subscription has been canceled successfully.',
-                            confirmButtonText: 'Go to Dashboard'
-                        }).then(() => {
-                            window.location.href = '/user/dashboard';
-                        });
-                    })
-                    .catch(error => {
-                        console.error('Cancellation error:', error);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Cancellation Failed',
-                            text: error.message || 'Failed to cancel subscription. Please try again or contact support.',
-                            confirmButtonText: 'OK'
-                        });
-                    });
-                }
-            });
         });
-    }
-});
+    });
 </script>
 
-@include('dashboard.includes.footer')
+<!-- Add SweetAlert CDN -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

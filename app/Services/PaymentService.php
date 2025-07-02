@@ -45,7 +45,7 @@ class PaymentService
             }
         }
 
-        $activeGateway = PaymentGateways::where('is_active', true)->first();
+        $activeGateway = PaymentGateways::where('is_active', true)->first(); dd($activeGateway);
         if (!$activeGateway) {
             throw new \Exception("No active payment gateway configured");
         }

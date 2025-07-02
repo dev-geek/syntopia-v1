@@ -1,4 +1,4 @@
-@if (session('success') || session('error') || session('warning') || session('info') || $errors->any())
+@if (session('success') || session('error') || session('warning') || session('info'))
     @push('scripts')
         <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
         <script>
