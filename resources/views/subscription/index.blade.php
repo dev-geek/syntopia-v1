@@ -97,7 +97,7 @@
                         .replace('-plan', '')
                         .replace(/^\w/, c => c.toUpperCase())
                         .trim() || '';
-                    subscriptionId = orderData.subscription || '';
+                    subscriptionId = orderData.groups[0].items[0].subscription || '';
                 }
 
                 if (!packageName && orderData && orderData.tags) {
@@ -119,7 +119,7 @@
                             break;
                         }
                     }
-                    subscriptionId = tags?.subscription_id || orderData.subscription || '';
+                    subscriptionId = orderData.groups[0].items[0].subscription || '';
                 }
 
                 if (!packageName) {
@@ -149,7 +149,7 @@
                     return;
                 }
 
-                if (!orderData || (!orderData.reference && !orderData.id)) {
+                if (!orderData || (!orderData.id)) {
                     console.log('No order data or cancelled payment');
                     showAlert('info', 'Payment Cancelled', 'Your payment was cancelled.', () => {
                         window.location.href = '/subscriptions';
@@ -194,13 +194,6 @@
                 paymentGatewayIdInput.name = 'payment_gateway_id';
                 paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
                 form.appendChild(paymentGatewayIdInput);
-                if (subscriptionId) {
-                    const subscriptionIdInput = document.createElement('input');
-                    subscriptionIdInput.type = 'hidden';
-                    subscriptionIdInput.name = 'subscription_id';
-                    subscriptionIdInput.value = subscriptionId;
-                    form.appendChild(subscriptionIdInput);
-                }
 
                 document.body.appendChild(form);
                 console.log('Submitting form with data:', {
@@ -209,7 +202,6 @@
                     orderId: orderId,
                     package_name: packageName,
                     payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
-                    subscription_id: subscriptionId
                 });
                 form.submit();
             } catch (err) {

@@ -204,7 +204,7 @@ class SubscriptionController extends Controller
             ? ($user->paymentGateway && $user->paymentGateway->is_active === 1
                 ? $user->paymentGateway
                 : null)
-            : PaymentGateways::where('is_active', true)->first(); dd($targetGateway);
+            : PaymentGateways::where('is_active', true)->first();
 
         if ($type === 'upgrade' && !$targetGateway) {
             return redirect()->route('user.dashboard')

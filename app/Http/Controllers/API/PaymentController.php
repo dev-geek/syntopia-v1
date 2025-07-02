@@ -22,13 +22,15 @@ class PaymentController extends Controller
             return response()->json(['error' => 'User not authenticated'], 401);
         }
 
-        $package = $user->package;
-        if (!$package) {
+        $package = ucfirst($packageName);
+
+        $packageData = Package::where('name', $package)->first();
+        if (!$packageData) {
             Log::error('Package not found', ['package_name' => $packageName]);
             return response()->json(['error' => 'Invalid package selected'], 400);
         }
 
-        return ['user' => $user, 'packageData' => $package];
+        return ['user' => $user, 'packageData' => $packageData];
     }
 
     private function getPaymentGatewayId($gatewayName)
@@ -83,7 +85,7 @@ class PaymentController extends Controller
         return $licenseKey;
     }
 
-    private function addLicenseToExternalAPI($user, $licenseKey, $subscriptionId = null)
+    private function addLicenseToExternalAPI($user, $licenseKey)
     {
         try {
             $tenantId = $user->tenant_id;
@@ -97,23 +99,17 @@ class PaymentController extends Controller
                 'subscriptionCode' => $licenseKey,
             ];
 
-            if ($subscriptionId) {
-                $payload['subscriptionId'] = $subscriptionId;
-            }
-
             $response = Http::post(config('payment.gateways.License API.endpoint'), $payload);
 
             if ($response->successful() && $response->json()['code'] === 200) {
                 $user->update([
-                    'license_key' => $licenseKey,
-                    'subscription_id' => $subscriptionId
+                    'license_key' => $licenseKey
                 ]);
 
                 Log::info('License added successfully via API', [
                     'user_id' => $user->id,
                     'tenant_id' => $tenantId,
-                    'license_key' => $licenseKey,
-                    'subscription_id' => $subscriptionId
+                    'license_key' => $licenseKey
                 ]);
                 return true;
             } else {
@@ -419,6 +415,45 @@ class PaymentController extends Controller
         }
     }
 
+    private function getSubscriptionId($orderId)
+    {
+        $response = Http::withBasicAuth(
+            config('payment.gateways.FastSpring.username'),
+            config('payment.gateways.FastSpring.password')
+        )->get("https://api.fastspring.com/orders/{$orderId}");
+
+        if ($response->failed()) {
+            Log::error('FastSpring order verification failed', [
+                'order_id' => $orderId,
+                'response' => $response->body(),
+            ]);
+            return response()->json(['error' => 'Order verification failed.'], 400);
+        }
+
+        $order = $response->json();
+        $subscriptionId = $validated['subscription_id'] ?? ($order['items'][0]['subscription'] ?? null);
+
+        if ($subscriptionId) {
+            $subscriptionResponse = Http::withBasicAuth(
+                config('payment.gateways.FastSpring.username'),
+                config('payment.gateways.FastSpring.password')
+            )->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
+
+            if ($subscriptionResponse->failed()) {
+                Log::error('FastSpring subscription verification failed', [
+                    'subscription_id' => $subscriptionId,
+                    'response' => $subscriptionResponse->body(),
+                ]);
+                return response()->json(['error' => 'Subscription verification failed.'], 400);
+            }
+
+            $subscription = $subscriptionResponse->json();
+            return $subscription;
+        } else {
+            return null;
+        }
+    }
+
     public function handleSuccess(Request $request)
     {
         Log::info('Payment success callback', [
@@ -436,7 +471,7 @@ class PaymentController extends Controller
                     'query' => $request->query(),
                     'url' => $request->fullUrl()
                 ]);
-                return redirect()->route('subscriptions.index')->with('error', 'Invalid payment gateway');
+                return redirect()->route('pricing')->with('error', 'Invalid payment gateway');
             }
 
             if ($request->query('popup') === 'true' || $request->input('popup') === 'true') {
@@ -448,7 +483,7 @@ class PaymentController extends Controller
                 $transactionId = $request->query('transaction_id') ?? $request->input('transaction_id');
                 if (!$transactionId) {
                     Log::error('Missing Paddle transaction_id', ['params' => $request->all()]);
-                    return redirect()->route('subscriptions.index')->with('error', 'Invalid payment request');
+                    return redirect()->route('pricing')->with('error', 'Invalid payment request');
                 }
 
                 $order = Order::where('transaction_id', $transactionId)->first();
@@ -467,7 +502,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'response' => $response->body()
                     ]);
-                    return redirect()->route('subscriptions.index')->with('error', 'Payment verification failed');
+                    return redirect()->route('pricing')->with('error', 'Payment verification failed');
                 }
 
                 $transactionData = $response->json()['data'];
@@ -477,10 +512,13 @@ class PaymentController extends Controller
             if ($gateway === 'fastspring') {
                 $orderId = $request->input('orderId') ?? $request->query('orderId');
                 $packageName = $request->input('package_name') ?? $request->query('package_name');
-                $subscriptionId = $request->input('subscription_id') ?? $request->query('subscription_id');
+
+                $subscriptionData = $this->getSubscriptionId($orderId); // Returns the array
+                $subscriptionId = $subscriptionData['id']; // "Z8EcHaV-Q5OgYy9f8Nx72w"
+
                 if (!$orderId) {
                     Log::error('Missing FastSpring orderId', ['params' => $request->all()]);
-                    return redirect()->route('subscriptions.index')->with('error', 'Invalid order ID');
+                    return redirect()->route('pricing')->with('error', 'Invalid order ID');
                 }
 
                 $order = Order::where('transaction_id', $orderId)->first();
@@ -495,39 +533,15 @@ class PaymentController extends Controller
                     config('payment.gateways.FastSpring.password')
                 )->get("https://api.fastspring.com/orders/{$orderId}");
 
-                if (!$response->successful() || $response->json()['result'] === 'error') {
-                    Log::info('Retrying FastSpring order verification with id instead of reference', ['order_id' => $orderId]);
-                    $response = Http::withBasicAuth(
-                        config('payment.gateways.FastSpring.username'),
-                        config('payment.gateways.FastSpring.password')
-                    )->get("https://api.fastspring.com/orders", ['reference' => $orderId]);
-                }
-
                 if (!$response->successful() || !$response->json()['orders'][0]['completed']) {
                     Log::error('FastSpring order verification failed', [
                         'order_id' => $orderId,
                         'response' => $response->body()
                     ]);
-                    return redirect()->route('subscriptions.index')->with('error', 'Order verification failed');
+                    return redirect()->route('pricing')->with('error', 'Order verification failed');
                 }
 
                 $orderData = $response->json()['orders'][0] ?? $response->json();
-                $subscriptionId = $subscriptionId ?: ($orderData['subscription'] ?? null);
-
-                // If subscription ID is still missing, fetch it explicitly
-                if (!$subscriptionId && $orderData['id']) {
-                    $subscriptionResponse = Http::withBasicAuth(
-                        config('payment.gateways.FastSpring.username'),
-                        config('payment.gateways.FastSpring.password')
-                    )->get("https://api.fastspring.com/orders/{$orderData['id']}/subscriptions");
-                    if ($subscriptionResponse->successful() && !empty($subscriptionResponse->json()['subscriptions'])) {
-                        $subscriptionId = $subscriptionResponse->json()['subscriptions'][0]['id'] ?? null;
-                        Log::info('Fetched subscription ID for order', [
-                            'order_id' => $orderId,
-                            'subscription_id' => $subscriptionId
-                        ]);
-                    }
-                }
 
                 return $this->processPayment(array_merge($orderData, [
                     'order_id' => $orderId,
@@ -548,13 +562,13 @@ class PaymentController extends Controller
                         'package' => $packageName,
                         'params' => $request->all()
                     ]);
-                    return redirect()->route('subscriptions.index')->with('error', 'Invalid payment parameters');
+                    return redirect()->route('pricing')->with('error', 'Invalid payment parameters');
                 }
 
                 $isVerified = $this->verifyPayProGlobalPayment($orderId, $orderId);
                 if (!$isVerified) {
                     Log::error('PayProGlobal payment verification failed', ['order_id' => $orderId]);
-                    return redirect()->route('subscriptions.index')->with('error', 'Payment verification failed');
+                    return redirect()->route('pricing')->with('error', 'Payment verification failed');
                 }
 
                 return $this->processPayment([
@@ -567,26 +581,27 @@ class PaymentController extends Controller
             }
 
             Log::error('Invalid gateway in success callback', ['gateway' => $gateway]);
-            return redirect()->route('subscriptions.index')->with('error', 'Invalid gateway');
+            return redirect()->route('pricing')->with('error', 'Invalid gateway');
         } catch (\Exception $e) {
             Log::error('Payment success processing failed', [
                 'error' => $e->getMessage(),
                 'params' => $request->all(),
                 'url' => $request->fullUrl()
             ]);
-            return redirect()->route('subscriptions.index')->with('error', 'Payment processing failed');
+            return redirect()->route('pricing')->with('error', 'Payment processing failed');
         }
     }
 
     private function processPayment($paymentData, $gateway)
     {
         return DB::transaction(function () use ($paymentData, $gateway) {
-            $userId = $paymentData['user_id'] ?? ($paymentData['custom_data']['user_id'] ?? null);
-            $packageName = $paymentData['package'] ?? ($paymentData['custom_data']['package'] ?? null);
-            $transactionId = $paymentData['order_id'] ?? ($paymentData['id'] ?? null);
-            $amount = $paymentData['amount'] ?? ($paymentData['total'] ?? ($paymentData['details']['totals']['total'] / 100 ?? 0));
+            $userId = Auth::user()->id ?? null;
+            $packageName = ucfirst($paymentData['package']) ?? (ucfirst($paymentData['custom_data']['package']) ?? null);
+            $transactionId = $paymentData['order'] ?? ($paymentData['id'] ?? null);
+            $amount = $paymentData['total'] ?? ($paymentData['items'][0]['subtotal'] / 100 ?? 0);
             $subscriptionId = $paymentData['subscription_id'] ?? null;
             $action = $paymentData['action'] ?? ($paymentData['custom_data']['action'] ?? 'new');
+            $currency = $paymentData['currency'] ?? 'USD';
 
             if (!$userId || !$packageName) {
                 Log::error('Missing payment data', [
@@ -612,16 +627,12 @@ class PaymentController extends Controller
             $orderData = [
                 'user_id' => $user->id,
                 'package_id' => $package->id,
-                'amount' => $amount ?: $package->price,
-                'currency' => $paymentData['currency'] ?? 'USD',
+                'amount' => $amount,
+                'currency' => $currency,
                 'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
                 'status' => 'completed',
                 'metadata' => $paymentData
             ];
-
-            if ($subscriptionId) {
-                $orderData['subscription_id'] = $subscriptionId;
-            }
 
             $order = Order::updateOrCreate(
                 ['transaction_id' => $transactionId],
@@ -780,27 +791,6 @@ class PaymentController extends Controller
         }
     }
 
-    public function handlePopupCancel()
-    {
-        Log::info('Popup cancel view returned');
-        return view('payment.popup-cancel');
-    }
-
-    public function handleCancel()
-    {
-        Log::info('Payment cancel callback', [
-            'params' => request()->all(),
-            'url' => request()->fullUrl()
-        ]);
-        return redirect()->route('subscriptions.index')->with('error', 'Payment cancelled');
-    }
-
-    public function verifyPayProGlobalPaymentStatus(Request $request, $paymentReference)
-    {
-        // Implement if needed
-        return response()->json(['status' => 'not_implemented'], 501);
-    }
-
     public function getOrdersList(Request $request)
     {
         $user = Auth::user();
@@ -823,13 +813,13 @@ class PaymentController extends Controller
             $user = Auth::user();
             if (!$user->is_subscribed || !$user->subscription_id) {
                 Log::error('User has no active subscription to cancel', ['user_id' => $user->id]);
-                return response()->json(['error' => 'No active subscription to cancel'], 400);
+                return redirect()->back()->with('error', 'No active subscription to cancel');
             }
 
             $gateway = $user->paymentGateway ? $user->paymentGateway->name : null;
             if (!$gateway) {
                 Log::error('No payment gateway associated with user', ['user_id' => $user->id]);
-                return response()->json(['error' => 'No payment gateway found'], 400);
+                return redirect()->back()->with('error', 'No payment gateway found');
             }
 
             $gateway = strtolower($gateway);
@@ -839,28 +829,59 @@ class PaymentController extends Controller
                 $response = Http::withBasicAuth(
                     config('payment.gateways.FastSpring.username'),
                     config('payment.gateways.FastSpring.password')
-                )->put("https://api.fastspring.com/subscriptions/{$subscriptionId}", [
-                    'status' => 'canceled'
-                ]);
+                )->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}");
 
-                if (!$response->successful() || $response->json()['status'] !== 'canceled') {
+                // Check HTTP status first
+                if (!$response->successful()) {
                     Log::error('FastSpring subscription cancellation failed', [
                         'user_id' => $user->id,
                         'subscription_id' => $subscriptionId,
-                        'response' => $response->body()
+                        'response' => $response->body(),
+                        'status' => $response->status()
                     ]);
-                    return response()->json(['error' => 'Failed to cancel subscription'], 500);
+                    return redirect()->back()->with('error', 'Failed to cancel subscription');
                 }
+
+                $responseData = $response->json();
+
+                // Validate response structure and success indicators
+                // if (!isset($responseData['subscriptions'][0]['action']) ||
+                //     !isset($responseData['subscriptions'][0]['result']) ||
+                //     $responseData['subscriptions'][0]['action'] !== 'subscription.cancel' ||
+                //     $responseData['subscriptions'][0]['result'] !== 'success') {
+                //     Log::error('FastSpring subscription cancellation invalid response', [
+                //         'user_id' => $user->id,
+                //         'subscription_id' => $subscriptionId,
+                //         'response' => $responseData
+                //     ]);
+                //     return redirect()->back()->with('error', 'Subscription cancellation did not confirm');
+                // }
+
+                // Update user subscription status
+                $user->update([
+                    'is_subscribed' => 0,
+                    'subscription_id' => null,
+                    'subscription_ends_at' => null,
+                    'subscription_starts_at' => null,
+                    'payment_gateway_id' => null,
+                    'package_id' => null,
+                ]);
+
+                // CORRECTED: Proper way to update the order status
+                Order::where('user_id', $user->id)
+                    ->where('subscription_id', $subscriptionId)
+                    ->update(['status' => 'canceled']);
 
                 Log::info('FastSpring subscription canceled', [
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId
                 ]);
-            } elseif ($gateway === 'paddle') {
+            }
+            elseif ($gateway === 'paddle') {
                 $apiKey = config('payment.gateways.Paddle.api_key');
                 $response = Http::withHeaders([
                     'Authorization' => 'Bearer ' . $apiKey
-                ])->post("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel");
+                ])->delete("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}");
 
                 if (!$response->successful() || $response->json()['data']['status'] !== 'canceled') {
                     Log::error('Paddle subscription cancellation failed', [
@@ -868,7 +889,7 @@ class PaymentController extends Controller
                         'subscription_id' => $subscriptionId,
                         'response' => $response->body()
                     ]);
-                    return response()->json(['error' => 'Failed to cancel subscription'], 500);
+                    return redirect()->back()->with('error', 'Failed to cancel subscription');
                 }
 
                 Log::info('Paddle subscription canceled', [
@@ -881,19 +902,19 @@ class PaymentController extends Controller
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId
                 ]);
-                return response()->json(['error' => 'Please contact support to cancel PayProGlobal subscription'], 400);
+                return redirect()->back()->with('error', 'Please contact support to cancel PayProGlobal subscription');
             } else {
                 Log::error('Unsupported payment gateway for cancellation', ['gateway' => $gateway, 'user_id' => $user->id]);
-                return response()->json(['error' => 'Unsupported payment gateway'], 400);
+                return redirect()->back()->with('error', 'Unsupported payment gateway');
             }
 
             // Update user and order records
             DB::transaction(function () use ($user, $subscriptionId) {
                 $user->update([
-                    'is_subscribed' => false,
+                    'is_subscribed' => 0,
                     'subscription_id' => null,
                     'subscription_ends_at' => now(),
-                    'license_key' => null,
+                    'subscription_starts_at' => null,
                     'package_id' => null,
                     'payment_gateway_id' => null
                 ]);
@@ -908,13 +929,28 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId
             ]);
 
-            return response()->json(['success' => true, 'message' => 'Subscription canceled successfully']);
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Subscription canceled successfully'
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Subscription canceled successfully');
         } catch (\Exception $e) {
             Log::error('Subscription cancellation error', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id()
             ]);
-            return response()->json(['error' => 'Cancellation failed', 'message' => $e->getMessage()], 500);
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Cancellation failed'
+                ], 500);
+            }
+
+            return redirect()->back()->with('error', 'Cancellation failed');
         }
     }
 }

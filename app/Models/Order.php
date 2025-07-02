@@ -28,6 +28,7 @@ class Order extends Model
         'amount',
         'transaction_id',
         'status',
+        'currency'
     ];
 
     /**

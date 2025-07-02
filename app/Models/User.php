@@ -38,6 +38,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'license_key',
         'is_subscribed',
         'tenant_id',
+        'subscription_id',
     ];
 
     protected $hidden = [

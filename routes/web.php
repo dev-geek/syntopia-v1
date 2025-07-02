@@ -76,26 +76,6 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/update-password', [ProfileController::class, 'updatePassword'])->name('update-password');
 
     // Subscription routes
-    Route::get('/subscriptions', function () {
-        $user = auth()->user();
-        $hasActiveSubscription = $user && $user->is_subscribed;
-        $canUpgrade = $hasActiveSubscription && $user->package && strtolower($user->package->name) !== 'enterprise'; // Example logic
-        $isExpired = $user && $user->subscription_ends_at && $user->subscription_ends_at->isPast();
-        $currentPackage = $user && $user->package ? $user->package->name : null;
-        $calculatedEndDate = $user && $user->subscription_ends_at ? $user->subscription_ends_at : null;
-        $packages = Package::all();
-
-        return view('subscription.index', [
-            'hasActiveSubscription' => $hasActiveSubscription,
-            'packages' => $packages,
-            'canUpgrade' => $canUpgrade,
-            'isExpired' => $isExpired,
-            'currentPackage' => $currentPackage,
-            'calculatedEndDate' => $calculatedEndDate,
-            'user' => $user,
-            'activeGateway' => $user && $user->paymentGateway ? $user->paymentGateway : null,
-        ]);
-    })->name('subscriptions.index');
     Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
 
     // Orders

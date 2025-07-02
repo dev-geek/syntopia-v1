@@ -46,7 +46,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             ->middleware('throttle:10,1');
 
         Route::post('/cancel', [PaymentController::class, 'cancelSubscription'])
-            ->name('cancel_subscription')
+            ->name('cancel-subscription')
             ->middleware('throttle:10,1');
     });
 
