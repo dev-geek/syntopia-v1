@@ -144,11 +144,15 @@ class VerificationController extends Controller
                 'adminName' => $user->name,
                 'adminEmail' => $user->email,
                 'adminPassword' => $plainPassword,
-                'appIds' => [2],
+                'appIds' => [1],
             ]);
 
             if ($response->successful()) {
-                return $response->json(); // ✅ Return the actual response data
+                Log::info('Xiaoice API call successful', [
+                    'user_id' => $user->id,
+                    'response' => $response->json()
+                ]);
+                return $response->json(); 
             }
 
             // Log error if not successful

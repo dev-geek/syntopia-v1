@@ -106,7 +106,7 @@
                     $('.toggle-status').not('[data-id="' + gatewayId + '"]').prop('checked', false);
                     $('.form-check-label').each(function() {
                         $(this).text($(this).siblings('.toggle-status').is(':checked') ?
-                            'Active' : 'Inactive');
+                            'Active' : 'In Active');
                     });
                 } else {
                     alert('Failed to update status');

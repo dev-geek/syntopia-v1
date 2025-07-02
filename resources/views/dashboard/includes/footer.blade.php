@@ -46,5 +46,6 @@
         <script src="{{ asset('dist/js/demo.js') }}"></script>
         <!-- AdminLTE dashboard demo (This is only for demo purposes) -->
         <script src="{{ asset('dist/js/pages/dashboard2.js') }}"></script>
-
- 
+        
+        <!-- SweetAlert2 -->
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
