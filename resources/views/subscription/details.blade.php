@@ -26,9 +26,9 @@
 
                             <div class="float-right">
                                 @if ($hasActiveSubscription && $canUpgrade)
-                                    <a class="btn btn-primary"
-                                        href="{{ route('pricing', ['type' => 'downgrade']) }}">Downgrade
-                                        Subscription</a>
+                                <a class="btn btn-success"
+                                        href="{{ route('pricing', ['type' => 'upgrade']) }}">Upgrade Subscription</a>
+
                                     <button class="btn btn-danger" id="cancelSubscriptionBtn">
                                         Cancel Subscription
                                     </button>

@@ -267,7 +267,7 @@
                     class="logo">
                 <h2>Welcome to Syntopia</h2>
                 <p>Use your <strong>work email</strong> for a better experience</p>
-                <form method="POST" action="{{ route('login.user') }}" id="loginForm">
+                <form method="POST" action="{{ route('login') }}" id="loginForm">
                     @csrf
                     <div class="input-field">
                         <label for="work-email">Work email</label>

@@ -22,29 +22,32 @@
 
     <!-- Payment Gateway Scripts -->
     @php
-        $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
+    $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
     @endphp
     @if (in_array('FastSpring', $activeGateways))
-        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
-            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+    <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+        data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('Pay Pro Global', $activeGateways))
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
     <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
         data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-        data-data-callback="handleFastSpringSuccess" data-debug="true"></script>
+        data-debug="true"></script>
     <script>
         let currentProductPath = '';
 
         function processFastSpring(packageName, action = 'new') {
-            console.log('=== processFastSpring ===', { packageName, action });
+            console.log('=== processFastSpring ===', {
+                packageName,
+                action
+            });
             try {
                 if (typeof fastspring === 'undefined' || !fastspring.builder) {
                     throw new Error('FastSpring is not properly initialized');
@@ -214,33 +217,36 @@
             }
         }
     </script>
-@endif
+    @endif
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                try {
-                    Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
-                    Paddle.Setup({
-                        token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
-                    });
-                } catch (error) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Payment System Error',
-                        text: 'We cannot process payments at this moment.',
-                        confirmButtonText: 'OK'
-                    });
-                }
-            });
-        </script>
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                Paddle.Environment.set('{{ config('
+                    payment.gateways.Paddle.environment ', '
+                    sandbox ') }}');
+                Paddle.Setup({
+                    token: '{{ config('
+                    payment.gateways.Paddle.client_side_token ') }}',
+                });
+            } catch (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Payment System Error',
+                    text: 'We cannot process payments at this moment.',
+                    confirmButtonText: 'OK'
+                });
+            }
+        });
+    </script>
     @endif
 
     <!-- PayProGlobal Integration -->
     @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
-        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <style>
@@ -677,61 +683,61 @@
             @include('components.alert-messages')
             <h2 class="section-title">
                 @if (isset($isUpgrade) && $isUpgrade)
-                    Upgrade Your Subscription
+                Upgrade Your Subscription
                 @elseif (isset($pageType) && $pageType === 'downgrade')
-                    Downgrade Your Subscription
+                Downgrade Your Subscription
                 @else
-                    Plans For Every Type of Business
+                Plans For Every Type of Business
                 @endif
             </h2>
             <p class="section-subtitle">
                 @if (isset($isUpgrade) && $isUpgrade)
-                    Choose a higher-tier plan to unlock more features. Your current subscription will be prorated.
+                Choose a higher-tier plan to unlock more features. Your current subscription will be prorated.
                 @elseif (isset($pageType) && $pageType === 'downgrade')
-                    Select a lower-tier plan. The change will take effect at the end of your current billing cycle.
+                Select a lower-tier plan. The change will take effect at the end of your current billing cycle.
                 @else
-                    SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
-                    individuals connect with their audiences.
+                SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
+                individuals connect with their audiences.
                 @endif
             </p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
-                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
-                        <h3>{{ $package->name }}</h3>
-                        <p class="price">${{ number_format($package->price, 0) }} <span
-                                class="per-month">/{{ $package->duration }}</span></p>
+                <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                    <h3>{{ $package->name }}</h3>
+                    <p class="price">${{ number_format($package->price, 0) }} <span
+                            class="per-month">/{{ $package->duration }}</span></p>
 
-                        <button class="btn {{ $currentPackage == $package->name ? 'active' : 'dark' }} checkout-button"
-                            data-package="{{ $package->name }}"
-                            data-action="{{ $currentPackage == $package->name ? 'current' : (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice ? 'upgrade' : (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice ? 'downgrade' : 'new')) }}"
-                            {{ $currentPackage == $package->name || (isset($isUpgrade) && $isUpgrade && $package->price <= $currentPackagePrice && $package->name !== 'Enterprise') || (isset($pageType) && $pageType === 'downgrade' && $package->price >= $currentPackagePrice && $package->name !== 'Enterprise') ? 'disabled' : '' }}>
-                            @if ($package->name == 'Enterprise')
-                                Get in Touch
-                            @elseif ($currentPackage == $package->name)
-                                ✓ Current Plan
-                            @elseif (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice)
-                                Upgrade to {{ $package->name }}
-                            @elseif (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice)
-                                Downgrade to {{ $package->name }}
+                    <button class="btn {{ $currentPackage == $package->name ? 'active' : 'dark' }} checkout-button"
+                        data-package="{{ $package->name }}"
+                        data-action="{{ $currentPackage == $package->name ? 'current' : (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice ? 'upgrade' : (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice ? 'downgrade' : 'new')) }}"
+                        {{ $currentPackage == $package->name || (isset($isUpgrade) && $isUpgrade && $package->price <= $currentPackagePrice && $package->name !== 'Enterprise') || (isset($pageType) && $pageType === 'downgrade' && $package->price >= $currentPackagePrice && $package->name !== 'Enterprise') ? 'disabled' : '' }}>
+                        @if ($package->name == 'Enterprise')
+                        Get in Touch
+                        @elseif ($currentPackage == $package->name)
+                        ✓ Current Plan
+                        @elseif (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice)
+                        Upgrade to {{ $package->name }}
+                        @elseif (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice)
+                            Downgrade to {{ $package->name }}
                             @else
-                                Get Started
+                            Get Started
                             @endif
-                        </button>
+                            </button>
 
-                        <p class="included-title">What's included</p>
-                        <ul class="features">
-                            @foreach ($package->features as $feature)
+                            <p class="included-title">What's included</p>
+                            <ul class="features">
+                                @foreach ($package->features as $feature)
                                 <li><span class="icon"></span> {{ $feature }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
+                                @endforeach
+                            </ul>
+                </div>
                 @endforeach
             </div>
             @if (isset($hasActiveSubscription) && $hasActiveSubscription)
-                <div class="cancel-section">
-                    <p>Want to cancel your current subscription?</p>
-                    <button class="btn cancel" id="cancel-subscription">Cancel Subscription</button>
-                </div>
+            <div class="cancel-section">
+                <p>Want to cancel your current subscription?</p>
+                <button class="btn cancel" id="cancel-subscription">Cancel Subscription</button>
+            </div>
             @endif
         </div>
     </div>
@@ -740,7 +746,6 @@
         Having trouble? Contact us at
         <a href="mailto:support@syntopia.ai">support@syntopia.ai</a>
     </footer>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const currentPackage = "{{ $currentPackage ?? '' }}";
@@ -764,7 +769,8 @@
 
             let selectedGateway = isUpgrade === 'true' && userOriginalGateway ?
                 userOriginalGateway :
-                activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null; console.log('Selected gateway:', selectedGateway);
+                activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null;
+            console.log('Selected gateway:', selectedGateway);
 
             console.log(`[${isUpgrade === 'true' ? 'UPGRADE' : pageType.toUpperCase()}] Using gateway:`,
                 selectedGateway);
@@ -821,91 +827,95 @@
             }
 
             function showConfirmation(packageName, action, gateway) {
-            const title = action === 'upgrade' ? 'Confirm Upgrade' : 'Confirm Downgrade';
-            const text = action === 'upgrade' ?
-                `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be prorated.` :
-                `You're about to downgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. The change will take effect at the end of your current billing cycle.`;
-            Swal.fire({
-                title: title,
-                html: text,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: `Proceed with ${action.charAt(0).toUpperCase() + action.slice(1)}`,
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#5b0dd5'
-            }).then(result => {
-                if (result.isConfirmed) {
-                    executeCheckout(packageName, action);
-                }
-            });
-        }
-
-        function executeCheckout(packageName, action) {
-            console.log('=== EXECUTING CHECKOUT ===', { packageName, action, selectedGateway });
-            let apiUrl;
-            if (action === 'upgrade') {
-                apiUrl = `/api/payments/upgrade/${packageName}`;
-            } else if (action === 'downgrade') {
-                apiUrl = `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
-            } else {
-                apiUrl = `/api/payments/${selectedGateway.toLowerCase().replace(' ', '')}/checkout/${packageName}`;
+                const title = action === 'upgrade' ? 'Confirm Upgrade' : 'Confirm Downgrade';
+                const text = action === 'upgrade' ?
+                    `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be prorated.` :
+                    `You're about to downgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. The change will take effect at the end of your current billing cycle.`;
+                Swal.fire({
+                    title: title,
+                    html: text,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: `Proceed with ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#5b0dd5'
+                }).then(result => {
+                    if (result.isConfirmed) {
+                        executeCheckout(packageName, action);
+                    }
+                });
             }
 
-            const requestBody = {
-                package: packageName,
-                is_upgrade: action === 'upgrade',
-                is_downgrade: action === 'downgrade'
-            };
+            function executeCheckout(packageName, action) {
+                console.log('=== EXECUTING CHECKOUT ===', {
+                    packageName,
+                    action,
+                    selectedGateway
+                });
+                let apiUrl;
+                if (action === 'upgrade') {
+                    apiUrl = `/api/payments/upgrade/${packageName}`;
+                } else if (action === 'downgrade') {
+                    apiUrl = `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
+                } else {
+                    apiUrl = `/api/payments/${selectedGateway.toLowerCase().replace(' ', '')}/checkout/${packageName}`;
+                }
 
-            fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
-                    'X-Is-Downgrade': action === 'downgrade' ? 'false' : 'false'
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify(requestBody)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(data => {
-                        throw new Error(data.error || `HTTP ${response.status}`);
+                const requestBody = {
+                    package: packageName,
+                    is_upgrade: action === 'upgrade',
+                    is_downgrade: action === 'downgrade'
+                };
+
+                fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
+                            'X-Is-Downgrade': action === 'downgrade' ? 'false' : 'false'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(requestBody)
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                throw new Error(data.error || `HTTP ${response.status}`);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data.success || !data.checkout_url) {
+                            throw new Error(data.error || 'No checkout URL received');
+                        }
+                        console.log('Checkout URL received:', data.checkout_url);
+                        if (selectedGateway === 'FastSpring') {
+                            processFastSpring(packageName, action);
+                        } else if (selectedGateway === 'Paddle') {
+                            Paddle.Checkout.open({
+                                transactionId: data.transaction_id,
+                                eventCallback: eventData => handlePaddleEvent(eventData, action)
+                            });
+                        } else if (selectedGateway === 'Pay Pro Global') {
+                            const popup = window.open(
+                                data.checkout_url,
+                                action === 'upgrade' ? 'PayProGlobal Upgrade' : action === 'downgrade' ? 'PayProGlobal Downgrade' : 'PayProGlobal Checkout',
+                                'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
+                            );
+                            if (!popup) {
+                                showError('Popup Blocked', 'Please allow popups for this site.');
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error(`${action.charAt(0).toUpperCase() + action.slice(1)} error:`, error);
+                        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
                     });
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (!data.success || !data.checkout_url) {
-                    throw new Error(data.error || 'No checkout URL received');
-                }
-                console.log('Checkout URL received:', data.checkout_url);
-                if (selectedGateway === 'FastSpring') {
-                    processFastSpring(packageName, action);
-                } else if (selectedGateway === 'Paddle') {
-                    Paddle.Checkout.open({
-                        transactionId: data.transaction_id,
-                        eventCallback: eventData => handlePaddleEvent(eventData, action)
-                    });
-                } else if (selectedGateway === 'Pay Pro Global') {
-                    const popup = window.open(
-                        data.checkout_url,
-                        action === 'upgrade' ? 'PayProGlobal Upgrade' : action === 'downgrade' ? 'PayProGlobal Downgrade' : 'PayProGlobal Checkout',
-                        'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
-                    );
-                    if (!popup) {
-                        showError('Popup Blocked', 'Please allow popups for this site.');
-                    }
-                }
-            })
-            .catch(error => {
-                console.error(`${action.charAt(0).toUpperCase() + action.slice(1)} error:`, error);
-                showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
-            });
-        }
+            }
 
             function processPaddle(packageName, action) {
                 console.log('=== PADDLE PROCESSING ===', {
@@ -1056,7 +1066,7 @@
                                 if (!response.ok) {
                                     return response.json().then(data => {
                                         throw new Error(data.error ||
-                                        `HTTP ${response.status}`);
+                                            `HTTP ${response.status}`);
                                     });
                                 }
                                 return response.json();

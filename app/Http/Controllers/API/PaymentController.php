@@ -417,6 +417,7 @@ class PaymentController extends Controller
 
     private function getSubscriptionId($orderId)
     {
+        // Fetch order details
         $response = Http::withBasicAuth(
             config('payment.gateways.FastSpring.username'),
             config('payment.gateways.FastSpring.password')
@@ -427,31 +428,31 @@ class PaymentController extends Controller
                 'order_id' => $orderId,
                 'response' => $response->body(),
             ]);
-            return response()->json(['error' => 'Order verification failed.'], 400);
+            return ['error' => 'Order verification failed.']; // Return array instead of JsonResponse
         }
 
         $order = $response->json();
-        $subscriptionId = $validated['subscription_id'] ?? ($order['items'][0]['subscription'] ?? null);
+        $subscriptionId = $order['items'][0]['subscription'] ?? null; // Fixed typo: $validated → $order
 
-        if ($subscriptionId) {
-            $subscriptionResponse = Http::withBasicAuth(
-                config('payment.gateways.FastSpring.username'),
-                config('payment.gateways.FastSpring.password')
-            )->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
-
-            if ($subscriptionResponse->failed()) {
-                Log::error('FastSpring subscription verification failed', [
-                    'subscription_id' => $subscriptionId,
-                    'response' => $subscriptionResponse->body(),
-                ]);
-                return response()->json(['error' => 'Subscription verification failed.'], 400);
-            }
-
-            $subscription = $subscriptionResponse->json();
-            return $subscription;
-        } else {
-            return null;
+        if (!$subscriptionId) {
+            return ['error' => 'No subscription found for this order.']; // Error array
         }
+
+        // Fetch subscription details
+        $subscriptionResponse = Http::withBasicAuth(
+            config('payment.gateways.FastSpring.username'),
+            config('payment.gateways.FastSpring.password')
+        )->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
+
+        if ($subscriptionResponse->failed()) {
+            Log::error('FastSpring subscription verification failed', [
+                'subscription_id' => $subscriptionId,
+                'response' => $subscriptionResponse->body(),
+            ]);
+            return ['error' => 'Subscription verification failed.']; // Error array
+        }
+
+        return $subscriptionResponse->json(); // Success: subscription array
     }
 
     public function handleSuccess(Request $request)
@@ -514,7 +515,14 @@ class PaymentController extends Controller
                 $packageName = $request->input('package_name') ?? $request->query('package_name');
 
                 $subscriptionData = $this->getSubscriptionId($orderId); // Returns the array
-                $subscriptionId = $subscriptionData['id']; // "Z8EcHaV-Q5OgYy9f8Nx72w"
+                // Handle errors from getSubscriptionId
+                if (isset($subscriptionData['error'])) {
+                    Log::error('FastSpring Error: ' . $subscriptionData['error']);
+                    return redirect()->route('pricing')->with('error', $subscriptionData['error']);
+                }
+
+                // Proceed if successfull
+                $subscriptionId = $subscriptionData['id'];
 
                 if (!$orderId) {
                     Log::error('Missing FastSpring orderId', ['params' => $request->all()]);
@@ -876,8 +884,7 @@ class PaymentController extends Controller
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId
                 ]);
-            }
-            elseif ($gateway === 'paddle') {
+            } elseif ($gateway === 'paddle') {
                 $apiKey = config('payment.gateways.Paddle.api_key');
                 $response = Http::withHeaders([
                     'Authorization' => 'Bearer ' . $apiKey
