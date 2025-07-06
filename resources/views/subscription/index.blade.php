@@ -417,12 +417,6 @@
                                     type: 'checkout.failed',
                                     data: event.data.callback_data
                                 }, currentAction);
-                            } else if (event.data.event_name === 'checkout.closed') {
-                                console.log('Processing checkout.closed event');
-                                window.handlePaddleEvent({
-                                    type: 'checkout.closed',
-                                    data: event.data.callback_data
-                                }, currentAction);
                             }
                         }
                     }
