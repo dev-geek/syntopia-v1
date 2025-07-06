@@ -39,8 +39,11 @@ class PaddleClient
     public function cancelSubscription(string $subscriptionId)
     {
         return Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->apiKey
-        ])->post("https://api.paddle.com/subscriptions/{$subscriptionId}/cancel");
+            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Content-Type' => 'application/json'
+        ])->post("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel", [
+            'effective_from' => 'immediately'
+        ]);
     }
 }
 

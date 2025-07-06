@@ -134,7 +134,8 @@ class PaymentController extends Controller
     Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
     try {
-        $validation = $this->validatePackageAndGetUser($package);
+        $processedPackage = str_replace('-plan', '', strtolower($package));
+        $validation = $this->validatePackageAndGetUser($processedPackage);
         if (!is_array($validation)) {
             return $validation;
         }
@@ -202,7 +203,8 @@ class PaymentController extends Controller
             ],
             'checkout' => [
                 'settings' => ['display_mode' => 'overlay'],
-                'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']) // Removed popup=true
+                'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']),
+                'cancel_url' => route('payments.popup-cancel')
             ]
         ];
 
@@ -215,17 +217,6 @@ class PaymentController extends Controller
         }
 
         $transaction = $response->json()['data'];
-
-        $order = Order::create([
-            'user_id' => $user->id,
-            'package_id' => $packageData->id,
-            'amount' => $transaction['details']['totals']['total'] / 100,
-            'currency' => $transaction['currency_code'],
-            'transaction_id' => $transaction['id'],
-            'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
-            'status' => 'pending',
-            'metadata' => ['checkout_url' => $transaction['checkout']['url']]
-        ]);
 
         Log::info('Paddle checkout created', [
             'user_id' => $user->id,
@@ -456,11 +447,13 @@ class PaymentController extends Controller
 
     public function handleSuccess(Request $request)
     {
-        Log::info('Payment success callback', [
+        Log::info('=== PAYMENT SUCCESS CALLBACK STARTED ===', [
             'params' => $request->all(),
             'query' => $request->query(),
             'method' => $request->method(),
-            'url' => $request->fullUrl()
+            'url' => $request->fullUrl(),
+            'user_agent' => $request->header('User-Agent'),
+            'referer' => $request->header('Referer')
         ]);
 
         try {
@@ -480,11 +473,30 @@ class PaymentController extends Controller
             }
 
             if ($gateway === 'paddle') {
+                Log::info('=== PROCESSING PADDLE SUCCESS CALLBACK ===', [
+                    'gateway' => $gateway,
+                    'all_params' => $request->all(),
+                    'query_params' => $request->query(),
+                    'input_params' => $request->input()
+                ]);
+
                 $transactionId = $request->query('transaction_id') ?? $request->input('transaction_id');
+                Log::info('Extracted transaction ID from request', [
+                    'transaction_id' => $transactionId,
+                    'from_query' => $request->query('transaction_id'),
+                    'from_input' => $request->input('transaction_id')
+                ]);
+
                 if (!$transactionId) {
                     Log::error('Missing Paddle transaction_id', ['params' => $request->all()]);
                     return redirect()->route('pricing')->with('error', 'Invalid payment request');
                 }
+
+                Log::info('Processing Paddle success callback', [
+                    'transaction_id' => $transactionId,
+                    'user_authenticated' => Auth::check(),
+                    'user_id' => Auth::id()
+                ]);
 
                 $order = Order::where('transaction_id', $transactionId)->first();
                 if ($order && $order->status === 'completed') {
@@ -506,8 +518,48 @@ class PaymentController extends Controller
                 }
 
                 $transactionData = $response->json()['data'];
-                // Process the payment and redirect to dashboard
-                return $this->processPayment($transactionData, 'paddle');
+                $customData = $transactionData['custom_data'] ?? [];
+                $userId = $customData['user_id'] ?? null;
+
+                if (!$userId) {
+                    Log::error('No user_id in Paddle transaction custom_data', [
+                        'transaction_id' => $transactionId,
+                        'custom_data' => $customData
+                    ]);
+                    return redirect()->route('pricing')->with('error', 'Invalid transaction data');
+                }
+
+                Log::info('Processing Paddle payment with user_id from custom_data', [
+                    'transaction_id' => $transactionId,
+                    'user_id' => $userId,
+                    'custom_data' => $customData
+                ]);
+
+                // Process the payment using the webhook method since we have the user_id
+                $packageName = $customData['package'] ?? null;
+                if (!$packageName) {
+                    Log::error('No package name in Paddle transaction custom_data', [
+                        'transaction_id' => $transactionId,
+                        'custom_data' => $customData
+                    ]);
+                    return redirect()->route('pricing')->with('error', 'Invalid transaction data');
+                }
+
+                $result = $this->processPaddlePaymentFromWebhook($transactionData, $packageName, $userId);
+
+                if ($result) {
+                    Log::info('Paddle payment processed successfully via success callback', [
+                        'transaction_id' => $transactionId,
+                        'user_id' => $userId
+                    ]);
+                    return redirect()->route('user.dashboard')->with('success', 'Subscription activated');
+                } else {
+                    Log::error('Failed to process Paddle payment via success callback', [
+                        'transaction_id' => $transactionId,
+                        'user_id' => $userId
+                    ]);
+                    return redirect()->route('pricing')->with('error', 'Payment processing failed');
+                }
             }
 
             if ($gateway === 'fastspring') {
@@ -611,6 +663,17 @@ class PaymentController extends Controller
             $action = $paymentData['action'] ?? ($paymentData['custom_data']['action'] ?? 'new');
             $currency = $paymentData['currency'] ?? 'USD';
 
+            Log::info('=== PROCESSING PAYMENT ===', [
+                'user_id' => $userId,
+                'package_name' => $packageName,
+                'transaction_id' => $transactionId,
+                'amount' => $amount,
+                'subscription_id' => $subscriptionId,
+                'action' => $action,
+                'gateway' => $gateway,
+                'payment_data' => $paymentData
+            ]);
+
             if (!$userId || !$packageName) {
                 Log::error('Missing payment data', [
                     'user_id' => $userId,
@@ -632,6 +695,13 @@ class PaymentController extends Controller
                 throw new \Exception('Invalid payment data');
             }
 
+            Log::info('Found user and package', [
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+                'package_id' => $package->id,
+                'package_name' => $package->name
+            ]);
+
             $orderData = [
                 'user_id' => $user->id,
                 'package_id' => $package->id,
@@ -642,43 +712,108 @@ class PaymentController extends Controller
                 'metadata' => $paymentData
             ];
 
+            Log::info('Creating/updating order', [
+                'transaction_id' => $transactionId,
+                'order_data' => $orderData
+            ]);
+
             $order = Order::updateOrCreate(
                 ['transaction_id' => $transactionId],
                 $orderData
             );
 
+            Log::info('Order created/updated successfully', [
+                'order_id' => $order->id,
+                'transaction_id' => $transactionId,
+                'order_status' => $order->status,
+                'order_amount' => $order->amount
+            ]);
+
             if (!$user->license_key || $action === 'upgrade') {
+                Log::info('Generating license key', [
+                    'user_id' => $user->id,
+                    'has_existing_license' => !empty($user->license_key),
+                    'action' => $action
+                ]);
+
                 $licenseKey = $this->makeLicense($user);
                 if (!$licenseKey) {
                     Log::error('Failed to generate license key', ['user_id' => $user->id]);
                     throw new \Exception('License generation failed');
                 }
-                $user->update([
+
+                Log::info('License key generated', [
+                    'user_id' => $user->id,
+                    'license_key' => $licenseKey
+                ]);
+
+                $userUpdateData = [
                     'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
                     'package_id' => $package->id,
                     'subscription_starts_at' => now(),
                     'license_key' => $licenseKey,
                     'is_subscribed' => true,
                     'subscription_id' => $subscriptionId
+                ];
+
+                Log::info('Updating user with license', [
+                    'user_id' => $user->id,
+                    'update_data' => $userUpdateData
                 ]);
+
+                $user->update($userUpdateData);
+
+                Log::info('User updated successfully with license', [
+                    'user_id' => $user->id,
+                    'is_subscribed' => $user->is_subscribed,
+                    'package_id' => $user->package_id,
+                    'subscription_id' => $user->subscription_id,
+                    'license_key' => $user->license_key
+                ]);
+
                 $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
             } else {
-                $user->update([
+                $userUpdateData = [
                     'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
                     'package_id' => $package->id,
                     'subscription_starts_at' => now(),
                     'is_subscribed' => true,
                     'subscription_id' => $subscriptionId
+                ];
+
+                Log::info('Updating user without license (existing license)', [
+                    'user_id' => $user->id,
+                    'update_data' => $userUpdateData
+                ]);
+
+                $user->update($userUpdateData);
+
+                Log::info('User updated successfully without license', [
+                    'user_id' => $user->id,
+                    'is_subscribed' => $user->is_subscribed,
+                    'package_id' => $user->package_id,
+                    'subscription_id' => $user->subscription_id
                 ]);
             }
 
-            Log::info('Payment processed successfully', [
+            Log::info('=== PAYMENT PROCESSING COMPLETED ===', [
                 'gateway' => $gateway,
                 'transaction_id' => $transactionId,
                 'user_id' => $user->id,
                 'order_id' => $order->id,
                 'subscription_id' => $subscriptionId,
-                'action' => $action
+                'action' => $action,
+                'final_user_status' => [
+                    'is_subscribed' => $user->is_subscribed,
+                    'package_id' => $user->package_id,
+                    'subscription_id' => $user->subscription_id,
+                    'payment_gateway_id' => $user->payment_gateway_id
+                ],
+                'final_order_status' => [
+                    'order_id' => $order->id,
+                    'status' => $order->status,
+                    'amount' => $order->amount
+                ]
             ]);
 
             return redirect()->route('user.dashboard')->with('success', $action === 'upgrade' ? 'Subscription upgraded' : 'Subscription activated');
@@ -722,39 +857,57 @@ class PaymentController extends Controller
     }
 
     public function handlePaddleWebhook(Request $request)
-{
-    try {
-        $payload = $request->all();
-        Log::info('Paddle webhook received', ['payload' => $payload]);
+    {
+        try {
+            $payload = $request->all();
+            Log::info('Paddle webhook received', ['payload' => $payload]);
 
-        // Verify webhook signature
-        $publicKey = config('payment.gateways.Paddle.public_key');
-        $signature = base64_decode($payload['p_signature'] ?? '');
-        $fields = $payload;
-        unset($fields['p_signature']);
-        ksort($fields);
-        $dataToVerify = serialize($fields);
-        $verified = openssl_verify($dataToVerify, $signature, $publicKey, OPENSSL_ALGO_SHA1);
+            $eventType = $payload['event_type'] ?? null;
+            $eventData = $payload['data'] ?? [];
 
-        if ($verified !== 1) {
-            Log::error('Invalid Paddle webhook signature', ['payload' => $payload]);
-            return response()->json(['error' => 'Invalid signature'], 401);
+            if (!$eventType) {
+                Log::error('No event type in Paddle webhook', ['payload' => $payload]);
+                return response()->json(['error' => 'Invalid webhook payload'], 400);
+            }
+
+            // Verify webhook signature (optional but recommended)
+            if (config('payment.gateways.Paddle.webhook_secret')) {
+                $receivedSignature = $request->header('Paddle-Signature');
+                $expectedSignature = hash_hmac('sha256', $request->getContent(), config('payment.gateways.Paddle.webhook_secret'));
+
+                if (!hash_equals($expectedSignature, $receivedSignature)) {
+                    Log::error('Invalid Paddle webhook signature');
+                    return response()->json(['error' => 'Invalid signature'], 401);
+                }
+            }
+
+            // Handle different event types
+            switch ($eventType) {
+                case 'transaction.completed':
+                case 'transaction.paid':
+                    return $this->handlePaddleTransactionCompleted($eventData);
+
+                case 'subscription.created':
+                case 'subscription.updated':
+                    return $this->handlePaddleSubscriptionEvent($eventData);
+
+                case 'subscription.cancelled':
+                    return $this->handlePaddleSubscriptionCancelled($eventData);
+
+                default:
+                    Log::info('Paddle webhook event ignored', ['event_type' => $eventType]);
+                    return response()->json(['status' => 'ignored']);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Paddle webhook error', [
+                'error' => $e->getMessage(),
+                'payload' => $request->all(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Processing failed'], 500);
         }
-
-        if ($payload['event_type'] === 'transaction.completed' || $payload['event_type'] === 'transaction.paid') {
-            return $this->processPayment($payload['data'], 'paddle');
-        }
-
-        Log::info('Paddle webhook ignored', ['event_type' => $payload['event_type']]);
-        return response()->json(['status' => 'ignored']);
-    } catch (\Exception $e) {
-        Log::error('Paddle webhook error', [
-            'error' => $e->getMessage(),
-            'payload' => $request->all()
-        ]);
-        return response()->json(['error' => 'Processing failed'], 500);
     }
-}
 
     public function handleFastSpringWebhook(Request $request)
     {
@@ -901,23 +1054,52 @@ class PaymentController extends Controller
                 ]);
             } elseif ($gateway === 'paddle') {
                 $apiKey = config('payment.gateways.Paddle.api_key');
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiKey
-                ])->delete("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}");
 
-                if (!$response->successful() || $response->json()['data']['status'] !== 'canceled') {
+                Log::info('Canceling Paddle subscription', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'api_endpoint' => "https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel"
+                ]);
+
+                // Use the correct Paddle API endpoint for subscription cancellation (sandbox for development)
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Content-Type' => 'application/json'
+                ])->post("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel", [
+                    'effective_from' => 'immediately' // Cancel immediately instead of at end of billing period
+                ]);
+
+                if (!$response->successful()) {
                     Log::error('Paddle subscription cancellation failed', [
                         'user_id' => $user->id,
                         'subscription_id' => $subscriptionId,
-                        'response' => $response->body()
+                        'response_status' => $response->status(),
+                        'response_body' => $response->body()
                     ]);
                     return redirect()->back()->with('error', 'Failed to cancel subscription');
                 }
 
-                Log::info('Paddle subscription canceled', [
+                $responseData = $response->json();
+                Log::info('Paddle cancellation response', [
                     'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId
+                    'subscription_id' => $subscriptionId,
+                    'response_data' => $responseData
                 ]);
+
+                // Check if the subscription was successfully canceled
+                if (isset($responseData['data']['status']) && $responseData['data']['status'] === 'canceled') {
+                    Log::info('Paddle subscription canceled successfully', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'status' => $responseData['data']['status']
+                    ]);
+                } else {
+                    Log::warning('Paddle subscription cancellation response indicates pending cancellation', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'status' => $responseData['data']['status'] ?? 'unknown'
+                    ]);
+                }
             } elseif ($gateway === 'payproglobal') {
                 // PayProGlobal cancellation requires contacting support or custom API integration
                 Log::warning('PayProGlobal cancellation not fully supported', [
@@ -974,5 +1156,614 @@ class PaymentController extends Controller
 
             return redirect()->back()->with('error', 'Cancellation failed');
         }
+    }
+
+    private function handlePaddleTransactionCompleted($eventData)
+    {
+        try {
+            $transactionId = $eventData['id'] ?? null;
+            $customData = $eventData['custom_data'] ?? [];
+
+            if (!$transactionId) {
+                Log::error('No transaction ID in Paddle webhook');
+                return response()->json(['error' => 'Missing transaction ID'], 400);
+            }
+
+            // Check if this transaction is already processed
+            $order = Order::where('transaction_id', $transactionId)->first();
+            if ($order && $order->status === 'completed') {
+                Log::info('Paddle transaction already processed', ['transaction_id' => $transactionId]);
+                return response()->json(['status' => 'already_processed']);
+            }
+
+            $userId = $customData['user_id'] ?? null;
+            $packageName = $customData['package'] ?? null;
+
+            if (!$userId || !$packageName) {
+                Log::error('Missing user ID or package in Paddle webhook custom data', [
+                    'transaction_id' => $transactionId,
+                    'custom_data' => $customData
+                ]);
+                return response()->json(['error' => 'Missing required data'], 400);
+            }
+
+            // Process the payment
+            $result = $this->processPaddlePaymentFromWebhook($eventData, $packageName, $userId);
+
+            if ($result) {
+                Log::info('Paddle webhook transaction processed successfully', [
+                    'transaction_id' => $transactionId,
+                    'user_id' => $userId,
+                    'package' => $packageName
+                ]);
+                return response()->json(['status' => 'processed']);
+            } else {
+                Log::error('Failed to process Paddle webhook transaction', [
+                    'transaction_id' => $transactionId
+                ]);
+                return response()->json(['error' => 'Processing failed'], 500);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error handling Paddle transaction completed webhook', [
+                'error' => $e->getMessage(),
+                'event_data' => $eventData
+            ]);
+            return response()->json(['error' => 'Processing failed'], 500);
+        }
+    }
+
+    private function handlePaddleSubscriptionEvent($eventData)
+    {
+        try {
+            $subscriptionId = $eventData['id'] ?? null;
+            $customData = $eventData['custom_data'] ?? [];
+            $userId = $customData['user_id'] ?? null;
+
+            if (!$subscriptionId || !$userId) {
+                Log::warning('Incomplete subscription data in Paddle webhook', [
+                    'subscription_id' => $subscriptionId,
+                    'user_id' => $userId
+                ]);
+                return response()->json(['status' => 'incomplete_data']);
+            }
+
+            $user = User::find($userId);
+            if ($user) {
+                $user->update(['subscription_id' => $subscriptionId]);
+                Log::info('Updated user subscription ID from Paddle webhook', [
+                    'user_id' => $userId,
+                    'subscription_id' => $subscriptionId
+                ]);
+            }
+
+            return response()->json(['status' => 'processed']);
+
+        } catch (\Exception $e) {
+            Log::error('Error handling Paddle subscription webhook', [
+                'error' => $e->getMessage(),
+                'event_data' => $eventData
+            ]);
+            return response()->json(['error' => 'Processing failed'], 500);
+        }
+    }
+
+    private function handlePaddleSubscriptionCancelled($eventData)
+    {
+        try {
+            $subscriptionId = $eventData['id'] ?? null;
+
+            if (!$subscriptionId) {
+                Log::warning('No subscription ID in cancellation webhook');
+                return response()->json(['status' => 'no_subscription_id']);
+            }
+
+            $user = User::where('subscription_id', $subscriptionId)->first();
+            if ($user) {
+                $user->update([
+                    'is_subscribed' => false,
+                    'subscription_ends_at' => now(),
+                    'subscription_id' => null
+                ]);
+
+                Log::info('Processed subscription cancellation from Paddle webhook', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId
+                ]);
+            }
+
+            return response()->json(['status' => 'processed']);
+
+        } catch (\Exception $e) {
+            Log::error('Error handling Paddle cancellation webhook', [
+                'error' => $e->getMessage(),
+                'event_data' => $eventData
+            ]);
+            return response()->json(['error' => 'Processing failed'], 500);
+        }
+    }
+
+    private function processPaddlePaymentFromWebhook($transactionData, $packageName, $userId)
+    {
+        return DB::transaction(function () use ($transactionData, $packageName, $userId) {
+            $transactionId = $transactionData['id'];
+
+            Log::info('=== PROCESSING PADDLE PAYMENT FROM WEBHOOK ===', [
+                'transaction_id' => $transactionId,
+                'package_name' => $packageName,
+                'user_id' => $userId,
+                'transaction_data' => $transactionData
+            ]);
+
+            $user = User::find($userId);
+            if (!$user) {
+                Log::error('User not found in processPaddlePaymentFromWebhook', ['user_id' => $userId]);
+                throw new \Exception("User not found: {$userId}");
+            }
+
+            Log::info('User found for webhook processing', [
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+                'current_is_subscribed' => $user->is_subscribed,
+                'current_package_id' => $user->package_id
+            ]);
+
+            $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
+            if (!$package) {
+                Log::error('Package not found in processPaddlePaymentFromWebhook', ['package_name' => $packageName]);
+                throw new \Exception("Package not found: {$packageName}");
+            }
+
+            Log::info('Package found for webhook processing', [
+                'package_id' => $package->id,
+                'package_name' => $package->name,
+                'package_price' => $package->price
+            ]);
+
+            $amount = $transactionData['details']['totals']['total'] / 100; // Convert from cents
+            $currency = $transactionData['currency_code'];
+
+            Log::info('Calculated transaction details', [
+                'transaction_id' => $transactionId,
+                'amount_cents' => $transactionData['details']['totals']['total'],
+                'amount_dollars' => $amount,
+                'currency' => $currency
+            ]);
+
+            $orderData = [
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'amount' => $amount,
+                'currency' => $currency,
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'status' => 'completed',
+                'metadata' => $transactionData
+            ];
+
+            Log::info('Creating/updating order from webhook', [
+                'transaction_id' => $transactionId,
+                'order_data' => $orderData
+            ]);
+
+            // Create or update the order
+            $order = Order::updateOrCreate(
+                ['transaction_id' => $transactionId],
+                $orderData
+            );
+
+            Log::info('Order created/updated from webhook', [
+                'order_id' => $order->id,
+                'transaction_id' => $transactionId,
+                'order_status' => $order->status,
+                'order_amount' => $order->amount,
+                'order_user_id' => $order->user_id,
+                'order_package_id' => $order->package_id
+            ]);
+
+            // Generate license if needed
+            if (!$user->license_key) {
+                Log::info('Generating license key from webhook', [
+                    'user_id' => $user->id,
+                    'has_existing_license' => !empty($user->license_key)
+                ]);
+
+                $licenseKey = $this->makeLicense($user);
+                if ($licenseKey) {
+                    Log::info('License key generated from webhook', [
+                        'user_id' => $user->id,
+                        'license_key' => $licenseKey
+                    ]);
+                    $this->addLicenseToExternalAPI($user, $licenseKey);
+                } else {
+                    Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
+                }
+            } else {
+                Log::info('User already has license key, skipping generation', [
+                    'user_id' => $user->id,
+                    'existing_license' => $user->license_key
+                ]);
+            }
+
+            $userUpdateData = [
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'package_id' => $package->id,
+                'subscription_starts_at' => now(),
+                'is_subscribed' => true,
+                'subscription_id' => $transactionData['subscription_id'] ?? null
+            ];
+
+            Log::info('Updating user from webhook', [
+                'user_id' => $user->id,
+                'update_data' => $userUpdateData
+            ]);
+
+            // Update user subscription
+            $user->update($userUpdateData);
+
+            Log::info('User updated successfully from webhook', [
+                'user_id' => $user->id,
+                'is_subscribed' => $user->is_subscribed,
+                'package_id' => $user->package_id,
+                'subscription_id' => $user->subscription_id,
+                'payment_gateway_id' => $user->payment_gateway_id,
+                'subscription_starts_at' => $user->subscription_starts_at
+            ]);
+
+            Log::info('=== PADDLE WEBHOOK PROCESSING COMPLETED ===', [
+                'transaction_id' => $transactionId,
+                'user_id' => $user->id,
+                'order_id' => $order->id,
+                'final_user_status' => [
+                    'is_subscribed' => $user->is_subscribed,
+                    'package_id' => $user->package_id,
+                    'subscription_id' => $user->subscription_id,
+                    'payment_gateway_id' => $user->payment_gateway_id
+                ],
+                'final_order_status' => [
+                    'order_id' => $order->id,
+                    'status' => $order->status,
+                    'amount' => $order->amount
+                ]
+            ]);
+
+            return true;
+        });
+    }
+
+    public function upgradeToPackage(Request $request, string $package)
+    {
+        Log::info('Package upgrade requested', ['package' => $package, 'user_id' => Auth::id()]);
+
+        try {
+            $validation = $this->validatePackageAndGetUser($package);
+            if (!is_array($validation)) {
+                return $validation;
+            }
+
+            $user = $validation['user'];
+            $packageData = $validation['packageData'];
+
+            // Check if user has an active subscription
+            if (!$user->is_subscribed || !$user->subscription_id) {
+                return response()->json(['error' => 'No active subscription to upgrade'], 400);
+            }
+
+            // Check if user has a payment gateway
+            if (!$user->payment_gateway_id) {
+                return response()->json(['error' => 'No payment gateway associated with subscription'], 400);
+            }
+
+            $gateway = $user->paymentGateway;
+            if (!$gateway) {
+                return response()->json(['error' => 'Payment gateway not found'], 400);
+            }
+
+            // Handle upgrade based on gateway
+            if ($gateway->name === 'Paddle') {
+                return $this->handlePaddleUpgrade($user, $packageData);
+            } elseif ($gateway->name === 'FastSpring') {
+                return $this->handleFastSpringUpgrade($user, $packageData);
+            } elseif ($gateway->name === 'Pay Pro Global') {
+                return $this->handlePayProGlobalUpgrade($user, $packageData);
+            } else {
+                return response()->json(['error' => 'Unsupported payment gateway for upgrade'], 400);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Package upgrade error', [
+                'error' => $e->getMessage(),
+                'package' => $package,
+                'user_id' => Auth::id()
+            ]);
+            return response()->json(['error' => 'Upgrade failed'], 500);
+        }
+    }
+
+    private function handlePaddleUpgrade($user, $packageData)
+    {
+        try {
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            if (empty($apiKey)) {
+                Log::error('Paddle API key missing for upgrade');
+                return response()->json(['error' => 'Payment configuration error'], 500);
+            }
+
+            // Get the new price ID for the package
+            $productsResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
+
+            if (!$productsResponse->successful()) {
+                Log::error('Paddle products fetch failed for upgrade', ['status' => $productsResponse->status()]);
+                return response()->json(['error' => 'Product fetch failed'], 500);
+            }
+
+            $products = $productsResponse->json()['data'];
+            $matchingProduct = collect($products)->firstWhere('name', $packageData->name);
+
+            if (!$matchingProduct) {
+                Log::error('Paddle product not found for upgrade', ['package' => $packageData->name]);
+                return response()->json(['error' => 'Unavailable package'], 400);
+            }
+
+            $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
+            if (!$price) {
+                Log::error('No active prices found for upgrade', ['product_id' => $matchingProduct['id']]);
+                return response()->json(['error' => 'No active price'], 400);
+            }
+
+            // Update the subscription
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->patch("https://sandbox-api.paddle.com/subscriptions/{$user->subscription_id}", [
+                'items' => [
+                    [
+                        'price_id' => $price['id'],
+                        'quantity' => 1
+                    ]
+                ],
+                'proration_billing_mode' => 'prorated_immediately'
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('Paddle subscription upgrade failed', [
+                    'subscription_id' => $user->subscription_id,
+                    'response' => $response->body()
+                ]);
+                return response()->json(['error' => 'Upgrade failed'], 500);
+            }
+
+            // Update user record
+            $user->update([
+                'package_id' => $packageData->id,
+                'subscription_starts_at' => now()
+            ]);
+
+            Log::info('Paddle subscription upgraded successfully', [
+                'user_id' => $user->id,
+                'subscription_id' => $user->subscription_id,
+                'new_package' => $packageData->name
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subscription upgraded successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Paddle upgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id
+            ]);
+            return response()->json(['error' => 'Upgrade failed'], 500);
+        }
+    }
+
+    private function handleFastSpringUpgrade($user, $packageData)
+    {
+        // FastSpring upgrade logic would go here
+        // This would typically involve creating a new order for the upgrade
+        return response()->json(['error' => 'FastSpring upgrade not yet implemented'], 501);
+    }
+
+    private function handlePayProGlobalUpgrade($user, $packageData)
+    {
+        // PayProGlobal upgrade logic would go here
+        return response()->json(['error' => 'PayProGlobal upgrade not yet implemented'], 501);
+    }
+
+    public function verifyOrder(Request $request, string $transactionId)
+    {
+        Log::info('=== ORDER VERIFICATION STARTED ===', [
+            'transaction_id' => $transactionId,
+            'user_id' => Auth::id(),
+            'request_data' => $request->all()
+        ]);
+
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                Log::error('User not authenticated for order verification', ['transaction_id' => $transactionId]);
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            Log::info('User authenticated for verification', [
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+                'transaction_id' => $transactionId
+            ]);
+
+            // First check if we already have a completed order
+            $order = Order::where('transaction_id', $transactionId)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if ($order) {
+                Log::info('Existing order found in database', [
+                    'order_id' => $order->id,
+                    'order_status' => $order->status,
+                    'transaction_id' => $transactionId,
+                    'user_id' => $user->id
+                ]);
+            } else {
+                Log::info('No existing order found in database', [
+                    'transaction_id' => $transactionId,
+                    'user_id' => $user->id
+                ]);
+            }
+
+            if ($order && $order->status === 'completed') {
+                Log::info('Order already completed in database', [
+                    'transaction_id' => $transactionId,
+                    'order_id' => $order->id
+                ]);
+                return response()->json([
+                    'success' => true,
+                    'status' => 'completed',
+                    'message' => 'Order already processed'
+                ]);
+            }
+
+                        // Verify with Paddle API
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            if (empty($apiKey)) {
+                Log::error('Paddle API key missing for order verification');
+                return response()->json(['error' => 'Payment configuration error'], 500);
+            }
+
+            Log::info('Verifying transaction with Paddle API', [
+                'transaction_id' => $transactionId,
+                'api_endpoint' => "https://sandbox-api.paddle.com/transactions/{$transactionId}"
+            ]);
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey
+            ])->get("https://sandbox-api.paddle.com/transactions/{$transactionId}");
+
+            if (!$response->successful()) {
+                Log::error('Paddle transaction verification failed', [
+                    'transaction_id' => $transactionId,
+                    'response_status' => $response->status(),
+                    'response_body' => $response->body()
+                ]);
+                return response()->json(['error' => 'Transaction verification failed'], 400);
+            }
+
+            $transactionData = $response->json()['data'];
+
+            Log::info('Paddle API response received', [
+                'transaction_id' => $transactionId,
+                'transaction_status' => $transactionData['status'],
+                'transaction_amount' => $transactionData['details']['totals']['total'] ?? null,
+                'custom_data' => $transactionData['custom_data'] ?? null
+            ]);
+
+            // Check if transaction is completed/paid
+            if (!in_array($transactionData['status'], ['completed', 'paid'])) {
+                Log::info('Transaction not yet completed', [
+                    'transaction_id' => $transactionId,
+                    'status' => $transactionData['status']
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'status' => $transactionData['status'],
+                    'message' => 'Transaction not yet completed'
+                ]);
+            }
+
+                        // Process the payment if not already processed
+            if (!$order || $order->status !== 'completed') {
+                Log::info('Processing payment - order needs to be created/updated', [
+                    'transaction_id' => $transactionId,
+                    'existing_order_id' => $order->id ?? null,
+                    'existing_order_status' => $order->status ?? null
+                ]);
+
+                $customData = $transactionData['custom_data'] ?? [];
+                $packageName = $customData['package'] ?? null;
+
+                Log::info('Extracted custom data from transaction', [
+                    'transaction_id' => $transactionId,
+                    'custom_data' => $customData,
+                    'package_name' => $packageName
+                ]);
+
+                if (!$packageName) {
+                    Log::error('No package name in transaction custom data', [
+                        'transaction_id' => $transactionId,
+                        'custom_data' => $customData
+                    ]);
+                    return response()->json(['error' => 'Invalid transaction data'], 400);
+                }
+
+                Log::info('Calling processPaddlePaymentFromWebhook', [
+                    'transaction_id' => $transactionId,
+                    'package_name' => $packageName,
+                    'user_id' => $user->id
+                ]);
+
+                // Process the payment using existing logic
+                $result = $this->processPaddlePaymentFromWebhook($transactionData, $packageName, $user->id);
+
+                if ($result) {
+                    Log::info('Order processed successfully during verification', [
+                        'transaction_id' => $transactionId,
+                        'user_id' => $user->id,
+                        'result' => $result
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'status' => 'completed',
+                        'message' => 'Order processed successfully'
+                    ]);
+                } else {
+                    Log::error('Failed to process order during verification', [
+                        'transaction_id' => $transactionId,
+                        'user_id' => $user->id,
+                        'result' => $result
+                    ]);
+                    return response()->json(['error' => 'Order processing failed'], 500);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'status' => 'completed',
+                'message' => 'Order verified successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Order verification error', [
+                'error' => $e->getMessage(),
+                'transaction_id' => $transactionId,
+                'user_id' => Auth::id()
+            ]);
+            return response()->json(['error' => 'Verification failed'], 500);
+        }
+    }
+
+    public function handleCancel(Request $request)
+    {
+        Log::info('Payment cancelled', [
+            'params' => $request->all(),
+            'query' => $request->query(),
+            'url' => $request->fullUrl()
+        ]);
+
+        return redirect()->route('pricing')->with('info', 'Payment was cancelled');
+    }
+
+    public function handlePopupCancel(Request $request)
+    {
+        Log::info('Popup payment cancelled', [
+            'params' => $request->all(),
+            'query' => $request->query(),
+            'url' => $request->fullUrl()
+        ]);
+
+        return view('payment.popup-cancel');
     }
 }

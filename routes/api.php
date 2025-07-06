@@ -45,9 +45,16 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             ->name('upgrade')
             ->middleware('throttle:10,1');
 
+        Route::post('/upgrade/{package}', [PaymentController::class, 'upgradeToPackage'])
+            ->name('upgrade.package')
+            ->middleware('throttle:10,1');
+
         Route::post('/cancel', [PaymentController::class, 'cancelSubscription'])
             ->name('cancel-subscription')
             ->middleware('throttle:10,1');
+
+        Route::get('/paddle/success', [PaymentController::class, 'paddleSuccess'])->name('paddle.success');
+        Route::get('/verify-order/{transactionId}', [PaymentController::class, 'verifyOrder'])->name('verify-order');
     });
 
     // Orders

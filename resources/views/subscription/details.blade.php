@@ -28,6 +28,8 @@
                                 @if ($hasActiveSubscription && $canUpgrade)
                                 <a class="btn btn-success"
                                         href="{{ route('pricing', ['type' => 'upgrade']) }}">Upgrade Subscription</a>
+                                {{-- downgrade --}}
+                                <a class="btn btn-info" href="{{ route('pricing', ['type' => 'downgrade']) }}">Downgrade Subscription</a>
 
                                     <button class="btn btn-danger" id="cancelSubscriptionBtn">
                                         Cancel Subscription
@@ -35,6 +37,7 @@
                                 @elseif ($hasActiveSubscription && !$canUpgrade)
                                     <a class="btn btn-success"
                                         href="{{ route('pricing', ['type' => 'upgrade']) }}">Upgrade Subscription</a>
+                                        <a class="btn btn-info" href="{{ route('pricing', ['type' => 'downgrade']) }}">Downgrade Subscription</a>
                                     <button class="btn btn-danger" id="cancelSubscriptionBtn">
                                         Cancel Subscription
                                     </button>

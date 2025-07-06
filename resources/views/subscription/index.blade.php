@@ -14,7 +14,7 @@
       img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
       connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
       frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
-      frame-ancestors 'self' https://livebuzzstudio.test;
+      frame-ancestors 'self' https://livebuzzstudio.test http://127.0.0.1:* http://localhost:*;
       media-src 'self' data: https://sbl.onfastspring.com;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -219,16 +219,215 @@
     </script>
     @endif
 
-    <!-- Paddle Integration -->
+        <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     <script>
+        // Global function to handle Paddle events
+        window.handlePaddleEvent = function(eventData, action) {
+            console.log('=== PADDLE EVENT HANDLER ===', {
+                eventData: eventData,
+                action: action
+            });
+
+            console.log('=== DETAILED EVENT DATA ANALYSIS ===');
+            console.log('eventData type:', typeof eventData);
+            console.log('eventData keys:', Object.keys(eventData || {}));
+            console.log('Full eventData JSON:', JSON.stringify(eventData, null, 2));
+
+            // Handle different event structures that Paddle might send
+            let eventName = null;
+            let transactionId = null;
+
+            // Try different possible event structures
+            if (eventData.data?.event?.name) {
+                eventName = eventData.data.event.name;
+                transactionId = eventData.data.event.data?.transaction_id;
+            } else if (eventData.event?.name) {
+                eventName = eventData.event.name;
+                transactionId = eventData.event.data?.transaction_id;
+            } else if (eventData.name) {
+                eventName = eventData.name;
+                transactionId = eventData.data?.transaction_id;
+            } else if (eventData.type) {
+                eventName = eventData.type;
+                transactionId = eventData.data?.transaction_id || eventData.transaction_id;
+            }
+
+            // Fallback: Try to extract transaction ID from URL if not found in event data
+            if (!transactionId && eventData.data) {
+                // Look for transaction ID in various possible locations
+                transactionId = eventData.data.transaction_id ||
+                               eventData.data.id ||
+                               eventData.data.transactionId ||
+                               eventData.data.transactionId;
+            }
+
+            // Additional fallback: Extract from URL if still not found
+            if (!transactionId) {
+                const urlParams = new URLSearchParams(window.location.search);
+                const ptxn = urlParams.get('_ptxn');
+                if (ptxn) {
+                    transactionId = ptxn;
+                    console.log('Extracted transaction ID from URL:', transactionId);
+                }
+            }
+
+            console.log('Parsed event data:', {
+                eventName: eventName,
+                transactionId: transactionId
+            });
+
+            console.log('Full eventData structure:', JSON.stringify(eventData, null, 2));
+
+            if (eventName === 'checkout.completed' || eventName === 'transaction.completed') {
+                console.log('=== PADDLE CHECKOUT COMPLETED ===', {
+                    eventName: eventName,
+                    transactionId: transactionId,
+                    action: action
+                });
+
+                // When Paddle checkout is completed, redirect to the success URL
+                // This will trigger the handleSuccess method in PaymentController
+                if (transactionId) {
+                    console.log('Redirecting to success URL with transaction ID:', transactionId);
+                    const successUrl = `/payments/success?gateway=paddle&transaction_id=${transactionId}`;
+                    window.location.href = successUrl;
+                } else {
+                    console.log('No transaction ID found in event data, trying fallback methods...');
+
+                    // Try to get transaction ID from session storage as final fallback
+                    const sessionTransactionId = sessionStorage.getItem('currentPaddleTransactionId');
+                    if (sessionTransactionId) {
+                        console.log('Using transaction ID from session storage:', sessionTransactionId);
+                        const successUrl = `/payments/success?gateway=paddle&transaction_id=${sessionTransactionId}`;
+                        window.location.href = successUrl;
+                    } else {
+                        console.log('No transaction ID found anywhere, redirecting to success URL without transaction ID');
+                        console.log('This may cause issues - the backend will need to handle this case');
+                        const successUrl = `/payments/success?gateway=paddle`;
+                        window.location.href = successUrl;
+                    }
+                }
+            } else if (eventName === 'checkout.failed' || eventName === 'transaction.failed') {
+                window.showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+                    'Your action failed. Please try again.');
+            } else if (eventName === 'transaction.cancelled') {
+                if (!eventData.success) {
+                    window.showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
+                        'Your action was cancelled.');
+                }
+            } else {
+                console.log('Unhandled Paddle event:', eventName, eventData);
+            }
+        };
+
         document.addEventListener('DOMContentLoaded', function() {
             try {
                 Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
                 Paddle.Setup({
                     token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
                 });
+
+                // Add global event listener for Paddle events
+                window.addEventListener('message', function(event) {
+                    if (event.origin.includes('paddle.com') || event.origin.includes('cdn.paddle.com')) {
+                        console.log('Paddle message received:', event.data);
+
+                        // Check if this is a Paddle checkout event
+                        if (event.data && event.data.action === 'event' && event.data.event_name) {
+                            // Try to determine the action from session storage or URL
+                            const currentAction = sessionStorage.getItem('currentPaddleAction') || 'new';
+
+                                                    // Handle the event based on event_name
+                        if (event.data.event_name === 'checkout.completed') {
+                            console.log('=== PADDLE CHECKOUT.COMPLETED EVENT RECEIVED ===');
+                            console.log('Event data:', event.data);
+                            console.log('Callback data:', event.data.callback_data);
+                            console.log('Current action from session storage:', currentAction);
+
+                            // Extract transaction ID from callback data with comprehensive fallbacks
+                            let transactionId = null;
+
+                            console.log('=== TRANSACTION ID EXTRACTION DEBUG ===');
+                            console.log('Full event.data:', JSON.stringify(event.data, null, 2));
+                            console.log('event.data.callback_data:', event.data.callback_data);
+
+                            // Try multiple possible locations for transaction ID
+                            if (event.data.callback_data) {
+                                const callbackData = event.data.callback_data;
+                                console.log('Callback data structure:', JSON.stringify(callbackData, null, 2));
+
+                                // Try different possible field names
+                                transactionId = callbackData.transaction_id ||
+                                               callbackData.id ||
+                                               callbackData.transactionId ||
+                                               callbackData.transactionId ||
+                                               callbackData.transaction_id ||
+                                               callbackData.order_id ||
+                                               callbackData.orderId;
+                            }
+
+                            // If still not found, try the main event data
+                            if (!transactionId && event.data) {
+                                transactionId = event.data.transaction_id ||
+                                               event.data.id ||
+                                               event.data.transactionId ||
+                                               event.data.order_id ||
+                                               event.data.orderId;
+                            }
+
+                                                        // If still not found, try URL parameters
+                            if (!transactionId) {
+                                const urlParams = new URLSearchParams(window.location.search);
+                                const ptxn = urlParams.get('_ptxn');
+                                const txn = urlParams.get('txn');
+                                const transaction = urlParams.get('transaction');
+
+                                transactionId = ptxn || txn || transaction;
+                                console.log('URL parameters check:', { ptxn, txn, transaction });
+
+                                // Also check if we're on a Paddle success URL
+                                if (window.location.pathname.includes('/payments/success')) {
+                                    console.log('Currently on success URL, checking for transaction ID in URL');
+                                    const successUrlParams = new URLSearchParams(window.location.search);
+                                    const successTransactionId = successUrlParams.get('transaction_id');
+                                    if (successTransactionId) {
+                                        console.log('Found transaction ID in success URL:', successTransactionId);
+                                        transactionId = successTransactionId;
+                                    }
+                                }
+                            }
+
+                            // If still not found, try session storage
+                            if (!transactionId) {
+                                transactionId = sessionStorage.getItem('currentPaddleTransactionId');
+                                console.log('Session storage transaction ID:', transactionId);
+                            }
+
+                            console.log('Final extracted transaction ID:', transactionId);
+
+                            window.handlePaddleEvent({
+                                type: 'checkout.completed',
+                                data: event.data.callback_data
+                            }, currentAction);
+                            } else if (event.data.event_name === 'checkout.failed') {
+                                console.log('Processing checkout.failed event');
+                                window.handlePaddleEvent({
+                                    type: 'checkout.failed',
+                                    data: event.data.callback_data
+                                }, currentAction);
+                            } else if (event.data.event_name === 'checkout.closed') {
+                                console.log('Processing checkout.closed event');
+                                window.handlePaddleEvent({
+                                    type: 'checkout.closed',
+                                    data: event.data.callback_data
+                                }, currentAction);
+                            }
+                        }
+                    }
+                });
+
             } catch (error) {
                 Swal.fire({
                     icon: 'error',
@@ -917,6 +1116,19 @@
                     packageName,
                     action
                 });
+
+                // Check if Paddle is properly initialized
+                if (typeof Paddle === 'undefined') {
+                    console.error('Paddle is not initialized');
+                    showError('Payment Error', 'Payment system is not properly initialized. Please refresh the page and try again.');
+                    return;
+                }
+
+                if (typeof Paddle.Checkout === 'undefined') {
+                    console.error('Paddle.Checkout is not available');
+                    showError('Payment Error', 'Payment checkout is not available. Please refresh the page and try again.');
+                    return;
+                }
                 const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
                 const requestBody = {
                     package: packageName,
@@ -948,10 +1160,47 @@
                         if (!data.success || !data.transaction_id) {
                             throw new Error(data.error || 'No transaction ID provided');
                         }
-                        Paddle.Checkout.open({
-                            transactionId: data.transaction_id,
-                            eventCallback: eventData => handlePaddleEvent(eventData, action)
+                        console.log(data, 'data');
+
+                        // {success: true, checkout_url: 'https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa', transaction_id: 'txn_01jzd7cf1dae3sper0n1mj28fa'}
+                            // checkout_url
+                            // :
+                            // "https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa"
+                            // success
+                            // :
+                            // true
+                            // transaction_id
+                            // :
+                            // "txn_01jzd7cf1dae3sper0n1mj28fa"
+                            // [[Prototype]]
+                            // :
+                            // Object
+                                                console.log('Opening Paddle checkout with transaction ID:', data.transaction_id);
+
+                        // Store current action and transaction ID in session storage for global event listener
+                        sessionStorage.setItem('currentPaddleAction', action);
+                        sessionStorage.setItem('currentPaddleTransactionId', data.transaction_id);
+                        console.log('Stored in session storage:', {
+                            action: action,
+                            transactionId: data.transaction_id
                         });
+
+                        // Create a proper event callback function
+                        const paddleEventCallback = function(eventData) {
+                            console.log('Paddle event callback triggered:', eventData);
+                            handlePaddleEvent(eventData, action);
+                        };
+
+                        // Open Paddle checkout with proper error handling
+                        try {
+                            Paddle.Checkout.open({
+                                transactionId: data.transaction_id,
+                                eventCallback: paddleEventCallback
+                            });
+                        } catch (error) {
+                            console.error('Error opening Paddle checkout:', error);
+                            showError('Checkout Error', 'Failed to open payment checkout. Please try again.');
+                        }
                     })
                     .catch(error => {
                         console.error('Paddle processing error:', error);
@@ -1011,53 +1260,7 @@
                     });
             }
 
-            function handlePaddleEvent(eventData, action) {
-    console.log('=== PADDLE EVENT HANDLER ===', {
-        event: eventData.data?.event?.name,
-        action
-    });
-    if (eventData.data?.event?.name === 'checkout.completed') {
-        const transactionId = eventData.data.event.data.transaction_id;
-        const message = action === 'upgrade' ? 'Upgrade Successful!' : action === 'downgrade' ?
-            'Downgrade Successful!' : 'Payment Successful!';
-        const text = action === 'upgrade' ? 'Your subscription has been upgraded.' : action ===
-            'downgrade' ?
-            'Your subscription downgrade will take effect at the end of the current billing cycle.' :
-            'Your subscription has been activated.';
 
-        // Verify order status with backend
-        fetch(`/api/payments/verify-order/${transactionId}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            credentials: 'same-origin'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.status === 'completed') {
-                showSuccess(message, text).then(() => {
-                    window.location.href = '/user/dashboard';
-                });
-            } else {
-                throw new Error('Order not completed');
-            }
-        })
-        .catch(error => {
-            console.error('Order verification error:', error);
-            showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, 'Payment processing not completed. Please try again.');
-        });
-    } else if (eventData.data?.event?.name === 'checkout.failed') {
-        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
-            'Your action failed. Please try again.');
-    } else if (eventData.data?.event?.name === 'checkout.closed' && !eventData.data.success) {
-        showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
-            'Your action was cancelled.');
-    }
-}
 
             function cancelSubscription() {
                 console.log('=== CANCEL SUBSCRIPTION ===');
@@ -1178,6 +1381,17 @@
                     confirmButtonText: 'OK'
                 });
             }
+
+            // Make helper functions globally accessible
+            window.showSuccess = showSuccess;
+            window.showError = showError;
+            window.showInfo = showInfo;
+
+            // Cleanup function to remove session storage when page is unloaded
+            window.addEventListener('beforeunload', function() {
+                sessionStorage.removeItem('currentPaddleAction');
+                sessionStorage.removeItem('currentPaddleTransactionId');
+            });
         });
 
         document.querySelector('.dropdown-toggle').addEventListener('click', function() {
