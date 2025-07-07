@@ -1048,7 +1048,7 @@
                 } else if (action === 'downgrade') {
                     apiUrl = `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
                 } else {
-                    apiUrl = `/api/payments/${selectedGateway.toLowerCase().replace(' ', '')}/checkout/${packageName}`;
+                    apiUrl = `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
                 }
 
                 const requestBody = {
