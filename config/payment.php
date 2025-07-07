@@ -67,10 +67,21 @@ return [
                 'pro' => (int)env('PPG_PRODUCT_PRO', 2),
                 'business' => (int)env('PPG_PRODUCT_BUSINESS', 3),
                 'enterprise' => (int)env('PPG_PRODUCT_ENTERPRISE', 4),
+                'free' => (int)env('PPG_PRODUCT_FREE', 5),
             ],
             'merchant_id' => env('MERCHANT_ID', ''),
             'product_id_pro' => env('PPG_PRODUCT_PRO_ID', '112701'),
             'test_mode' => env('PAYPROGLOBAL_TEST_MODE', true),
+            'endpoints' => [
+                'checkout' => [
+                    'live' => 'https://store.payproglobal.com/checkout',
+                    'sandbox' => 'https://sandbox.payproglobal.com/checkout'
+                ],
+                'api' => [
+                    'live' => 'https://store.payproglobal.com/api',
+                    'sandbox' => 'https://sandbox.payproglobal.com/api'
+                ]
+            ]
         ],
 
         'License API' => [

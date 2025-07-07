@@ -7,437 +7,600 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta http-equiv="Content-Security-Policy"
         content="
-      default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://cdnjs.cloudflare.com;
-      font-src 'self' https://fonts.gstatic.com;
-      script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
-      img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
-      connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com;
-      frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
-      frame-ancestors 'self' https://livebuzzstudio.test http://127.0.0.1:* http://localhost:*;
-      media-src 'self' data: https://sbl.onfastspring.com;">
+            default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
+            style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
+            font-src 'self' https://fonts.gstatic.com;
+            script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://store.payproglobal.com 'unsafe-inline' 'unsafe-eval';
+            img-src 'self' https://syntopia.ai https://sbl.onfastspring.com https://store.payproglobal.com data:;
+            connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
+            frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
+            frame-ancestors 'self' https://livebuzzstudio.test http://127.0.0.1:* http://localhost:*;
+            media-src 'self' data: https://sbl.onfastspring.com https://store.payproglobal.com;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!-- Payment Gateway Scripts -->
     @php
-    $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
+        $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
     @endphp
     @if (in_array('FastSpring', $activeGateways))
-    <script src="https://sbl.onfastspring.com/js/checkout/button.js"
-        data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
+        <script src="https://sbl.onfastspring.com/js/checkout/button.js"
+            data-button-id="{{ $currentLoggedInUserPaymentGateway ?? 'FastSpring' }}"></script>
     @endif
     @if (in_array('Paddle', $activeGateways))
-    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     @endif
     @if (in_array('Pay Pro Global', $activeGateways))
-    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
+        <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
     @endif
 
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
-    <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-        data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-        data-debug="true"></script>
-    <script>
-        let currentProductPath = '';
+        <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
+            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
+            data-debug="true"></script>
+        <script>
+            let currentProductPath = '';
 
-        function processFastSpring(packageName, action = 'new') {
-            console.log('=== processFastSpring ===', {
-                packageName,
-                action
-            });
-            try {
-                if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                    throw new Error('FastSpring is not properly initialized');
-                }
-                fastspring.builder.reset();
-                console.log('FastSpring builder reset');
-
-                if (!packageName || typeof packageName !== 'string') {
-                    throw new Error('Invalid package name: ' + packageName);
-                }
-
-                currentProductPath = packageName.toLowerCase();
-                sessionStorage.setItem('currentProductPath', currentProductPath);
-                fastspring.builder.add(currentProductPath);
-
-                if (action === 'upgrade' || action === 'downgrade') {
-                    window.fastspringUpgradeContext = {
-                        isUpgrade: action === 'upgrade',
-                        isDowngrade: action === 'downgrade',
-                        currentPackage: currentPackage,
-                        targetPackage: packageName
-                    };
-                    console.log('FastSpring context set:', window.fastspringUpgradeContext);
-                }
-
-                setTimeout(() => {
-                    fastspring.builder.checkout();
-                    console.log('FastSpring checkout launched');
-                }, 500);
-            } catch (error) {
-                console.error('FastSpring processing error:', error);
-                showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
-            }
-        }
-
-        function onFSPopupClosed(orderData) {
-            console.log('=== onFSPopupClosed ===', {
-                orderData: JSON.stringify(orderData, null, 2),
-                currentProductPath,
-                sessionProductPath: sessionStorage.getItem('currentProductPath')
-            });
-
-            try {
-                let packageName = '';
-                let subscriptionId = '';
-
-                if (orderData && orderData.items && orderData.items.length > 0) {
-                    packageName = orderData.items[0].product
-                        ?.toLowerCase()
-                        .replace('-plan', '')
-                        .replace(/^\w/, c => c.toUpperCase())
-                        .trim() || '';
-                    subscriptionId = orderData.groups[0].items[0].subscription || '';
-                }
-
-                if (!packageName && orderData && orderData.tags) {
-                    const tags = typeof orderData.tags === 'string' ? JSON.parse(orderData.tags) : orderData.tags;
-                    const possiblePackageNames = [
-                        tags?.package,
-                        tags?.package_name,
-                        tags?.packageName,
-                        tags?.packageId,
-                        tags?.package_id
-                    ];
-                    for (const name of possiblePackageNames) {
-                        if (name) {
-                            packageName = name
-                                .toLowerCase()
-                                .replace('-plan', '')
-                                .replace(/^\w/, c => c.toUpperCase())
-                                .trim() || '';
-                            break;
-                        }
+            function processFastSpring(packageName, action = 'new') {
+                console.log('=== processFastSpring ===', {
+                    packageName,
+                    action
+                });
+                try {
+                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                        throw new Error('FastSpring is not properly initialized');
                     }
-                    subscriptionId = orderData.groups[0].items[0].subscription || '';
-                }
+                    fastspring.builder.reset();
+                    console.log('FastSpring builder reset');
 
-                if (!packageName) {
-                    packageName = currentProductPath || sessionStorage.getItem('currentProductPath') || '';
-                }
+                    if (!packageName || typeof packageName !== 'string') {
+                        throw new Error('Invalid package name: ' + packageName);
+                    }
 
-                if (!packageName) {
-                    const urlParams = new URLSearchParams(window.location.search);
-                    packageName = urlParams.get('package') || '';
-                }
+                    currentProductPath = packageName.toLowerCase();
+                    sessionStorage.setItem('currentProductPath', currentProductPath);
+                    fastspring.builder.add(currentProductPath);
 
-                if (!packageName) {
-                    const formData = new FormData(document.querySelector('form'));
-                    packageName = formData.get('package_name') || '';
-                }
+                    if (action === 'upgrade' || action === 'downgrade') {
+                        window.fastspringUpgradeContext = {
+                            isUpgrade: action === 'upgrade',
+                            isDowngrade: action === 'downgrade',
+                            currentPackage: currentPackage,
+                            targetPackage: packageName
+                        };
+                        console.log('FastSpring context set:', window.fastspringUpgradeContext);
+                    }
 
-                if (!packageName) {
-                    const packageBtn = document.querySelector('[data-package]');
-                    packageName = packageBtn?.dataset.package || '';
+                    setTimeout(() => {
+                        fastspring.builder.checkout();
+                        console.log('FastSpring checkout launched');
+                    }, 500);
+                } catch (error) {
+                    console.error('FastSpring processing error:', error);
+                    showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
                 }
+            }
 
-                if (!packageName || packageName.trim() === '') {
-                    console.error('Final package name is invalid:', packageName);
-                    showAlert('error', 'Package Error', 'Could not determine package name.', () => {
-                        window.location.href = '/subscriptions?error=package';
+            function onFSPopupClosed(orderData) {
+                console.log('=== onFSPopupClosed ===', {
+                    orderData: JSON.stringify(orderData, null, 2),
+                    currentProductPath,
+                    sessionProductPath: sessionStorage.getItem('currentProductPath')
+                });
+
+                try {
+                    let packageName = '';
+                    let subscriptionId = '';
+
+                    if (orderData && orderData.items && orderData.items.length > 0) {
+                        packageName = orderData.items[0].product
+                            ?.toLowerCase()
+                            .replace('-plan', '')
+                            .replace(/^\w/, c => c.toUpperCase())
+                            .trim() || '';
+                        subscriptionId = orderData.groups[0].items[0].subscription || '';
+                    }
+
+                    if (!packageName && orderData && orderData.tags) {
+                        const tags = typeof orderData.tags === 'string' ? JSON.parse(orderData.tags) : orderData.tags;
+                        const possiblePackageNames = [
+                            tags?.package,
+                            tags?.package_name,
+                            tags?.packageName,
+                            tags?.packageId,
+                            tags?.package_id
+                        ];
+                        for (const name of possiblePackageNames) {
+                            if (name) {
+                                packageName = name
+                                    .toLowerCase()
+                                    .replace('-plan', '')
+                                    .replace(/^\w/, c => c.toUpperCase())
+                                    .trim() || '';
+                                break;
+                            }
+                        }
+                        subscriptionId = orderData.groups[0].items[0].subscription || '';
+                    }
+
+                    if (!packageName) {
+                        packageName = currentProductPath || sessionStorage.getItem('currentProductPath') || '';
+                    }
+
+                    if (!packageName) {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        packageName = urlParams.get('package') || '';
+                    }
+
+                    if (!packageName) {
+                        const formData = new FormData(document.querySelector('form'));
+                        packageName = formData.get('package_name') || '';
+                    }
+
+                    if (!packageName) {
+                        const packageBtn = document.querySelector('[data-package]');
+                        packageName = packageBtn?.dataset.package || '';
+                    }
+
+                    if (!packageName || packageName.trim() === '') {
+                        console.error('Final package name is invalid:', packageName);
+                        showAlert('error', 'Package Error', 'Could not determine package name.', () => {
+                            window.location.href = '/pricing?error=package';
+                        });
+                        return;
+                    }
+
+                    if (!orderData || (!orderData.id)) {
+                        console.log('No order data or cancelled payment');
+                        showAlert('info', 'Payment Cancelled', 'Your payment was cancelled.', () => {
+                            window.location.href = '/pricing';
+                        });
+                        sessionStorage.removeItem('currentProductPath');
+                        currentProductPath = '';
+                        return;
+                    }
+
+                    sessionStorage.removeItem('currentProductPath');
+                    currentProductPath = '';
+
+                    const orderId = orderData.id;
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/payments/success';
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                    if (csrfToken) {
+                        const csrfInput = document.createElement('input');
+                        csrfInput.type = 'hidden';
+                        csrfInput.name = '_token';
+                        csrfInput.value = csrfToken;
+                        form.appendChild(csrfInput);
+                    }
+                    const gatewayInput = document.createElement('input');
+                    gatewayInput.type = 'hidden';
+                    gatewayInput.name = 'gateway';
+                    gatewayInput.value = 'fastspring';
+                    form.appendChild(gatewayInput);
+                    const orderIdInput = document.createElement('input');
+                    orderIdInput.type = 'hidden';
+                    orderIdInput.name = 'orderId';
+                    orderIdInput.value = orderId;
+                    form.appendChild(orderIdInput);
+                    const packageNameInput = document.createElement('input');
+                    packageNameInput.type = 'hidden';
+                    packageNameInput.name = 'package_name';
+                    packageNameInput.value = packageName;
+                    form.appendChild(packageNameInput);
+                    const paymentGatewayIdInput = document.createElement('input');
+                    paymentGatewayIdInput.type = 'hidden';
+                    paymentGatewayIdInput.name = 'payment_gateway_id';
+                    paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
+                    form.appendChild(paymentGatewayIdInput);
+
+                    document.body.appendChild(form);
+                    console.log('Submitting form with data:', {
+                        _token: csrfToken,
+                        gateway: 'fastspring',
+                        orderId: orderId,
+                        package_name: packageName,
+                        payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
                     });
-                    return;
-                }
-
-                if (!orderData || (!orderData.id)) {
-                    console.log('No order data or cancelled payment');
-                    showAlert('info', 'Payment Cancelled', 'Your payment was cancelled.', () => {
-                        window.location.href = '/subscriptions';
+                    form.submit();
+                } catch (err) {
+                    console.error('Error in onFSPopupClosed:', err);
+                    showAlert('error', 'Processing Error', 'There was an error processing your payment.', () => {
+                        window.location.href = '/pricing?error=processing';
                     });
                     sessionStorage.removeItem('currentProductPath');
                     currentProductPath = '';
-                    return;
+                }
+            }
+        </script>
+    @endif
+
+    <!-- Paddle Integration -->
+    @if ($activeGateway && $activeGateway->name === 'Paddle')
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+        <script>
+            // Global function to handle Paddle events
+            window.handlePaddleEvent = function(eventData, action) {
+                console.log('=== PADDLE EVENT HANDLER ===', {
+                    eventData: eventData,
+                    action: action
+                });
+
+                console.log('=== DETAILED EVENT DATA ANALYSIS ===');
+                console.log('eventData type:', typeof eventData);
+                console.log('eventData keys:', Object.keys(eventData || {}));
+                console.log('Full eventData JSON:', JSON.stringify(eventData, null, 2));
+
+                // Handle different event structures that Paddle might send
+                let eventName = null;
+                let transactionId = null;
+
+                // Try different possible event structures
+                if (eventData.data?.event?.name) {
+                    eventName = eventData.data.event.name;
+                    transactionId = eventData.data.event.data?.transaction_id;
+                } else if (eventData.event?.name) {
+                    eventName = eventData.event.name;
+                    transactionId = eventData.event.data?.transaction_id;
+                } else if (eventData.name) {
+                    eventName = eventData.name;
+                    transactionId = eventData.data?.transaction_id;
+                } else if (eventData.type) {
+                    eventName = eventData.type;
+                    transactionId = eventData.data?.transaction_id || eventData.transaction_id;
                 }
 
-                sessionStorage.removeItem('currentProductPath');
-                currentProductPath = '';
+                // Fallback: Try to extract transaction ID from URL if not found in event data
+                if (!transactionId && eventData.data) {
+                    // Look for transaction ID in various possible locations
+                    transactionId = eventData.data.transaction_id ||
+                        eventData.data.id ||
+                        eventData.data.transactionId ||
+                        eventData.data.transactionId;
+                }
 
-                const orderId = orderData.id;
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/payments/success';
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-                if (csrfToken) {
+                // Additional fallback: Extract from URL if still not found
+                if (!transactionId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const ptxn = urlParams.get('_ptxn');
+                    if (ptxn) {
+                        transactionId = ptxn;
+                        console.log('Extracted transaction ID from URL:', transactionId);
+                    }
+                }
+
+                console.log('Parsed event data:', {
+                    eventName: eventName,
+                    transactionId: transactionId
+                });
+
+                console.log('Full eventData structure:', JSON.stringify(eventData, null, 2));
+
+                if (eventName === 'checkout.completed' || eventName === 'transaction.completed') {
+                    console.log('=== PADDLE CHECKOUT COMPLETED ===', {
+                        eventName: eventName,
+                        transactionId: transactionId,
+                        action: action
+                    });
+
+                    // When Paddle checkout is completed, redirect to the success URL
+                    // This will trigger the handleSuccess method in PaymentController
+                    if (transactionId) {
+                        console.log('Redirecting to success URL with transaction ID:', transactionId);
+                        const successUrl = `/payments/success?gateway=paddle&transaction_id=${transactionId}`;
+                        window.location.href = successUrl;
+                    } else {
+                        console.log('No transaction ID found in event data, trying fallback methods...');
+
+                        // Try to get transaction ID from session storage as final fallback
+                        const sessionTransactionId = sessionStorage.getItem('currentPaddleTransactionId');
+                        if (sessionTransactionId) {
+                            console.log('Using transaction ID from session storage:', sessionTransactionId);
+                            const successUrl = `/payments/success?gateway=paddle&transaction_id=${sessionTransactionId}`;
+                            window.location.href = successUrl;
+                        } else {
+                            console.log(
+                                'No transaction ID found anywhere, redirecting to success URL without transaction ID');
+                            console.log('This may cause issues - the backend will need to handle this case');
+                            const successUrl = `/payments/success?gateway=paddle`;
+                            window.location.href = successUrl;
+                        }
+                    }
+                } else if (eventName === 'checkout.failed' || eventName === 'transaction.failed') {
+                    window.showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+                        'Your action failed. Please try again.');
+                } else if (eventName === 'transaction.cancelled') {
+                    if (!eventData.success) {
+                        window.showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
+                            'Your action was cancelled.');
+                    }
+                } else {
+                    console.log('Unhandled Paddle event:', eventName, eventData);
+                }
+            };
+
+            document.addEventListener('DOMContentLoaded', function() {
+                try {
+                    Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
+                    Paddle.Setup({
+                        token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
+                    });
+
+                    // Add global event listener for Paddle events
+                    window.addEventListener('message', function(event) {
+                        if (event.origin.includes('paddle.com') || event.origin.includes('cdn.paddle.com')) {
+                            console.log('Paddle message received:', event.data);
+
+                            // Check if this is a Paddle checkout event
+                            if (event.data && event.data.action === 'event' && event.data.event_name) {
+                                // Try to determine the action from session storage or URL
+                                const currentAction = sessionStorage.getItem('currentPaddleAction') || 'new';
+
+                                // Handle the event based on event_name
+                                if (event.data.event_name === 'checkout.completed') {
+                                    console.log('=== PADDLE CHECKOUT.COMPLETED EVENT RECEIVED ===');
+                                    console.log('Event data:', event.data);
+                                    console.log('Callback data:', event.data.callback_data);
+                                    console.log('Current action from session storage:', currentAction);
+
+                                    // Extract transaction ID from callback data with comprehensive fallbacks
+                                    let transactionId = null;
+
+                                    console.log('=== TRANSACTION ID EXTRACTION DEBUG ===');
+                                    console.log('Full event.data:', JSON.stringify(event.data, null, 2));
+                                    console.log('event.data.callback_data:', event.data.callback_data);
+
+                                    // Try multiple possible locations for transaction ID
+                                    if (event.data.callback_data) {
+                                        const callbackData = event.data.callback_data;
+                                        console.log('Callback data structure:', JSON.stringify(callbackData,
+                                            null, 2));
+
+                                        // Try different possible field names
+                                        transactionId = callbackData.transaction_id ||
+                                            callbackData.id ||
+                                            callbackData.transactionId ||
+                                            callbackData.transactionId ||
+                                            callbackData.transaction_id ||
+                                            callbackData.order_id ||
+                                            callbackData.orderId;
+                                    }
+
+                                    // If still not found, try the main event data
+                                    if (!transactionId && event.data) {
+                                        transactionId = event.data.transaction_id ||
+                                            event.data.id ||
+                                            event.data.transactionId ||
+                                            event.data.order_id ||
+                                            event.data.orderId;
+                                    }
+
+                                    // If still not found, try URL parameters
+                                    if (!transactionId) {
+                                        const urlParams = new URLSearchParams(window.location.search);
+                                        const ptxn = urlParams.get('_ptxn');
+                                        const txn = urlParams.get('txn');
+                                        const transaction = urlParams.get('transaction');
+
+                                        transactionId = ptxn || txn || transaction;
+                                        console.log('URL parameters check:', {
+                                            ptxn,
+                                            txn,
+                                            transaction
+                                        });
+
+                                        // Also check if we're on a Paddle success URL
+                                        if (window.location.pathname.includes('/payments/success')) {
+                                            console.log(
+                                                'Currently on success URL, checking for transaction ID in URL'
+                                                );
+                                            const successUrlParams = new URLSearchParams(window.location
+                                            .search);
+                                            const successTransactionId = successUrlParams.get('transaction_id');
+                                            if (successTransactionId) {
+                                                console.log('Found transaction ID in success URL:',
+                                                    successTransactionId);
+                                                transactionId = successTransactionId;
+                                            }
+                                        }
+                                    }
+
+                                    // If still not found, try session storage
+                                    if (!transactionId) {
+                                        transactionId = sessionStorage.getItem('currentPaddleTransactionId');
+                                        console.log('Session storage transaction ID:', transactionId);
+                                    }
+
+                                    console.log('Final extracted transaction ID:', transactionId);
+
+                                    window.handlePaddleEvent({
+                                        type: 'checkout.completed',
+                                        data: event.data.callback_data
+                                    }, currentAction);
+                                } else if (event.data.event_name === 'checkout.failed') {
+                                    console.log('Processing checkout.failed event');
+                                    window.handlePaddleEvent({
+                                        type: 'checkout.failed',
+                                        data: event.data.callback_data
+                                    }, currentAction);
+                                }
+                            }
+                        }
+                    });
+
+                } catch (error) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Payment System Error',
+                        text: 'We cannot process payments at this moment.',
+                        confirmButtonText: 'OK'
+                    });
+                }
+            });
+        </script>
+    @endif
+
+    <!-- PayProGlobal Integration -->
+    // Update the PayProGlobal Integration section in your blade template
+
+@if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
+    <script>
+        // Enhanced PayProGlobal popup monitoring
+        let payProGlobalPopup = null;
+        let popupCheckInterval = null;
+
+        // Handle PayProGlobal popup communication
+        window.addEventListener('message', function(event) {
+            console.log('Received message:', event.data, 'Origin:', event.origin);
+
+            // Check if message is from PayProGlobal
+            if (event.origin.includes('payproglobal.com') || event.origin.includes('store.payproglobal.com')) {
+                console.log('PayProGlobal message received:', event.data);
+
+                if (event.data.type === 'payproglobal_success') {
+                    const { orderId, userId, packageName } = event.data;
+                    console.log('Processing PayProGlobal success:', {
+                        orderId,
+                        userId,
+                        packageName
+                    });
+
+                    // Clear any intervals
+                    if (popupCheckInterval) {
+                        clearInterval(popupCheckInterval);
+                    }
+
+                    // Close popup if still open
+                    if (payProGlobalPopup && !payProGlobalPopup.closed) {
+                        payProGlobalPopup.close();
+                    }
+
+                    // Create form to submit to handleSuccess
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/payments/success';
+
                     const csrfInput = document.createElement('input');
                     csrfInput.type = 'hidden';
                     csrfInput.name = '_token';
                     csrfInput.value = csrfToken;
                     form.appendChild(csrfInput);
+
+                    const gatewayInput = document.createElement('input');
+                    gatewayInput.type = 'hidden';
+                    gatewayInput.name = 'gateway';
+                    gatewayInput.value = 'payproglobal';
+                    form.appendChild(gatewayInput);
+
+                    const orderIdInput = document.createElement('input');
+                    orderIdInput.type = 'hidden';
+                    orderIdInput.name = 'OrderId';  // Use PayProGlobal's format
+                    orderIdInput.value = orderId;
+                    form.appendChild(orderIdInput);
+
+                    const userIdInput = document.createElement('input');
+                    userIdInput.type = 'hidden';
+                    userIdInput.name = 'user_id';
+                    userIdInput.value = userId;
+                    form.appendChild(userIdInput);
+
+                    const packageInput = document.createElement('input');
+                    packageInput.type = 'hidden';
+                    packageInput.name = 'package';
+                    packageInput.value = packageName;
+                    form.appendChild(packageInput);
+
+                    const popupInput = document.createElement('input');
+                    popupInput.type = 'hidden';
+                    popupInput.name = 'popup';
+                    popupInput.value = 'true';
+                    form.appendChild(popupInput);
+
+                    document.body.appendChild(form);
+                    console.log('Submitting PayProGlobal success form');
+                    form.submit();
                 }
-                const gatewayInput = document.createElement('input');
-                gatewayInput.type = 'hidden';
-                gatewayInput.name = 'gateway';
-                gatewayInput.value = 'fastspring';
-                form.appendChild(gatewayInput);
-                const orderIdInput = document.createElement('input');
-                orderIdInput.type = 'hidden';
-                orderIdInput.name = 'orderId';
-                orderIdInput.value = orderId;
-                form.appendChild(orderIdInput);
-                const packageNameInput = document.createElement('input');
-                packageNameInput.type = 'hidden';
-                packageNameInput.name = 'package_name';
-                packageNameInput.value = packageName;
-                form.appendChild(packageNameInput);
-                const paymentGatewayIdInput = document.createElement('input');
-                paymentGatewayIdInput.type = 'hidden';
-                paymentGatewayIdInput.name = 'payment_gateway_id';
-                paymentGatewayIdInput.value = "{{ $activeGateway->id ?? '' }}";
-                form.appendChild(paymentGatewayIdInput);
-
-                document.body.appendChild(form);
-                console.log('Submitting form with data:', {
-                    _token: csrfToken,
-                    gateway: 'fastspring',
-                    orderId: orderId,
-                    package_name: packageName,
-                    payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
-                });
-                form.submit();
-            } catch (err) {
-                console.error('Error in onFSPopupClosed:', err);
-                showAlert('error', 'Processing Error', 'There was an error processing your payment.', () => {
-                    window.location.href = '/subscriptions?error=processing';
-                });
-                sessionStorage.removeItem('currentProductPath');
-                currentProductPath = '';
-            }
-        }
-    </script>
-    @endif
-
-        <!-- Paddle Integration -->
-    @if ($activeGateway && $activeGateway->name === 'Paddle')
-    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-    <script>
-        // Global function to handle Paddle events
-        window.handlePaddleEvent = function(eventData, action) {
-            console.log('=== PADDLE EVENT HANDLER ===', {
-                eventData: eventData,
-                action: action
-            });
-
-            console.log('=== DETAILED EVENT DATA ANALYSIS ===');
-            console.log('eventData type:', typeof eventData);
-            console.log('eventData keys:', Object.keys(eventData || {}));
-            console.log('Full eventData JSON:', JSON.stringify(eventData, null, 2));
-
-            // Handle different event structures that Paddle might send
-            let eventName = null;
-            let transactionId = null;
-
-            // Try different possible event structures
-            if (eventData.data?.event?.name) {
-                eventName = eventData.data.event.name;
-                transactionId = eventData.data.event.data?.transaction_id;
-            } else if (eventData.event?.name) {
-                eventName = eventData.event.name;
-                transactionId = eventData.event.data?.transaction_id;
-            } else if (eventData.name) {
-                eventName = eventData.name;
-                transactionId = eventData.data?.transaction_id;
-            } else if (eventData.type) {
-                eventName = eventData.type;
-                transactionId = eventData.data?.transaction_id || eventData.transaction_id;
-            }
-
-            // Fallback: Try to extract transaction ID from URL if not found in event data
-            if (!transactionId && eventData.data) {
-                // Look for transaction ID in various possible locations
-                transactionId = eventData.data.transaction_id ||
-                               eventData.data.id ||
-                               eventData.data.transactionId ||
-                               eventData.data.transactionId;
-            }
-
-            // Additional fallback: Extract from URL if still not found
-            if (!transactionId) {
-                const urlParams = new URLSearchParams(window.location.search);
-                const ptxn = urlParams.get('_ptxn');
-                if (ptxn) {
-                    transactionId = ptxn;
-                    console.log('Extracted transaction ID from URL:', transactionId);
-                }
-            }
-
-            console.log('Parsed event data:', {
-                eventName: eventName,
-                transactionId: transactionId
-            });
-
-            console.log('Full eventData structure:', JSON.stringify(eventData, null, 2));
-
-            if (eventName === 'checkout.completed' || eventName === 'transaction.completed') {
-                console.log('=== PADDLE CHECKOUT COMPLETED ===', {
-                    eventName: eventName,
-                    transactionId: transactionId,
-                    action: action
-                });
-
-                // When Paddle checkout is completed, redirect to the success URL
-                // This will trigger the handleSuccess method in PaymentController
-                if (transactionId) {
-                    console.log('Redirecting to success URL with transaction ID:', transactionId);
-                    const successUrl = `/payments/success?gateway=paddle&transaction_id=${transactionId}`;
-                    window.location.href = successUrl;
-                } else {
-                    console.log('No transaction ID found in event data, trying fallback methods...');
-
-                    // Try to get transaction ID from session storage as final fallback
-                    const sessionTransactionId = sessionStorage.getItem('currentPaddleTransactionId');
-                    if (sessionTransactionId) {
-                        console.log('Using transaction ID from session storage:', sessionTransactionId);
-                        const successUrl = `/payments/success?gateway=paddle&transaction_id=${sessionTransactionId}`;
-                        window.location.href = successUrl;
-                    } else {
-                        console.log('No transaction ID found anywhere, redirecting to success URL without transaction ID');
-                        console.log('This may cause issues - the backend will need to handle this case');
-                        const successUrl = `/payments/success?gateway=paddle`;
-                        window.location.href = successUrl;
-                    }
-                }
-            } else if (eventName === 'checkout.failed' || eventName === 'transaction.failed') {
-                window.showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
-                    'Your action failed. Please try again.');
-            } else if (eventName === 'transaction.cancelled') {
-                if (!eventData.success) {
-                    window.showInfo(`${action.charAt(0).toUpperCase() + action.slice(1)} Cancelled`,
-                        'Your action was cancelled.');
-                }
-            } else {
-                console.log('Unhandled Paddle event:', eventName, eventData);
-            }
-        };
-
-        document.addEventListener('DOMContentLoaded', function() {
-            try {
-                Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
-                Paddle.Setup({
-                    token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
-                });
-
-                // Add global event listener for Paddle events
-                window.addEventListener('message', function(event) {
-                    if (event.origin.includes('paddle.com') || event.origin.includes('cdn.paddle.com')) {
-                        console.log('Paddle message received:', event.data);
-
-                        // Check if this is a Paddle checkout event
-                        if (event.data && event.data.action === 'event' && event.data.event_name) {
-                            // Try to determine the action from session storage or URL
-                            const currentAction = sessionStorage.getItem('currentPaddleAction') || 'new';
-
-                                                    // Handle the event based on event_name
-                        if (event.data.event_name === 'checkout.completed') {
-                            console.log('=== PADDLE CHECKOUT.COMPLETED EVENT RECEIVED ===');
-                            console.log('Event data:', event.data);
-                            console.log('Callback data:', event.data.callback_data);
-                            console.log('Current action from session storage:', currentAction);
-
-                            // Extract transaction ID from callback data with comprehensive fallbacks
-                            let transactionId = null;
-
-                            console.log('=== TRANSACTION ID EXTRACTION DEBUG ===');
-                            console.log('Full event.data:', JSON.stringify(event.data, null, 2));
-                            console.log('event.data.callback_data:', event.data.callback_data);
-
-                            // Try multiple possible locations for transaction ID
-                            if (event.data.callback_data) {
-                                const callbackData = event.data.callback_data;
-                                console.log('Callback data structure:', JSON.stringify(callbackData, null, 2));
-
-                                // Try different possible field names
-                                transactionId = callbackData.transaction_id ||
-                                               callbackData.id ||
-                                               callbackData.transactionId ||
-                                               callbackData.transactionId ||
-                                               callbackData.transaction_id ||
-                                               callbackData.order_id ||
-                                               callbackData.orderId;
-                            }
-
-                            // If still not found, try the main event data
-                            if (!transactionId && event.data) {
-                                transactionId = event.data.transaction_id ||
-                                               event.data.id ||
-                                               event.data.transactionId ||
-                                               event.data.order_id ||
-                                               event.data.orderId;
-                            }
-
-                                                        // If still not found, try URL parameters
-                            if (!transactionId) {
-                                const urlParams = new URLSearchParams(window.location.search);
-                                const ptxn = urlParams.get('_ptxn');
-                                const txn = urlParams.get('txn');
-                                const transaction = urlParams.get('transaction');
-
-                                transactionId = ptxn || txn || transaction;
-                                console.log('URL parameters check:', { ptxn, txn, transaction });
-
-                                // Also check if we're on a Paddle success URL
-                                if (window.location.pathname.includes('/payments/success')) {
-                                    console.log('Currently on success URL, checking for transaction ID in URL');
-                                    const successUrlParams = new URLSearchParams(window.location.search);
-                                    const successTransactionId = successUrlParams.get('transaction_id');
-                                    if (successTransactionId) {
-                                        console.log('Found transaction ID in success URL:', successTransactionId);
-                                        transactionId = successTransactionId;
-                                    }
-                                }
-                            }
-
-                            // If still not found, try session storage
-                            if (!transactionId) {
-                                transactionId = sessionStorage.getItem('currentPaddleTransactionId');
-                                console.log('Session storage transaction ID:', transactionId);
-                            }
-
-                            console.log('Final extracted transaction ID:', transactionId);
-
-                            window.handlePaddleEvent({
-                                type: 'checkout.completed',
-                                data: event.data.callback_data
-                            }, currentAction);
-                            } else if (event.data.event_name === 'checkout.failed') {
-                                console.log('Processing checkout.failed event');
-                                window.handlePaddleEvent({
-                                    type: 'checkout.failed',
-                                    data: event.data.callback_data
-                                }, currentAction);
-                            }
-                        }
-                    }
-                });
-
-            } catch (error) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Payment System Error',
-                    text: 'We cannot process payments at this moment.',
-                    confirmButtonText: 'OK'
-                });
             }
         });
-    </script>
-    @endif
 
-    <!-- PayProGlobal Integration -->
-    @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
-    <script src="https://secure.payproglobal.com/js/custom/checkout.js"></script>
-    @endif
+        // Monitor PayProGlobal popup for URL changes
+        function monitorPayProGlobalPopup(popup) {
+            payProGlobalPopup = popup;
+            popupCheckInterval = setInterval(() => {
+                try {
+                    if (popup.closed) {
+                        clearInterval(popupCheckInterval);
+                        console.log('PayProGlobal popup closed');
+
+                        // Check if payment was successful via session storage
+                        const successFlag = sessionStorage.getItem('payProGlobalSuccess');
+                        if (!successFlag) {
+                            showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
+                        }
+                        sessionStorage.removeItem('payProGlobalSuccess');
+                        sessionStorage.removeItem('payProGlobalUserId');
+                        sessionStorage.removeItem('payProGlobalPackageName');
+                        sessionStorage.removeItem('payProGlobalAction');
+                        return;
+                    }
+
+                    // Try to check the popup URL for the thank you page
+                    const popupUrl = popup.location.href;
+                    if (popupUrl && popupUrl.includes('/thankyou')) {
+                        console.log('PayProGlobal thank you page detected');
+
+                        // Extract OrderId from the URL
+                        const urlParams = new URLSearchParams(popup.location.search);
+                        const orderId = urlParams.get('OrderId');
+
+                        if (orderId) {
+                            console.log('Found OrderId in thank you URL:', orderId);
+
+                            // Send message to parent window
+                            window.postMessage({
+                                type: 'payproglobal_success',
+                                orderId: orderId,
+                                userId: sessionStorage.getItem('payProGlobalUserId'),
+                                packageName: sessionStorage.getItem('payProGlobalPackageName')
+                            }, '*');
+
+                            clearInterval(popupCheckInterval);
+                            setTimeout(() => popup.close(), 1000);
+                        }
+                    }
+                } catch (e) {
+                    // Cross-origin restrictions may prevent URL access
+                    // This is expected and we'll rely on postMessage instead
+                }
+            }, 500);
+        }
+
+        // Inject script into PayProGlobal thank you page
+        // This script will run on the PayProGlobal domain and send the OrderId back
+        const thankYouScript = `
+            <script>
+            (function() {
+                if (window.location.href.includes('/thankyou')) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const orderId = urlParams.get('OrderId');
+                    if (orderId && window.opener) {
+                        window.opener.postMessage({
+                            type: 'payproglobal_success',
+                            orderId: orderId,
+                            userId: '${sessionStorage.getItem('payProGlobalUserId') || ''}',
+                            packageName: '${sessionStorage.getItem('payProGlobalPackageName') || ''}'
+                        }, '*');
+                    }
+                }
+            })();
+            </script>
+        `;
+    </script>
+@endif
 
     <style>
         .btn.active {
@@ -873,61 +1036,61 @@
             @include('components.alert-messages')
             <h2 class="section-title">
                 @if (isset($isUpgrade) && $isUpgrade)
-                Upgrade Your Subscription
+                    Upgrade Your Subscription
                 @elseif (isset($pageType) && $pageType === 'downgrade')
-                Downgrade Your Subscription
+                    Downgrade Your Subscription
                 @else
-                Plans For Every Type of Business
+                    Plans For Every Type of Business
                 @endif
             </h2>
             <p class="section-subtitle">
                 @if (isset($isUpgrade) && $isUpgrade)
-                Choose a higher-tier plan to unlock more features. Your current subscription will be prorated.
+                    Choose a higher-tier plan to unlock more features. Your current subscription will be prorated.
                 @elseif (isset($pageType) && $pageType === 'downgrade')
-                Select a lower-tier plan. The change will take effect at the end of your current billing cycle.
+                    Select a lower-tier plan. The change will take effect at the end of your current billing cycle.
                 @else
-                SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
-                individuals connect with their audiences.
+                    SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
+                    individuals connect with their audiences.
                 @endif
             </p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
-                <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
-                    <h3>{{ $package->name }}</h3>
-                    <p class="price">${{ number_format($package->price, 0) }} <span
-                            class="per-month">/{{ $package->duration }}</span></p>
+                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                        <h3>{{ $package->name }}</h3>
+                        <p class="price">${{ number_format($package->price, 0) }} <span
+                                class="per-month">/{{ $package->duration }}</span></p>
 
-                    <button class="btn {{ $currentPackage == $package->name ? 'active' : 'dark' }} checkout-button"
-                        data-package="{{ $package->name }}"
-                        data-action="{{ $currentPackage == $package->name ? 'current' : (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice ? 'upgrade' : (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice ? 'downgrade' : 'new')) }}"
-                        {{ $currentPackage == $package->name || (isset($isUpgrade) && $isUpgrade && $package->price <= $currentPackagePrice && $package->name !== 'Enterprise') || (isset($pageType) && $pageType === 'downgrade' && $package->price >= $currentPackagePrice && $package->name !== 'Enterprise') ? 'disabled' : '' }}>
-                        @if ($package->name == 'Enterprise')
-                        Get in Touch
-                        @elseif ($currentPackage == $package->name)
-                        ✓ Current Plan
-                        @elseif (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice)
-                        Upgrade to {{ $package->name }}
-                        @elseif (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice)
-                            Downgrade to {{ $package->name }}
+                        <button class="btn {{ $currentPackage == $package->name ? 'active' : 'dark' }} checkout-button"
+                            data-package="{{ $package->name }}"
+                            data-action="{{ $currentPackage == $package->name ? 'current' : (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice ? 'upgrade' : (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice ? 'downgrade' : 'new')) }}"
+                            {{ $currentPackage == $package->name || (isset($isUpgrade) && $isUpgrade && $package->price <= $currentPackagePrice && $package->name !== 'Enterprise') || (isset($pageType) && $pageType === 'downgrade' && $package->price >= $currentPackagePrice && $package->name !== 'Enterprise') ? 'disabled' : '' }}>
+                            @if ($package->name == 'Enterprise')
+                                Get in Touch
+                            @elseif ($currentPackage == $package->name)
+                                ✓ Current Plan
+                            @elseif (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice)
+                                Upgrade to {{ $package->name }}
+                            @elseif (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice)
+                                Downgrade to {{ $package->name }}
                             @else
-                            Get Started
+                                Get Started
                             @endif
-                            </button>
+                        </button>
 
-                            <p class="included-title">What's included</p>
-                            <ul class="features">
-                                @foreach ($package->features as $feature)
+                        <p class="included-title">What's included</p>
+                        <ul class="features">
+                            @foreach ($package->features as $feature)
                                 <li><span class="icon"></span> {{ $feature }}</li>
-                                @endforeach
-                            </ul>
-                </div>
+                            @endforeach
+                        </ul>
+                    </div>
                 @endforeach
             </div>
             @if (isset($hasActiveSubscription) && $hasActiveSubscription)
-            <div class="cancel-section">
-                <p>Want to cancel your current subscription?</p>
-                <button class="btn cancel" id="cancel-subscription">Cancel Subscription</button>
-            </div>
+                <div class="cancel-section">
+                    <p>Want to cancel your current subscription?</p>
+                    <button class="btn cancel" id="cancel-subscription">Cancel Subscription</button>
+                </div>
             @endif
         </div>
     </div>
@@ -1046,9 +1209,11 @@
                 if (action === 'upgrade') {
                     apiUrl = `/api/payments/upgrade/${packageName}`;
                 } else if (action === 'downgrade') {
-                    apiUrl = `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
+                    apiUrl =
+                    `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
                 } else {
-                    apiUrl = `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
+                    apiUrl =
+                        `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
                 }
 
                 const requestBody = {
@@ -1089,14 +1254,8 @@
                             console.log('Executing Paddle checkout...');
                             processPaddle(packageName, action);
                         } else if (selectedGateway === 'Pay Pro Global') {
-                            const popup = window.open(
-                                data.checkout_url,
-                                action === 'upgrade' ? 'PayProGlobal Upgrade' : action === 'downgrade' ? 'PayProGlobal Downgrade' : 'PayProGlobal Checkout',
-                                'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
-                            );
-                            if (!popup) {
-                                showError('Popup Blocked', 'Please allow popups for this site.');
-                            }
+                            console.log('Executing Paddle checkout...');
+                            processPayProGlobal(packageName, action);
                         }
                     })
                     .catch(error => {
@@ -1114,13 +1273,15 @@
                 // Check if Paddle is properly initialized
                 if (typeof Paddle === 'undefined') {
                     console.error('Paddle is not initialized');
-                    showError('Payment Error', 'Payment system is not properly initialized. Please refresh the page and try again.');
+                    showError('Payment Error',
+                        'Payment system is not properly initialized. Please refresh the page and try again.');
                     return;
                 }
 
                 if (typeof Paddle.Checkout === 'undefined') {
                     console.error('Paddle.Checkout is not available');
-                    showError('Payment Error', 'Payment checkout is not available. Please refresh the page and try again.');
+                    showError('Payment Error',
+                        'Payment checkout is not available. Please refresh the page and try again.');
                     return;
                 }
                 const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
@@ -1157,19 +1318,19 @@
                         console.log(data, 'data');
 
                         // {success: true, checkout_url: 'https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa', transaction_id: 'txn_01jzd7cf1dae3sper0n1mj28fa'}
-                            // checkout_url
-                            // :
-                            // "https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa"
-                            // success
-                            // :
-                            // true
-                            // transaction_id
-                            // :
-                            // "txn_01jzd7cf1dae3sper0n1mj28fa"
-                            // [[Prototype]]
-                            // :
-                            // Object
-                                                console.log('Opening Paddle checkout with transaction ID:', data.transaction_id);
+                        // checkout_url
+                        // :
+                        // "https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa"
+                        // success
+                        // :
+                        // true
+                        // transaction_id
+                        // :
+                        // "txn_01jzd7cf1dae3sper0n1mj28fa"
+                        // [[Prototype]]
+                        // :
+                        // Object
+                        console.log('Opening Paddle checkout with transaction ID:', data.transaction_id);
 
                         // Store current action and transaction ID in session storage for global event listener
                         sessionStorage.setItem('currentPaddleAction', action);
@@ -1207,12 +1368,16 @@
                     packageName,
                     action
                 });
+
                 const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
                 const requestBody = {
                     package: packageName,
                     is_upgrade: action === 'upgrade',
                     is_downgrade: action === 'downgrade'
                 };
+
+                console.log('Making request to:', apiUrl, 'with body:', requestBody);
+
                 fetch(apiUrl, {
                         method: 'POST',
                         headers: {
@@ -1227,34 +1392,162 @@
                         body: JSON.stringify(requestBody)
                     })
                     .then(response => {
+                        console.log('Response status:', response.status);
                         if (!response.ok) {
                             return response.json().then(data => {
-                                throw new Error(data.error || `HTTP ${response.status}`);
+                                console.error('API Error Response:', data);
+                                throw new Error(data.error ||
+                                    `HTTP ${response.status}: ${data.message || 'Unknown error'}`);
                             });
                         }
                         return response.json();
                     })
                     .then(data => {
-                        if (!data.success || !data.checkoutUrl) {
-                            throw new Error(data.error || 'No checkout URL received');
+                        console.log('API Response:', data);
+
+                        if (!data.success) {
+                            throw new Error(data.error || 'API returned success: false');
                         }
+
+                        if (!data.checkout_url) {
+                            console.error('No checkout_url in response:', data);
+                            throw new Error('No checkout URL received from server');
+                        }
+
+                        console.log('PayProGlobal checkout URL received:', data.checkout_url);
+
+                        // Validate URL format
+                        if (!data.checkout_url.includes('payproglobal.com')) {
+                            console.error('Invalid checkout URL format:', data.checkout_url);
+                            throw new Error('Invalid checkout URL format');
+                        }
+
+                        // Store user ID and package name in session storage for popup communication
+                        const userId = "{{ Auth::id() ?? '' }}";
+                        sessionStorage.setItem('payProGlobalUserId', userId);
+                        sessionStorage.setItem('payProGlobalPackageName', packageName);
+                        sessionStorage.setItem('payProGlobalAction', action);
+
+                        console.log('Stored in session storage:', {
+                            userId,
+                            packageName,
+                            action
+                        });
+
+                        // Open popup with better error handling
+                        const popupFeatures =
+                            'width=1200,height=1200,location=no,toolbar=no,menubar=no,scrollbars=yes,resizable=yes';
                         const popup = window.open(
-                            data.checkoutUrl,
-                            action === 'upgrade' ? 'PayProGlobal Upgrade' : action === 'downgrade' ?
-                            'PayProGlobal Downgrade' : 'PayProGlobal Checkout',
-                            'width=800,height=600,location=no,toolbar=no,menubar=no,scrollbars=yes'
+                            data.checkout_url,
+                            action === 'upgrade' ? 'PayProGlobal_Upgrade' :
+                            action === 'downgrade' ? 'PayProGlobal_Downgrade' :
+                            'PayProGlobal_Checkout',
+                            popupFeatures
                         );
+
                         if (!popup) {
-                            showError('Popup Blocked', 'Please allow popups for this site.');
+                            console.error('Popup was blocked');
+                            showError('Popup Blocked',
+                                'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.'
+                                );
+                            return;
                         }
+
+                        console.log('PayProGlobal popup opened successfully');
+
+                        // get order id from https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618
+                        const url = 'https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618';
+                        const params = new URLSearchParams(url.split('?')[1]);
+                        const orderId = params.get('OrderId');
+                        console.log(orderId, "order id");
+
+
+
+
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
-                        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
+                        showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+                            error.message || 'An unexpected error occurred. Please try again.');
                     });
             }
 
+            function handlePayProGlobalSuccess(data) {
+                console.log('Processing PayProGlobal success:', data);
 
+                const {
+                    orderId,
+                    userId,
+                    packageName
+                } = data;
+
+                if (!orderId || !userId || !packageName) {
+                    console.error('Missing required success data:', data);
+                    showError('Payment Error',
+                        'Payment completed but some data is missing. Please contact support.');
+                    return;
+                }
+
+                // Create form to submit to success handler
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/payments/success';
+                form.style.display = 'none';
+
+                // Add CSRF token
+                const csrfInput = document.createElement('input');
+                csrfInput.type = 'hidden';
+                csrfInput.name = '_token';
+                csrfInput.value = csrfToken;
+                form.appendChild(csrfInput);
+
+                // Add gateway
+                const gatewayInput = document.createElement('input');
+                gatewayInput.type = 'hidden';
+                gatewayInput.name = 'gateway';
+                gatewayInput.value = 'payproglobal';
+                form.appendChild(gatewayInput);
+
+                // Add order ID
+                const orderIdInput = document.createElement('input');
+                orderIdInput.type = 'hidden';
+                orderIdInput.name = 'order_id';
+                orderIdInput.value = orderId;
+                form.appendChild(orderIdInput);
+
+                // Add user ID
+                const userIdInput = document.createElement('input');
+                userIdInput.type = 'hidden';
+                userIdInput.name = 'user_id';
+                userIdInput.value = userId;
+                form.appendChild(userIdInput);
+
+                // Add package name
+                const packageInput = document.createElement('input');
+                packageInput.type = 'hidden';
+                packageInput.name = 'package';
+                packageInput.value = packageName;
+                form.appendChild(packageInput);
+
+                // Add popup flag
+                const popupInput = document.createElement('input');
+                popupInput.type = 'hidden';
+                popupInput.name = 'popup';
+                popupInput.value = 'true';
+                form.appendChild(popupInput);
+
+                document.body.appendChild(form);
+
+                console.log('Submitting PayProGlobal success form with data:', {
+                    gateway: 'payproglobal',
+                    order_id: orderId,
+                    user_id: userId,
+                    package: packageName,
+                    popup: 'true'
+                });
+
+                form.submit();
+            }
 
             function cancelSubscription() {
                 console.log('=== CANCEL SUBSCRIPTION ===');
@@ -1268,7 +1561,7 @@
                     confirmButtonColor: '#ef4444'
                 }).then(result => {
                     if (result.isConfirmed) {
-                        fetch('/api/subscriptions/cancel', {
+                        fetch('/api/pricing/cancel', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -1416,6 +1709,49 @@
             }).then(() => {
                 if (callback) callback();
             });
+        }
+
+        // Make injectPayProGlobalSuccessHandler globally available
+        function injectPayProGlobalSuccessHandler(popup, userId, packageName) {
+            console.log('Injecting PayProGlobal success handler');
+            const scriptContent = `
+                (function() {
+                    console.log('PayProGlobal success handler script running');
+                    // Check if we\'re on the PayProGlobal thank you page
+                    if (window.location.href.includes('store.payproglobal.com/thankyou')) {
+                        console.log('Detected PayProGlobal thank you page');
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const orderId = urlParams.get('OrderId');
+                        const externalOrderId = urlParams.get('ExternalOrderId');
+
+                        if (orderId) {
+                            console.log('Sending PayProGlobal success message to parent:', {
+                                orderId: orderId,
+                                userId: '${userId}',
+                                packageName: '${packageName}'
+                            });
+                            window.opener.postMessage({
+                                type: 'payproglobal_success',
+                                orderId: orderId,
+                                userId: '${userId}',
+                                packageName: '${packageName}'
+                            }, '*');
+                            // Close the popup after sending the message
+                            setTimeout(() => window.close(), 1000);
+                        } else {
+                            console.error('No OrderId found in thank you page URL');
+                        }
+                    }
+                })();
+            `;
+            // Inject the script into the popup
+            try {
+                popup.document.write(`
+                    <script>${scriptContent}<\/script>
+                `);
+            } catch (error) {
+                console.error('Error injecting PayProGlobal success handler:', error);
+            }
         }
     </script>
 </body>

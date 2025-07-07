@@ -130,117 +130,119 @@ class PaymentController extends Controller
     }
 
     public function paddleCheckout(Request $request, string $package)
-{
-    Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
+    {
+        \Log::info('[paddleCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
+        Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
-    try {
-        $processedPackage = str_replace('-plan', '', strtolower($package));
-        $validation = $this->validatePackageAndGetUser($processedPackage);
-        if (!is_array($validation)) {
-            return $validation;
-        }
-
-        $user = $validation['user'];
-        $packageData = $validation['packageData'];
-
-        $apiKey = config('payment.gateways.Paddle.api_key');
-        if (empty($apiKey)) {
-            Log::error('Paddle API key missing');
-            return response()->json(['error' => 'Payment configuration error'], 500);
-        }
-
-        $headers = [
-            'Authorization' => 'Bearer ' . $apiKey,
-            'Content-Type' => 'application/json',
-        ];
-
-        if (!$user->paddle_customer_id) {
-            $customerResponse = Http::withHeaders($headers)->post('https://sandbox-api.paddle.com/customers', [
-                'email' => $user->email,
-                'name' => $user->name,
-                'custom_data' => ['user_id' => (string) $user->id]
-            ]);
-
-            if (!$customerResponse->successful()) {
-                Log::error('Paddle customer creation failed', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Customer setup failed'], 500);
+        try {
+            $processedPackage = str_replace('-plan', '', strtolower($package));
+            $validation = $this->validatePackageAndGetUser($processedPackage);
+            if (!is_array($validation)) {
+                return $validation;
             }
 
-            $user->paddle_customer_id = $customerResponse->json()['data']['id'];
-            $user->save();
+            $user = $validation['user'];
+            $packageData = $validation['packageData'];
+
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            if (empty($apiKey)) {
+                Log::error('Paddle API key missing');
+                return response()->json(['error' => 'Payment configuration error'], 500);
+            }
+
+            $headers = [
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ];
+
+            if (!$user->paddle_customer_id) {
+                $customerResponse = Http::withHeaders($headers)->post('https://sandbox-api.paddle.com/customers', [
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'custom_data' => ['user_id' => (string) $user->id]
+                ]);
+
+                if (!$customerResponse->successful()) {
+                    Log::error('Paddle customer creation failed', ['user_id' => $user->id]);
+                    return response()->json(['error' => 'Customer setup failed'], 500);
+                }
+
+                $user->paddle_customer_id = $customerResponse->json()['data']['id'];
+                $user->save();
+            }
+
+            $productsResponse = Http::withHeaders($headers)
+                ->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
+
+            if (!$productsResponse->successful()) {
+                Log::error('Paddle products fetch failed', ['status' => $productsResponse->status()]);
+                return response()->json(['error' => 'Product fetch failed'], 500);
+            }
+
+            $products = $productsResponse->json()['data'];
+            $matchingProduct = collect($products)->firstWhere('name', $package);
+
+            if (!$matchingProduct) {
+                Log::error('Paddle product not found', ['package' => $package]);
+                return response()->json(['error' => 'Unavailable package'], 400);
+            }
+
+            $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
+            if (!$price) {
+                Log::error('No active prices found', ['product_id' => $matchingProduct['id']]);
+                return response()->json(['error' => 'No active price'], 400);
+            }
+
+            $transactionData = [
+                'items' => [['price_id' => $price['id'], 'quantity' => 1]],
+                'customer_id' => $user->paddle_customer_id,
+                'currency_code' => 'USD',
+                'custom_data' => [
+                    'user_id' => (string) $user->id,
+                    'package_id' => (string) $packageData->id,
+                    'package' => $package
+                ],
+                'checkout' => [
+                    'settings' => ['display_mode' => 'overlay'],
+                    'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']),
+                    'cancel_url' => route('payments.popup-cancel')
+                ]
+            ];
+
+            $response = Http::withHeaders($headers)
+                ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
+
+            if (!$response->successful()) {
+                Log::error('Paddle transaction creation failed', ['status' => $response->status(), 'response' => $response->body()]);
+                return response()->json(['error' => 'Transaction creation failed'], $response->status());
+            }
+
+            $transaction = $response->json()['data'];
+
+            Log::info('Paddle checkout created', [
+                'user_id' => $user->id,
+                'transaction_id' => $transaction['id'],
+                'checkout_url' => $transaction['checkout']['url']
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $transaction['checkout']['url'],
+                'transaction_id' => $transaction['id']
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Paddle checkout error', [
+                'error' => $e->getMessage(),
+                'package' => $package,
+                'user_id' => Auth::id()
+            ]);
+            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
         }
-
-        $productsResponse = Http::withHeaders($headers)
-            ->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
-
-        if (!$productsResponse->successful()) {
-            Log::error('Paddle products fetch failed', ['status' => $productsResponse->status()]);
-            return response()->json(['error' => 'Product fetch failed'], 500);
-        }
-
-        $products = $productsResponse->json()['data'];
-        $matchingProduct = collect($products)->firstWhere('name', $package);
-
-        if (!$matchingProduct) {
-            Log::error('Paddle product not found', ['package' => $package]);
-            return response()->json(['error' => 'Unavailable package'], 400);
-        }
-
-        $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
-        if (!$price) {
-            Log::error('No active prices found', ['product_id' => $matchingProduct['id']]);
-            return response()->json(['error' => 'No active price'], 400);
-        }
-
-        $transactionData = [
-            'items' => [['price_id' => $price['id'], 'quantity' => 1]],
-            'customer_id' => $user->paddle_customer_id,
-            'currency_code' => 'USD',
-            'custom_data' => [
-                'user_id' => (string) $user->id,
-                'package_id' => (string) $packageData->id,
-                'package' => $package
-            ],
-            'checkout' => [
-                'settings' => ['display_mode' => 'overlay'],
-                'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']),
-                'cancel_url' => route('payments.popup-cancel')
-            ]
-        ];
-
-        $response = Http::withHeaders($headers)
-            ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
-
-        if (!$response->successful()) {
-            Log::error('Paddle transaction creation failed', ['status' => $response->status(), 'response' => $response->body()]);
-            return response()->json(['error' => 'Transaction creation failed'], $response->status());
-        }
-
-        $transaction = $response->json()['data'];
-
-        Log::info('Paddle checkout created', [
-            'user_id' => $user->id,
-            'transaction_id' => $transaction['id'],
-            'checkout_url' => $transaction['checkout']['url']
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'checkout_url' => $transaction['checkout']['url'],
-            'transaction_id' => $transaction['id']
-        ]);
-    } catch (\Exception $e) {
-        Log::error('Paddle checkout error', [
-            'error' => $e->getMessage(),
-            'package' => $package,
-            'user_id' => Auth::id()
-        ]);
-        return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
     }
-}
 
     public function fastspringCheckout(Request $request, $package)
     {
+        \Log::info('[fastspringCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
         Log::info('FastSpring checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
@@ -326,84 +328,92 @@ class PaymentController extends Controller
     }
 
     public function payProGlobalCheckout(Request $request, string $package)
-    {
-        Log::info('PayProGlobal checkout started', ['package' => $package, 'user_id' => Auth::id()]);
+{
+    \Log::info('[payProGlobalCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
+    Log::info('PayProGlobal checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
-        try {
-            $processedPackage = str_replace('-plan', '', strtolower($package));
-            $validation = $this->validatePackageAndGetUser($processedPackage);
-            if (!is_array($validation)) {
-                return $validation;
-            }
+    try {
+        $processedPackage = str_replace('-plan', '', strtolower($package));
+        $validation = $this->validatePackageAndGetUser($processedPackage);
+        if (!is_array($validation)) {
+            return $validation;
+        }
 
-            $user = $validation['user'];
-            $packageData = $validation['packageData'];
+        $user = $validation['user'];
+        $packageData = $validation['packageData'];
 
-            $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
-            if (!$productId) {
-                Log::error('PayProGlobal product ID not found', ['package' => $processedPackage]);
-                return response()->json(['error' => 'Product not configured'], 400);
-            }
+        $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
+        if (!$productId) {
+            Log::error('PayProGlobal product ID not found', ['package' => $processedPackage]);
+            return response()->json(['error' => 'Product not configured'], 400);
+        }
 
-            $secretKey = config('payment.gateways.PayProGlobal.webhook_secret');
-            $testMode = config('payment.gateways.PayProGlobal.test_mode', true);
+        $secretKey = config('payment.gateways.PayProGlobal.webhook_secret');
+        $testMode = config('payment.gateways.PayProGlobal.test_mode', true);
 
-            $successParams = [
-                'gateway' => 'payproglobal',
-                'order_id' => '{order_id}',
-                'user_id' => $user->id,
+        // Create a pending order with a unique identifier
+        $pendingOrderId = 'PPG-PENDING-' . Str::random(10);
+        $order = Order::create([
+            'user_id' => $user->id,
+            'package_id' => $packageData->id,
+            'amount' => $packageData->price,
+            'currency' => 'USD',
+            'transaction_id' => $pendingOrderId,
+            'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
+            'status' => 'pending',
+            'metadata' => [
                 'package' => $processedPackage,
-                'popup' => 'true'
-            ];
+                'pending_order_id' => $pendingOrderId
+            ]
+        ]);
 
-            $checkoutUrl = "https://store.payproglobal.com/checkout?" . http_build_query([
-                'products[1][id]' => $productId,
-                'email' => $user->email,
-                'first_name' => $user->first_name ?? '',
-                'last_name' => $user->last_name ?? '',
-                'custom' => json_encode([
-                    'user_id' => $user->id,
-                    'package_id' => $packageData->id,
-                    'package' => $processedPackage
-                ]),
-                'page-template' => 'ID',
-                'currency' => 'USD',
-                'use-test-mode' => $testMode ? 'true' : 'false',
-                'secret-key' => $secretKey,
-                'success-url' => route('payments.success', $successParams),
-                'cancel-url' => route('payments.popup-cancel')
-            ]);
+        // Don't use {order_id} placeholder, instead pass the necessary data
+        $successUrl = route('payments.success') . '?' . http_build_query([
+            'gateway' => 'payproglobal',
+            'user_id' => $user->id,
+            'package' => $processedPackage,
+            'popup' => 'true',
+            'pending_order_id' => $pendingOrderId
+        ]);
 
-            $order = Order::create([
+        $checkoutUrl = "https://store.payproglobal.com/checkout?" . http_build_query([
+            'products[1][id]' => $productId,
+            'email' => $user->email,
+            'first_name' => $user->first_name ?? '',
+            'last_name' => $user->last_name ?? '',
+            'custom' => json_encode([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
-                'currency' => 'USD',
-                'transaction_id' => 'PPG-PENDING-' . Str::random(10),
-                'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
-                'status' => 'pending',
-                'metadata' => ['checkout_url' => $checkoutUrl]
-            ]);
+                'package' => $processedPackage,
+                'pending_order_id' => $pendingOrderId
+            ]),
+            'page-template' => 'ID',
+            'currency' => 'USD',
+            'use-test-mode' => $testMode ? 'true' : 'false',
+            'secret-key' => $secretKey,
+            'success-url' => $successUrl,  // PayProGlobal will append OrderId and other params
+            'cancel-url' => route('payments.popup-cancel')
+        ]);
 
-            Log::info('PayProGlobal checkout created', [
-                'user_id' => $user->id,
-                'transaction_id' => $order->transaction_id,
-                'checkout_url' => $checkoutUrl
-            ]);
+        Log::info('PayProGlobal checkout created', [
+            'user_id' => $user->id,
+            'pending_order_id' => $pendingOrderId,
+            'checkout_url' => $checkoutUrl
+        ]);
 
-            return response()->json([
-                'success' => true,
-                'checkout_url' => $checkoutUrl
-            ]);
-        } catch (\Exception $e) {
-            Log::error('PayProGlobal checkout error', [
-                'error' => $e->getMessage(),
-                'package' => $package,
-                'user_id' => Auth::id()
-            ]);
-            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'checkout_url' => $checkoutUrl
+        ]);
+    } catch (\Exception $e) {
+        Log::error('PayProGlobal checkout error', [
+            'error' => $e->getMessage(),
+            'package' => $package,
+            'user_id' => Auth::id()
+        ]);
+        return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
     }
+}
 
     private function getSubscriptionId($orderId)
     {
@@ -418,14 +428,14 @@ class PaymentController extends Controller
                 'order_id' => $orderId,
                 'response' => $response->body(),
             ]);
-            return ['error' => 'Order verification failed.']; // Return array instead of JsonResponse
+            return ['error' => 'Order verification failed.'];
         }
 
         $order = $response->json();
-        $subscriptionId = $order['items'][0]['subscription'] ?? null; // Fixed typo: $validated → $order
+        $subscriptionId = $order['items'][0]['subscription'] ?? null;
 
         if (!$subscriptionId) {
-            return ['error' => 'No subscription found for this order.']; // Error array
+            return ['error' => 'No subscription found for this order.'];
         }
 
         // Fetch subscription details
@@ -447,6 +457,14 @@ class PaymentController extends Controller
 
     public function handleSuccess(Request $request)
     {
+        Log::info('[handleSuccess] called', [
+            'params' => $request->all(),
+            'query' => $request->query(),
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'user_agent' => $request->header('User-Agent'),
+            'referer' => $request->header('Referer')
+        ]);
         Log::info('=== PAYMENT SUCCESS CALLBACK STARTED ===', [
             'params' => $request->all(),
             'query' => $request->query(),
@@ -858,6 +876,7 @@ class PaymentController extends Controller
 
     public function handlePaddleWebhook(Request $request)
     {
+        \Log::info('[handlePaddleWebhook] called', ['payload' => $request->all()]);
         try {
             $payload = $request->all();
             Log::info('Paddle webhook received', ['payload' => $payload]);
@@ -911,6 +930,7 @@ class PaymentController extends Controller
 
     public function handleFastSpringWebhook(Request $request)
     {
+        \Log::info('[handleFastSpringWebhook] called', ['payload' => $request->all()]);
         try {
             $payload = $request->all();
             Log::info('FastSpring webhook received', ['payload' => $payload]);
@@ -938,6 +958,7 @@ class PaymentController extends Controller
 
     public function handlePayProGlobalWebhook(Request $request)
     {
+        \Log::info('[handlePayProGlobalWebhook] called', ['payload' => $request->all()]);
         try {
             $payload = $request->all();
             Log::info('PayProGlobal webhook received', ['payload' => $payload]);
@@ -969,6 +990,7 @@ class PaymentController extends Controller
 
     public function getOrdersList(Request $request)
     {
+        \Log::info('[getOrdersList] called', ['user_id' => \Auth::id()]);
         $user = Auth::user();
         $orders = Order::where('user_id', $user->id)
             ->with('package')
@@ -983,6 +1005,7 @@ class PaymentController extends Controller
 
     public function cancelSubscription(Request $request)
     {
+        \Log::info('[cancelSubscription] called', ['user_id' => \Auth::id()]);
         Log::info('Subscription cancellation started', ['user_id' => Auth::id()]);
 
         try {
@@ -1432,6 +1455,7 @@ class PaymentController extends Controller
 
     public function upgradeToPackage(Request $request, string $package)
     {
+        \Log::info('[upgradeToPackage] called', ['package' => $package, 'user_id' => \Auth::id()]);
         Log::info('Package upgrade requested', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
@@ -1576,6 +1600,11 @@ class PaymentController extends Controller
 
     public function verifyOrder(Request $request, string $transactionId)
     {
+        \Log::info('[verifyOrder] called', [
+            'transaction_id' => $transactionId,
+            'user_id' => \Auth::id(),
+            'request_data' => $request->all()
+        ]);
         Log::info('=== ORDER VERIFICATION STARTED ===', [
             'transaction_id' => $transactionId,
             'user_id' => Auth::id(),
@@ -1747,6 +1776,11 @@ class PaymentController extends Controller
 
     public function handleCancel(Request $request)
     {
+        \Log::info('[handleCancel] called', [
+            'params' => $request->all(),
+            'query' => $request->query(),
+            'url' => $request->fullUrl()
+        ]);
         Log::info('Payment cancelled', [
             'params' => $request->all(),
             'query' => $request->query(),
@@ -1758,6 +1792,11 @@ class PaymentController extends Controller
 
     public function handlePopupCancel(Request $request)
     {
+        \Log::info('[handlePopupCancel] called', [
+            'params' => $request->all(),
+            'query' => $request->query(),
+            'url' => $request->fullUrl()
+        ]);
         Log::info('Popup payment cancelled', [
             'params' => $request->all(),
             'query' => $request->query(),
