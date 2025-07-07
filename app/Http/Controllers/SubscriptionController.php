@@ -196,7 +196,7 @@ class SubscriptionController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->hasRole(['User', 'Sub Admin'])) {
+        if (!$user || !$user->hasRole(['User'])) {
             return redirect()->route('admin.dashboard');
         }
 

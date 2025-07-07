@@ -397,9 +397,9 @@
                                         if (window.location.pathname.includes('/payments/success')) {
                                             console.log(
                                                 'Currently on success URL, checking for transaction ID in URL'
-                                                );
+                                            );
                                             const successUrlParams = new URLSearchParams(window.location
-                                            .search);
+                                                .search);
                                             const successTransactionId = successUrlParams.get('transaction_id');
                                             if (successTransactionId) {
                                                 console.log('Found transaction ID in success URL:',
@@ -445,162 +445,164 @@
     @endif
 
     <!-- PayProGlobal Integration -->
-    // Update the PayProGlobal Integration section in your blade template
+    @if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
+        <script>
+            // Enhanced PayProGlobal popup monitoring
+            let payProGlobalPopup = null;
+            let popupCheckInterval = null;
 
-@if ($activeGateway && $activeGateway->name === 'Pay Pro Global')
-    <script>
-        // Enhanced PayProGlobal popup monitoring
-        let payProGlobalPopup = null;
-        let popupCheckInterval = null;
+            // Handle PayProGlobal popup communication
+            window.addEventListener('message', function(event) {
+                console.log('Received message:', event.data, 'Origin:', event.origin);
 
-        // Handle PayProGlobal popup communication
-        window.addEventListener('message', function(event) {
-            console.log('Received message:', event.data, 'Origin:', event.origin);
+                // Check if message is from PayProGlobal
+                if (event.origin.includes('payproglobal.com') || event.origin.includes('store.payproglobal.com')) {
+                    console.log('PayProGlobal message received:', event.data);
 
-            // Check if message is from PayProGlobal
-            if (event.origin.includes('payproglobal.com') || event.origin.includes('store.payproglobal.com')) {
-                console.log('PayProGlobal message received:', event.data);
+                    if (event.data.type === 'payproglobal_success') {
+                        const {
+                            orderId,
+                            userId,
+                            packageName
+                        } = event.data;
+                        console.log('Processing PayProGlobal success:', {
+                            orderId,
+                            userId,
+                            packageName
+                        });
 
-                if (event.data.type === 'payproglobal_success') {
-                    const { orderId, userId, packageName } = event.data;
-                    console.log('Processing PayProGlobal success:', {
-                        orderId,
-                        userId,
-                        packageName
-                    });
-
-                    // Clear any intervals
-                    if (popupCheckInterval) {
-                        clearInterval(popupCheckInterval);
-                    }
-
-                    // Close popup if still open
-                    if (payProGlobalPopup && !payProGlobalPopup.closed) {
-                        payProGlobalPopup.close();
-                    }
-
-                    // Create form to submit to handleSuccess
-                    const form = document.createElement('form');
-                    form.method = 'POST';
-                    form.action = '/payments/success';
-
-                    const csrfInput = document.createElement('input');
-                    csrfInput.type = 'hidden';
-                    csrfInput.name = '_token';
-                    csrfInput.value = csrfToken;
-                    form.appendChild(csrfInput);
-
-                    const gatewayInput = document.createElement('input');
-                    gatewayInput.type = 'hidden';
-                    gatewayInput.name = 'gateway';
-                    gatewayInput.value = 'payproglobal';
-                    form.appendChild(gatewayInput);
-
-                    const orderIdInput = document.createElement('input');
-                    orderIdInput.type = 'hidden';
-                    orderIdInput.name = 'OrderId';  // Use PayProGlobal's format
-                    orderIdInput.value = orderId;
-                    form.appendChild(orderIdInput);
-
-                    const userIdInput = document.createElement('input');
-                    userIdInput.type = 'hidden';
-                    userIdInput.name = 'user_id';
-                    userIdInput.value = userId;
-                    form.appendChild(userIdInput);
-
-                    const packageInput = document.createElement('input');
-                    packageInput.type = 'hidden';
-                    packageInput.name = 'package';
-                    packageInput.value = packageName;
-                    form.appendChild(packageInput);
-
-                    const popupInput = document.createElement('input');
-                    popupInput.type = 'hidden';
-                    popupInput.name = 'popup';
-                    popupInput.value = 'true';
-                    form.appendChild(popupInput);
-
-                    document.body.appendChild(form);
-                    console.log('Submitting PayProGlobal success form');
-                    form.submit();
-                }
-            }
-        });
-
-        // Monitor PayProGlobal popup for URL changes
-        function monitorPayProGlobalPopup(popup) {
-            payProGlobalPopup = popup;
-            popupCheckInterval = setInterval(() => {
-                try {
-                    if (popup.closed) {
-                        clearInterval(popupCheckInterval);
-                        console.log('PayProGlobal popup closed');
-
-                        // Check if payment was successful via session storage
-                        const successFlag = sessionStorage.getItem('payProGlobalSuccess');
-                        if (!successFlag) {
-                            showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
-                        }
-                        sessionStorage.removeItem('payProGlobalSuccess');
-                        sessionStorage.removeItem('payProGlobalUserId');
-                        sessionStorage.removeItem('payProGlobalPackageName');
-                        sessionStorage.removeItem('payProGlobalAction');
-                        return;
-                    }
-
-                    // Try to check the popup URL for the thank you page
-                    const popupUrl = popup.location.href;
-                    if (popupUrl && popupUrl.includes('/thankyou')) {
-                        console.log('PayProGlobal thank you page detected');
-
-                        // Extract OrderId from the URL
-                        const urlParams = new URLSearchParams(popup.location.search);
-                        const orderId = urlParams.get('OrderId');
-
-                        if (orderId) {
-                            console.log('Found OrderId in thank you URL:', orderId);
-
-                            // Send message to parent window
-                            window.postMessage({
-                                type: 'payproglobal_success',
-                                orderId: orderId,
-                                userId: sessionStorage.getItem('payProGlobalUserId'),
-                                packageName: sessionStorage.getItem('payProGlobalPackageName')
-                            }, '*');
-
+                        // Clear any intervals
+                        if (popupCheckInterval) {
                             clearInterval(popupCheckInterval);
-                            setTimeout(() => popup.close(), 1000);
                         }
-                    }
-                } catch (e) {
-                    // Cross-origin restrictions may prevent URL access
-                    // This is expected and we'll rely on postMessage instead
-                }
-            }, 500);
-        }
 
-        // Inject script into PayProGlobal thank you page
-        // This script will run on the PayProGlobal domain and send the OrderId back
-        const thankYouScript = `
-            <script>
-            (function() {
-                if (window.location.href.includes('/thankyou')) {
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const orderId = urlParams.get('OrderId');
-                    if (orderId && window.opener) {
-                        window.opener.postMessage({
-                            type: 'payproglobal_success',
-                            orderId: orderId,
-                            userId: '${sessionStorage.getItem('payProGlobalUserId') || ''}',
-                            packageName: '${sessionStorage.getItem('payProGlobalPackageName') || ''}'
-                        }, '*');
+                        // Close popup if still open
+                        if (payProGlobalPopup && !payProGlobalPopup.closed) {
+                            payProGlobalPopup.close();
+                        }
+
+                        // Create form to submit to handleSuccess
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/payments/success';
+
+                        const csrfInput = document.createElement('input');
+                        csrfInput.type = 'hidden';
+                        csrfInput.name = '_token';
+                        csrfInput.value = csrfToken;
+                        form.appendChild(csrfInput);
+
+                        const gatewayInput = document.createElement('input');
+                        gatewayInput.type = 'hidden';
+                        gatewayInput.name = 'gateway';
+                        gatewayInput.value = 'payproglobal';
+                        form.appendChild(gatewayInput);
+
+                        const orderIdInput = document.createElement('input');
+                        orderIdInput.type = 'hidden';
+                        orderIdInput.name = 'OrderId'; // Use PayProGlobal's format
+                        orderIdInput.value = orderId;
+                        form.appendChild(orderIdInput);
+
+                        const userIdInput = document.createElement('input');
+                        userIdInput.type = 'hidden';
+                        userIdInput.name = 'user_id';
+                        userIdInput.value = userId;
+                        form.appendChild(userIdInput);
+
+                        const packageInput = document.createElement('input');
+                        packageInput.type = 'hidden';
+                        packageInput.name = 'package';
+                        packageInput.value = packageName;
+                        form.appendChild(packageInput);
+
+                        const popupInput = document.createElement('input');
+                        popupInput.type = 'hidden';
+                        popupInput.name = 'popup';
+                        popupInput.value = 'true';
+                        form.appendChild(popupInput);
+
+                        document.body.appendChild(form);
+                        console.log('Submitting PayProGlobal success form');
+                        form.submit();
                     }
                 }
-            })();
-            </script>
+            });
+
+            // Monitor PayProGlobal popup for URL changes
+            function monitorPayProGlobalPopup(popup) {
+                payProGlobalPopup = popup;
+                popupCheckInterval = setInterval(() => {
+                    try {
+                        if (popup.closed) {
+                            clearInterval(popupCheckInterval);
+                            console.log('PayProGlobal popup closed');
+
+                            // Check if payment was successful via session storage
+                            const successFlag = sessionStorage.getItem('payProGlobalSuccess');
+                            if (!successFlag) {
+                                showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
+                            }
+                            sessionStorage.removeItem('payProGlobalSuccess');
+                            sessionStorage.removeItem('payProGlobalUserId');
+                            sessionStorage.removeItem('payProGlobalPackageName');
+                            sessionStorage.removeItem('payProGlobalAction');
+                            return;
+                        }
+
+                        // Try to check the popup URL for the thank you page
+                        const popupUrl = popup.location.href;
+                        if (popupUrl && popupUrl.includes('/thankyou')) {
+                            console.log('PayProGlobal thank you page detected');
+
+                            // Extract OrderId from the URL
+                            const urlParams = new URLSearchParams(popup.location.search);
+                            const orderId = urlParams.get('OrderId');
+
+                            if (orderId) {
+                                console.log('Found OrderId in thank you URL:', orderId);
+
+                                // Send message to parent window
+                                window.postMessage({
+                                    type: 'payproglobal_success',
+                                    orderId: orderId,
+                                    userId: sessionStorage.getItem('payProGlobalUserId'),
+                                    packageName: sessionStorage.getItem('payProGlobalPackageName')
+                                }, '*');
+
+                                clearInterval(popupCheckInterval);
+                                setTimeout(() => popup.close(), 1000);
+                            }
+                        }
+                    } catch (e) {
+                        // Cross-origin restrictions may prevent URL access
+                        // This is expected and we'll rely on postMessage instead
+                    }
+                }, 500);
+            }
+
+            // Inject script into PayProGlobal thank you page
+            // This script will run on the PayProGlobal domain and send the OrderId back
+            const thankYouScript = `
+                    <script>
+                    (function() {
+                        if (window.location.href.includes('/thankyou')) {
+                            const urlParams = new URLSearchParams(window.location.search);
+                            const orderId = urlParams.get('OrderId');
+                            if (orderId && window.opener) {
+                                window.opener.postMessage({
+                                    type: 'payproglobal_success',
+                                    orderId: orderId,
+                                    userId: '${sessionStorage.getItem('payProGlobalUserId') || ''}',
+                                    packageName: '${sessionStorage.getItem('payProGlobalPackageName') || ''}'
+                                }, '*');
+                            }
+                        }
+                    })();
+        </script>
         `;
-    </script>
-@endif
+        </script>
+    @endif
 
     <style>
         .btn.active {
@@ -1210,7 +1212,7 @@
                     apiUrl = `/api/payments/upgrade/${packageName}`;
                 } else if (action === 'downgrade') {
                     apiUrl =
-                    `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
+                        `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
                 } else {
                     apiUrl =
                         `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
@@ -1449,104 +1451,83 @@
                             console.error('Popup was blocked');
                             showError('Popup Blocked',
                                 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.'
-                                );
+                            );
                             return;
                         }
 
                         console.log('PayProGlobal popup opened successfully');
 
                         // get order id from https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618
-                        const url = 'https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618';
+                        const url =
+                            'https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618';
                         const params = new URLSearchParams(url.split('?')[1]);
                         const orderId = params.get('OrderId');
                         console.log(orderId, "order id");
 
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/payments/success';
+                        form.style.display = 'none';
 
+                        // Add CSRF token
+                        const csrfInput = document.createElement('input');
+                        csrfInput.type = 'hidden';
+                        csrfInput.name = '_token';
+                        csrfInput.value = csrfToken;
+                        form.appendChild(csrfInput);
 
+                        // Add gateway
+                        const gatewayInput = document.createElement('input');
+                        gatewayInput.type = 'hidden';
+                        gatewayInput.name = 'gateway';
+                        gatewayInput.value = 'payproglobal';
+                        form.appendChild(gatewayInput);
 
+                        // Add order ID
+                        const orderIdInput = document.createElement('input');
+                        orderIdInput.type = 'hidden';
+                        orderIdInput.name = 'order_id';
+                        orderIdInput.value = orderId;
+                        form.appendChild(orderIdInput);
+
+                        // Add user ID
+                        const userIdInput = document.createElement('input');
+                        userIdInput.type = 'hidden';
+                        userIdInput.name = 'user_id';
+                        userIdInput.value = userId;
+                        form.appendChild(userIdInput);
+
+                        // Add package name
+                        const packageInput = document.createElement('input');
+                        packageInput.type = 'hidden';
+                        packageInput.name = 'package';
+                        packageInput.value = packageName;
+                        form.appendChild(packageInput);
+
+                        // Add popup flag
+                        const popupInput = document.createElement('input');
+                        popupInput.type = 'hidden';
+                        popupInput.name = 'popup';
+                        popupInput.value = 'true';
+                        form.appendChild(popupInput);
+
+                        document.body.appendChild(form);
+
+                        console.log('Submitting PayProGlobal success form with data:', {
+                            gateway: 'payproglobal',
+                            order_id: orderId,
+                            user_id: userId,
+                            package: packageName,
+                            popup: 'true'
+                        });
+
+                        form.submit();
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
                         showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
                             error.message || 'An unexpected error occurred. Please try again.');
                     });
-            }
-
-            function handlePayProGlobalSuccess(data) {
-                console.log('Processing PayProGlobal success:', data);
-
-                const {
-                    orderId,
-                    userId,
-                    packageName
-                } = data;
-
-                if (!orderId || !userId || !packageName) {
-                    console.error('Missing required success data:', data);
-                    showError('Payment Error',
-                        'Payment completed but some data is missing. Please contact support.');
-                    return;
-                }
-
-                // Create form to submit to success handler
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/payments/success';
-                form.style.display = 'none';
-
-                // Add CSRF token
-                const csrfInput = document.createElement('input');
-                csrfInput.type = 'hidden';
-                csrfInput.name = '_token';
-                csrfInput.value = csrfToken;
-                form.appendChild(csrfInput);
-
-                // Add gateway
-                const gatewayInput = document.createElement('input');
-                gatewayInput.type = 'hidden';
-                gatewayInput.name = 'gateway';
-                gatewayInput.value = 'payproglobal';
-                form.appendChild(gatewayInput);
-
-                // Add order ID
-                const orderIdInput = document.createElement('input');
-                orderIdInput.type = 'hidden';
-                orderIdInput.name = 'order_id';
-                orderIdInput.value = orderId;
-                form.appendChild(orderIdInput);
-
-                // Add user ID
-                const userIdInput = document.createElement('input');
-                userIdInput.type = 'hidden';
-                userIdInput.name = 'user_id';
-                userIdInput.value = userId;
-                form.appendChild(userIdInput);
-
-                // Add package name
-                const packageInput = document.createElement('input');
-                packageInput.type = 'hidden';
-                packageInput.name = 'package';
-                packageInput.value = packageName;
-                form.appendChild(packageInput);
-
-                // Add popup flag
-                const popupInput = document.createElement('input');
-                popupInput.type = 'hidden';
-                popupInput.name = 'popup';
-                popupInput.value = 'true';
-                form.appendChild(popupInput);
-
-                document.body.appendChild(form);
-
-                console.log('Submitting PayProGlobal success form with data:', {
-                    gateway: 'payproglobal',
-                    order_id: orderId,
-                    user_id: userId,
-                    package: packageName,
-                    popup: 'true'
-                });
-
-                form.submit();
             }
 
             function cancelSubscription() {

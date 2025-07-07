@@ -485,11 +485,6 @@ class PaymentController extends Controller
                 return redirect()->route('pricing')->with('error', 'Invalid payment gateway');
             }
 
-            if ($request->query('popup') === 'true' || $request->input('popup') === 'true') {
-                Log::info('Popup success view returned', ['gateway' => $gateway]);
-                return view('payment.popup-success');
-            }
-
             if ($gateway === 'paddle') {
                 Log::info('=== PROCESSING PADDLE SUCCESS CALLBACK ===', [
                     'gateway' => $gateway,
@@ -633,6 +628,7 @@ class PaymentController extends Controller
                 $userId = $request->query('user_id') ?? $request->input('user_id');
                 $packageName = $request->query('package') ?? $request->input('package');
 
+                // 36908520, 36, Pro
                 if (!$orderId || !$userId || !$packageName) {
                     Log::error('Missing PayProGlobal parameters', [
                         'order_id' => $orderId,
@@ -842,16 +838,16 @@ class PaymentController extends Controller
     {
         try {
             $vendorAccountId = config('payment.gateways.PayProGlobal.merchant_id');
-            $apiSecretKey = config('payment.gateways.PayProGlobal.api_key');
+            $apiSecretKey = config('payment.gateways.PayProGlobal.webhook_secret');
 
             $response = Http::post('https://store.payproglobal.com/api/Orders/GetOrderDetails', [
                 'vendorAccountId' => $vendorAccountId,
                 'apiSecretKey' => $apiSecretKey,
                 'orderId' => $orderId,
-                'dateFormat' => 'a'
+                'dateFormat' => 'a',
             ]);
 
-            $orderData = $response->json();
+            $orderData = $response->json(); dd($orderData);
             if (
                 $response->successful() && $orderData['isSuccess'] &&
                 $orderData['response']['orderStatusName'] === 'Processed' &&

@@ -189,13 +189,13 @@
                             class="fas fa-bars"></i></a>
                 </li>
                 <li class="nav-item d-none d-sm-inline-block">
-                    @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
+                    @if (Auth::check() && (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin')))
                         <a href="{{ route('admin.dashboard') }}" class="nav-link">Home</a>
                     @else
                         <a href="{{ route('user.dashboard') }}" class="nav-link">Home</a>
                     @endif
                 </li>
-                @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
+                @if (Auth::check() && (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin')))
                     <li class="nav-item d-none d-sm-inline-block">
                         <a href="{{ route('admin.users') }}" class="nav-link">Users</a>
                     </li>
@@ -211,7 +211,7 @@
                         <a href="{{ route('admin.payment-gateways.index') }}" class="nav-link">Payment Gateways</a>
                     </li>
                 @endif
-                @if (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin'))
+                @if (Auth::check() && (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin')))
                     <li class="nav-item d-none d-sm-inline-block">
                         <a href="{{ route('admin.users-logs') }}" class="nav-link">User Logs</a>
                     </li>
