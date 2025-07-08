@@ -391,7 +391,7 @@ class PaymentController extends Controller
             'currency' => 'USD',
             'use-test-mode' => $testMode ? 'true' : 'false',
             'secret-key' => $secretKey,
-            'success-url' => $successUrl,  // PayProGlobal will append OrderId and other params
+            'success-url' => $successUrl,
             'cancel-url' => route('payments.popup-cancel')
         ]);
 

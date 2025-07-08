@@ -137,7 +137,8 @@ class VerificationController extends Controller
     private function callXiaoiceApiWithCreds($user, $plainPassword)
     {
         try {
-            $response = Http::withHeaders([
+            // Create the tenant
+            $createResponse = Http::withHeaders([
                 'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json'
@@ -150,16 +151,41 @@ class VerificationController extends Controller
                 'appIds' => [1],
             ]);
 
-            if ($response->successful()) {
-                Log::info('Xiaoice API call successful', [
+            if ($createResponse->successful()) {
+                Log::info('Tenant created successfully', [
                     'user_id' => $user->id,
-                    'response' => $response->json()
+                    'response' => $createResponse->json()
                 ]);
-                return $response->json();
+
+                // Bind password using password bind API
+                $passwordBindResponse = Http::withHeaders([
+                    'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/user/password/bind', [
+                    'email' => $user->email,
+                    'newPassword' => $plainPassword
+                ]);
+
+                if ($passwordBindResponse->successful()) {
+                    Log::info('Password bound successfully', [
+                        'user_id' => $user->id,
+                        'response' => $passwordBindResponse->json()
+                    ]);
+                    return $createResponse->json();
+                } else {
+                    Log::error('Failed to bind password', [
+                        'user_id' => $user->id,
+                        'status' => $passwordBindResponse->status(),
+                        'response' => $passwordBindResponse->body()
+                    ]);
+                }
+
+                return $createResponse->json();
             }
 
-            // Log error if not successful
-            $status = $response->status();
+            // Tenant creation failed
+            $status = $createResponse->status();
             $errorMessage = match ($status) {
                 400 => 'Bad Request - Missing required parameters.',
                 401 => 'Unauthorized - Invalid or expired subscription key.',
@@ -173,7 +199,7 @@ class VerificationController extends Controller
                 'user_id' => $user->id,
                 'status' => $status,
                 'error_message' => $errorMessage,
-                'response_body' => $response->body()
+                'response_body' => $createResponse->body()
             ]);
         } catch (\Exception $e) {
             Log::error('Error calling Xiaoice API', [
