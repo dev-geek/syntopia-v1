@@ -105,13 +105,18 @@ class RegisterController extends Controller
                 'string',
                 'min:8',
                 'max:30',
-                'confirmed',
-                'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
+                'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[A-Za-z0-9,.<>{}~!@#$%^&_]{8,30}$/'
             ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'status' => ['nullable', 'integer'],
             'subscriber_password' => ['nullable', 'string'],
+        ], [
+            'password.required' => 'Password is required.',
+            'password.string' => 'Password must be a valid string.',
+            'password.min' => 'Password must be at least 8 characters.',
+            'password.max' => 'Password must not exceed 30 characters.',
+            'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
         ]);
 
         return $validator;
@@ -160,7 +165,19 @@ class RegisterController extends Controller
             ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
-            'password' => 'required|string|min:8|max:30|regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:30',
+                'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[A-Za-z0-9,.<>{}~!@#$%^&_]{8,30}$/'
+            ],
+        ], [
+            'password.required' => 'Password is required.',
+            'password.string' => 'Password must be a valid string.',
+            'password.min' => 'Password must be at least 8 characters.',
+            'password.max' => 'Password must not exceed 30 characters.',
+            'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
         ]);
 
         if ($validator->fails()) {
@@ -184,7 +201,7 @@ class RegisterController extends Controller
                 'status' => 0
             ]);
 
-            $user->assignRole('User');           
+            $user->assignRole('User');
 
             DB::commit();
 
@@ -202,11 +219,11 @@ class RegisterController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('User registration failed and rolled back: ' . $e->getMessage());
-        
+
             return redirect()->back()
                 ->withErrors($e->getMessage())
                 ->withInput();
-        }        
+        }
     }
 
     protected function registered(Request $request, $user)
