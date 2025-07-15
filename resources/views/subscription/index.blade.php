@@ -14,7 +14,6 @@
             img-src 'self' https://syntopia.ai https://sbl.onfastspring.com https://store.payproglobal.com data:;
             connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
             frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
-            frame-ancestors 'self' https://livebuzzstudio.test http://127.0.0.1:* http://localhost:*;
             media-src 'self' data: https://sbl.onfastspring.com https://store.payproglobal.com;">
     <title>Syntopia Pricing</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

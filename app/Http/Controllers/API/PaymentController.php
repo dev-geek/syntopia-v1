@@ -847,7 +847,8 @@ class PaymentController extends Controller
                 'dateFormat' => 'a',
             ]);
 
-            $orderData = $response->json(); dd($orderData);
+            $orderData = $response->json();
+            // dd($orderData);
             if (
                 $response->successful() && $orderData['isSuccess'] &&
                 $orderData['response']['orderStatusName'] === 'Processed' &&
