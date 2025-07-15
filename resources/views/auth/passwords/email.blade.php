@@ -23,14 +23,14 @@
     border-radius: 10px;
     box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
     padding: 30px;
-            
+
         }
         .logo {
             width: 150px;
             margin-bottom: 20px;
         }
 
-      
+
         input {
            max-width: 100%;
            width: 100%;
@@ -40,7 +40,7 @@
             border-radius: 5px;
             background: #E7E7E9;
         }
-        
+
         .primary-button {
             width: 100%;
             padding: 10px;
@@ -49,21 +49,16 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
-           
+
         }
     </style>
 </head>
 <body>
-   
+
     <div class="login-container">
-    @if (session('status'))
-                        <div class="alert alert-success" role="alert">
-                            {{ session('status') }}
-                        </div>
-                    @endif
         <img src="https://syntopia.ai/wp-content/uploads/2025/02/Syntopiaa-logo.webp" alt="Logo" class="logo">
         <h2>Reset Your Password</h2>
-        <p>Forgot Your Password? Please enter your email and we"ll send you a code.</p>   
+        <p>Forgot Your Password? Please enter your email and we"ll send you a code.</p>
         <form method="POST" action="{{ route('password.email') }}">
         @csrf
         <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" placeholder="Enter Your email..." autofocus>
@@ -74,8 +69,8 @@
                                 @enderror
         <button type="submit" class="primary-button">Submit</button>
         </form>
-        
-        
+
+
     </div>
 </body>
 </html>

@@ -16,7 +16,7 @@
         .heading-text{
             font-size: 50px;
             padding: 30px 0px 0px;
-            
+
             font-weight: 700;
             width: 50%;
            color:#5b0dd5;
@@ -58,7 +58,7 @@
         .d-flex{
             height: 55vh;
         }
-        
+
         label {
             font-weight: 500;
             text-align: left;
@@ -92,7 +92,7 @@
             height: 75vh;
         }
         }
-        
+
     </style>
 </head>
 <body>
@@ -105,14 +105,8 @@
     <!-- Centered Signup Form -->
     <div class="d-flex justify-content-center align-items-center">
         <div class="container-box text-center">
-         
-        <div class="">
-                    @if (session('resent'))
-                        <div class="alert alert-success" role="alert">
-                            {{ __('A fresh verification link has been sent to your email address.') }}
-                        </div>
-                    @endif
 
+        <div class="">
                     {{ __('Before proceeding, please check your email for a verification link.') }}
                     {{ __('If you did not receive the email') }},
                     <form class="d-inline" method="POST" action="{{ route('verification.resend') }}">

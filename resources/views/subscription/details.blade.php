@@ -49,35 +49,7 @@
                         </div>
                         <div class="card-body">
                             {{-- Subscription Status Alert --}}
-                            @if (!$hasActiveSubscription)
-                                <div class="alert alert-warning alert-dismissible">
-                                    <button type="button" class="close" data-dismiss="alert"
-                                        aria-hidden="true">&times;</button>
-                                    <h5><i class="icon fas fa-exclamation-triangle"></i> No Active Subscription!</h5>
-                                    @if ($isExpired)
-                                        Your subscription has expired. Please purchase a new subscription to continue
-                                        using our services.
-                                    @else
-                                        You don't have an active subscription. Please purchase a subscription to access
-                                        our services.
-                                    @endif
-                                </div>
-                            @elseif ($hasActiveSubscription && !$canUpgrade && strtolower($currentPackage) === 'free')
-                                <div class="alert alert-info alert-dismissible">
-                                    <button type="button" class="close" data-dismiss="alert"
-                                        aria-hidden="true">&times;</button>
-                                    <h5><i class="icon fas fa-info-circle"></i> Free Plan Active</h5>
-                                    You're currently on the free plan. Upgrade to a paid subscription to unlock premium
-                                    features.
-                                </div>
-                            @elseif ($hasActiveSubscription && $canUpgrade)
-                                <div class="alert alert-success alert-dismissible">
-                                    <button type="button" class="close" data-dismiss="alert"
-                                        aria-hidden="true">&times;</button>
-                                    <h5><i class="icon fas fa-check-circle"></i> Subscription Active</h5>
-                                    Your subscription is active. You can upgrade to a higher plan anytime.
-                                </div>
-                            @endif
+                            {{-- Alerts removed: now handled by SWAL --}}
 
                             <div class="row">
                                 <div class="modal fade" id="cancelSubscriptionModal" tabindex="-1" role="dialog"

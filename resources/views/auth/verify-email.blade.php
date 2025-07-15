@@ -74,25 +74,21 @@
         <div class="container-box text-center">
             <h1 class="heading-text">Check your email</h1>
             <p class="email-text">We sent a verification link to<br><strong>{{ session('email') }}</strong></p>
-            
+
             <form method="POST" action="{{ route('verification.resend') }}">
                 @csrf
                 <button type="submit" class="primary-button">Resend email</button>
             </form>
 
-            @if (session('resent'))
-                <div class="alert alert-success" role="alert">
-                    A fresh verification link has been sent to your email address.
-                </div>
-            @endif
+            {{-- Alert removed: now handled by SWAL --}}
         </div>
     </div>
 
     <div class="footer-text">
-        Having trouble? Contact us at 
+        Having trouble? Contact us at
         <a href="mailto:info@syntopia.ai" class="text-primary">info@syntopia.ai</a>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html> 
+</html>

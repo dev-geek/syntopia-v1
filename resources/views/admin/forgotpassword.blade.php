@@ -23,11 +23,7 @@
       <div class="card-header text-center">
         <a href="../../index2.html" class="h1"><b>Admin</b> Panel</a>
       </div>
-      @if (session('status'))
-      <div class="alert alert-success" role="alert">
-        {{ session('status') }}
-      </div>
-      @endif
+      {{-- Alert removed: now handled by SWAL --}}
       <div class="card-body">
         <p class="login-box-msg">You forgot your password? Here you can easily retrieve a new password.</p>
         <form method="POST" action="{{ route('admin.password.email') }}">

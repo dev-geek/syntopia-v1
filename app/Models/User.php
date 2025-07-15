@@ -10,6 +10,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -116,4 +117,41 @@ class User extends Authenticatable implements MustVerifyEmail
                strtolower($this->package->name) === strtolower($packageName);
     }
 
+    /**
+     * Automatically hash the password when setting it
+     *
+     * @param string $value
+     * @return void
+     */
+    public function setPasswordAttribute(string $value): void
+    {
+        $this->attributes['password'] = Hash::make($value);
+    }
+
+    /**
+     * Store the subscriber password as plain text for API usage
+     *
+     * @param string $value
+     * @return void
+     */
+    public function setSubscriberPasswordAttribute(string $value): void
+    {
+        $this->attributes['subscriber_password'] = $value;
+    }
+
+    /**
+     * Check if the user has a valid subscriber password for API calls
+     *
+     * @return bool
+     */
+    public function hasValidSubscriberPassword(): bool
+    {
+        if (empty($this->subscriber_password)) {
+            return false;
+        }
+
+        // Validate against Xiaoice API password requirements
+        $pattern = '/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/';
+        return preg_match($pattern, $this->subscriber_password) === 1;
+    }
 }

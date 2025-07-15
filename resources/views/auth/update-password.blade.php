@@ -30,59 +30,48 @@
         }
         .login-container p{
             font-size: 13px;
-            font-weight: 400; 
+            font-weight: 400;
         }
         .logo {
             width: 150px;
             margin-bottom: 20px;
         }
 
-      
+
         input {
            max-width: 100%;
            width: 100%;
             padding: 10px;
             font-size: 13px;
-            font-weight: 400; 
+            font-weight: 400;
             margin: 10px  0 20px;
             border: 1px solid #ccc;
             border-radius: 5px;
             background: #E7E7E9;
         }
-        
+
         .primary-button {
             width: 100%;
             font-size: 13px;
-            font-weight: 500; 
+            font-weight: 500;
             padding: 10px;
             background: rgb(62, 87, 218);
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-           
+
         }
     </style>
 </head>
 <body>
-   
+
     <div class="login-container">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Logo" class="logo">
         <h2>Create New Password</h2>
-        <p>Your new password must be different from previous used passwords.</p>   
+        <p>Your new password must be different from previous used passwords.</p>
 
-        @if (session('status'))
-            <div class="alert alert-success">{{ session('status') }}</div>
-        @endif
-        @if ($errors->any())
-            <div class="alert alert-danger">
-                <ul style="margin-bottom:0;">
-                    @foreach ($errors->all() as $error)
-                        <li style="font-size:13px;">{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
+        {{-- Alerts removed: now handled by SWAL --}}
 
         <form method="POST" action="{{ route('profile.update') }}">
             @csrf

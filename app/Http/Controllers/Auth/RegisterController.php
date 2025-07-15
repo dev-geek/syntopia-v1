@@ -76,7 +76,6 @@ class RegisterController extends Controller
      * @param  array  $data
      * @return \Illuminate\Contracts\Validation\Validator
      */
-
     protected function validator(array $data)
     {
         Log::info('Registration attempt', $data);
@@ -133,14 +132,12 @@ class RegisterController extends Controller
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
-            'password' => Hash::make($data['password']),
+            'password' => $data['password'], // Let the mutator handle hashing
             'status' => 0,
-            'subscriber_password' => $data['password'] ?? null,
+            'subscriber_password' => $data['password'], // Store plain text for API
         ]);
 
         $user->assignRole('User');
-
-        $this->callXiaoiceApiWithCreds($user, $data['password'] ?? null);
 
         return $user;
     }
@@ -192,10 +189,12 @@ class RegisterController extends Controller
         try {
             DB::beginTransaction();
 
+            // Create user with both hashed password and plain text subscriber_password
             $user = User::create([
                 'email' => $request->email,
                 'name' => $full_name,
-                'password' => Hash::make($request->password),
+                'password' => $request->password, // This will be hashed by the mutator
+                'subscriber_password' => $request->password, // Store plain text for API
                 'verification_code' => $verification_code,
                 'email_verified_at' => null,
                 'status' => 0
@@ -203,12 +202,25 @@ class RegisterController extends Controller
 
             $user->assignRole('User');
 
+            Log::info('User created successfully with subscriber_password', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'has_subscriber_password' => !empty($user->subscriber_password)
+            ]);
+
             DB::commit();
 
             try {
                 Mail::to($user->email)->send(new VerifyEmail($user));
+                Log::info('Verification email sent successfully', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
             } catch (\Exception $e) {
-                Log::error('Email sending failed: ' . $e->getMessage());
+                Log::error('Email sending failed', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
             }
 
             auth()->login($user);
@@ -218,10 +230,13 @@ class RegisterController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('User registration failed and rolled back: ' . $e->getMessage());
+            Log::error('User registration failed and rolled back', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
             return redirect()->back()
-                ->withErrors($e->getMessage())
+                ->withErrors(['registration_error' => 'Registration failed. Please try again.'])
                 ->withInput();
         }
     }
