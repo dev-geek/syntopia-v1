@@ -86,7 +86,7 @@ return [
 
         'License API' => [
             'endpoint' => env('LICENSE_API_ENDPOINT', 'https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add'),
-            'subscription_code' => env('SUBSCRIPTION_CODE', 'PKG-VD-STD-01'),
+            'subscription_code' => env('SUBSCRIPTION_CODE', ''),
         ],
     ],
 ];

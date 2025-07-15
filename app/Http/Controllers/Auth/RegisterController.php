@@ -217,10 +217,6 @@ class RegisterController extends Controller
                     'email' => $user->email
                 ]);
             } catch (\Exception $e) {
-                Log::error('Email sending failed', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage()
-                ]);
             }
 
             auth()->login($user);

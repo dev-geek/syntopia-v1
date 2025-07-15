@@ -31,15 +31,15 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
     'google' => [
-    'client_id' => '175467797210-am15pvmmdrqvp3pos4f8ormed65u9i6c.apps.googleusercontent.com',
-    'client_secret' => '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',
-    'redirect' => 'https://app.syntopia.ai/auth/google-callback'
-],
-'facebook' => [
-    'client_id' => env('FACEBOOK_CLIENT_ID'),
-    'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
-    'redirect' => env('FACEBOOK_REDIRECT_URI'),
-],
+        'client_id' => '175467797210-am15pvmmdrqvp3pos4f8ormed65u9i6c.apps.googleusercontent.com',
+        'client_secret' => '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',
+        'redirect' => 'https://app.syntopia.ai/auth/google-callback'
+    ],
+    'facebook' => [
+        'client_id' => env('FACEBOOK_CLIENT_ID'),
+        'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
+        'redirect' => env('FACEBOOK_REDIRECT_URI'),
+    ],
 
 
 ];

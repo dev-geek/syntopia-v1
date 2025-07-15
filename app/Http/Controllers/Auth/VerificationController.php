@@ -22,26 +22,22 @@ class VerificationController extends Controller
     public function __construct()
     {
         $this->middleware('web');
-        // Removed 'signed' middleware as we're using custom verification codes, not signed URLs
         $this->middleware('throttle:6,1')->only('verifyCode', 'resend');
     }
 
     public function show()
     {
-        // Get email from session
         $email = session('email');
 
         if (!$email) {
             return redirect()->route('login')->withErrors('Session expired. Please login again.');
         }
 
-        // Check if user exists
         $user = User::where('email', $email)->first();
         if (!$user) {
             return redirect()->route('login')->withErrors('User not found. Please register again.');
         }
 
-        // Check if already verified
         if ($user->status == 1 && !is_null($user->email_verified_at)) {
             return redirect()->route('login')->with('success', 'Email already verified. Please login.');
         }
@@ -75,7 +71,6 @@ class VerificationController extends Controller
             return back()->withErrors(['verification_code' => 'Invalid verification code.']);
         }
 
-        // Check if subscriber_password exists
         if (!$user->subscriber_password) {
             Log::error('No subscriber_password found for user during verification', [
                 'user_id' => $user->id,
@@ -89,18 +84,18 @@ class VerificationController extends Controller
         try {
             DB::beginTransaction();
 
-            // Call API
             $apiResponse = $this->callXiaoiceApiWithCreds($user, $user->subscriber_password);
 
             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                DB::rollBack();
                 return back()->with('swal_error', $apiResponse['error_message']);
             }
 
             if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                // API failed: rollback and prompt re-verification
                 DB::rollBack();
+                $user->delete(); // Delete user data on failure
                 $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                return back()->with('error', $errorMsg);
+                return redirect()->route('login')->with('error', $errorMsg);
             }
 
             $user->update([
@@ -113,7 +108,6 @@ class VerificationController extends Controller
             DB::commit();
 
             session()->forget('email');
-
             Auth::login($user);
 
             if ($user->hasRole('User')) {
@@ -128,9 +122,11 @@ class VerificationController extends Controller
                 ->with('success', 'Email verified successfully! You can now login.');
         } catch (\Exception $e) {
             DB::rollBack();
-
-            return back()->withErrors([
-                'server_error' => 'Something went wrong during verification. Please try again later.'
+            if (isset($user)) {
+                $user->delete(); // Delete user data on failure
+            }
+            return redirect()->route('login')->withErrors([
+                'server_error' => 'Something went wrong during verification. Please try again.'
             ]);
         }
     }
@@ -149,9 +145,24 @@ class VerificationController extends Controller
         return back()->with('message', 'Verification code has been resent');
     }
 
+    private function makeXiaoiceApiRequest(string $endpoint, array $data): \Illuminate\Http\Client\Response
+    {
+        $baseUrl = rtrim(config('services.xiaoice.base_url', 'https://openapi.xiaoice.com/vh-cp'), '/');
+        $fullUrl = $baseUrl . '/' . ltrim($endpoint, '/');
+
+        return Http::timeout(30)
+            ->connectTimeout(15)
+            ->retry(3, 1000)
+            ->withHeaders([
+                'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])
+            ->post($fullUrl, $data);
+    }
+
     private function callXiaoiceApiWithCreds(User $user, string $plainPassword): array
     {
-        // Validate password format before sending to API
         if (!$this->validatePasswordFormat($plainPassword)) {
             Log::error('Password format validation failed before API call', [
                 'user_id' => $user->id,
@@ -166,19 +177,18 @@ class VerificationController extends Controller
 
         try {
             // Create the tenant
-            $createResponse = Http::withHeaders([
-                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/create', [
-                'name' => $user->name,
-                'regionCode' => 'CN',
-                'adminName' => $user->name,
-                'adminEmail' => $user->email,
-                'adminPhone' => '',
-                'adminPassword' => $plainPassword, // direct activation
-                'appIds' => [1],
-            ]);
+            $createResponse = $this->makeXiaoiceApiRequest(
+                'api/partner/tenant/create',
+                [
+                    'name' => $user->name,
+                    'regionCode' => 'CN',
+                    'adminName' => $user->name,
+                    'adminEmail' => $user->email,
+                    'adminPhone' => '',
+                    'adminPassword' => $plainPassword,
+                    'appIds' => [1],
+                ]
+            );
 
             $createJson = $createResponse->json();
             if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
@@ -190,150 +200,72 @@ class VerificationController extends Controller
                 ];
             }
 
-            if ($createResponse->successful()) {
-                Log::info('Tenant created successfully', [
+            if (!$createResponse->successful()) {
+                return $this->handleFailedTenantCreation($createResponse, $user);
+            }
+
+            Log::info('Tenant created successfully', [
+                'user_id' => $user->id,
+                'response' => $createResponse->json()
+            ]);
+
+            $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
+            if (!$tenantId) {
+                Log::error('Failed to extract tenantId from create response', [
                     'user_id' => $user->id,
                     'response' => $createResponse->json()
                 ]);
+                return [
+                    'success' => false,
+                    'data' => null,
+                    'error_message' => 'Failed to create tenant. Missing tenantId in response.'
+                ];
+            }
 
-                // Bind password using password bind API
-                $passwordBindResponse = Http::withHeaders([
-                    'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
-                ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/user/password/bind', [
+            // Continue with password binding
+            $passwordBindResponse = $this->makeXiaoiceApiRequest(
+                'api/partner/tenant/user/password/bind',
+                [
                     'email' => $user->email,
                     'phone' => '',
                     'newPassword' => $plainPassword
-                ]);
+                ]
+            );
 
-                if ($passwordBindResponse->successful()) {
-                    $bindJson = $passwordBindResponse->json();
-                    if (isset($bindJson['code']) && $bindJson['code'] == 200) {
-                        Log::info('Password bound successfully', [
-                            'user_id' => $user->id,
-                            'response' => $bindJson
-                        ]);
-
-                        // === LICENSE CREATION LOGIC START ===
-                        $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
-                        $subscriptionCode = null;
-                        if ($user->package && $user->package->subscription_code) {
-                            $subscriptionCode = $user->package->subscription_code;
-                        } else {
-                            $subscriptionCode = config('payment.gateways.License API.subscription_code', 'PKG-VD-STD-01');
-                        }
-                        $licenseEndpoint = config('payment.gateways.License API.endpoint', 'https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add');
-                        $licenseResponse = null;
-                        $licenseKey = null;
-                        if ($tenantId && $subscriptionCode) {
-                            $licenseResponse = Http::withHeaders([
-                                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                                'Content-Type' => 'application/json',
-                                'Accept' => 'application/json'
-                            ])->post($licenseEndpoint, [
-                                'tenantId' => $tenantId,
-                                'subscriptionCode' => $subscriptionCode,
-                            ]);
-                            $licenseJson = $licenseResponse->json();
-                            if (isset($licenseJson['code']) && $licenseJson['code'] == 200) {
-                                $licenseKey = $subscriptionCode;
-                                $user->license_key = $licenseKey;
-                                $user->save();
-                                Log::info('License created and saved for user', [
-                                    'user_id' => $user->id,
-                                    'tenant_id' => $tenantId,
-                                    'license_key' => $licenseKey
-                                ]);
-                            } else {
-                                Log::error('Failed to create license for tenant', [
-                                    'user_id' => $user->id,
-                                    'tenant_id' => $tenantId,
-                                    'subscription_code' => $subscriptionCode,
-                                    'response' => $licenseJson
-                                ]);
-                            }
-                        } else {
-                            Log::error('Missing tenantId or subscriptionCode for license creation', [
-                                'user_id' => $user->id,
-                                'tenant_id' => $tenantId,
-                                'subscription_code' => $subscriptionCode
-                            ]);
-                        }
-                        // === LICENSE CREATION LOGIC END ===
-
-                        return [
-                            'success' => true,
-                            'data' => $createResponse->json()['data'] ?? null,
-                            'error_message' => null
-                        ]; // success
-                    } else {
-                        $errorMessage = '[' . ($bindJson['code'] ?? 'unknown') . '] ' . ($bindJson['message'] ?? 'Password bind failed');
-                        // Translate Chinese password error to English for user clarity
-                        if (str_contains($errorMessage, '密码格式错误') || str_contains($errorMessage, 'Missing required parameters')) {
-                            // Log the real error, but show a generic error to the user
-                            Log::error('API returned registration-related error at verification', [
-                                'user_id' => $user->id,
-                                'response' => $bindJson,
-                                'shown_to_user' => 'System error. Please contact support.'
-                            ]);
-                            $errorMessage = 'System error. Please contact support.';
-                        }
-                        Log::error('Failed to bind password', [
-                            'user_id' => $user->id,
-                            'response' => $bindJson
-                        ]);
-                        return [
-                            'success' => false,
-                            'data' => null,
-                            'error_message' => $errorMessage
-                        ];
-                    }
-                } else {
-                    $status = $passwordBindResponse->status();
-                    $errorMessage = "[$status] " . match ($status) {
-                        400 => 'Bad Request - Missing required parameters.',
-                        401 => 'Unauthorized - Invalid or expired subscription key.',
-                        404 => 'Not Found - The requested resource does not exist.',
-                        429 => 'Too Many Requests - Rate limit exceeded.',
-                        500 => 'Internal Server Error - API server issue.',
-                        default => 'Unexpected error occurred.'
-                    };
-                    Log::error('Failed to bind password', [
-                        'user_id' => $user->id,
-                        'status' => $status,
-                        'response' => $passwordBindResponse->body()
-                    ]);
-                    return [
-                        'success' => false,
-                        'data' => null,
-                        'error_message' => $errorMessage
-                    ];
-                }
+            if (!$passwordBindResponse->successful()) {
+                return $this->handleFailedPasswordBind($passwordBindResponse, $user);
             }
 
-            // Tenant creation failed
-            $status = $createResponse->status();
-            $errorMessage = "[$status] " . match ($status) {
-                400 => 'Bad Request - Missing required parameters.',
-                401 => 'Unauthorized - Invalid or expired subscription key.',
-                404 => 'Not Found - The requested resource does not exist.',
-                429 => 'Too Many Requests - Rate limit exceeded.',
-                500 => 'Internal Server Error - API server issue.',
-                default => 'Unexpected error occurred.'
-            };
+            $bindJson = $passwordBindResponse->json();
+            if (!isset($bindJson['code']) || $bindJson['code'] != 200) {
+                $errorMessage = $this->translateXiaoiceError(
+                    $bindJson['code'] ?? null,
+                    $bindJson['message'] ?? 'Password bind failed'
+                );
 
-            Log::error('Xiaoice API call failed', [
+                Log::error('Failed to bind password', [
+                    'user_id' => $user->id,
+                    'response' => $bindJson
+                ]);
+
+                return [
+                    'success' => false,
+                    'data' => null,
+                    'error_message' => $errorMessage
+                ];
+            }
+
+            Log::info('Password bound successfully', [
                 'user_id' => $user->id,
-                'status' => $status,
-                'error_message' => $errorMessage,
-                'response_body' => $createResponse->body()
+                'response' => $bindJson
             ]);
+
             return [
-                'success' => false,
-                'data' => null,
-                'error_message' => $errorMessage
+                'success' => true,
+                'data' => $createResponse->json()['data'] ?? null,
+                'error_message' => null
             ];
+
         } catch (\Exception $e) {
             Log::error('Error calling Xiaoice API', [
                 'user_id' => $user->id,
@@ -347,12 +279,73 @@ class VerificationController extends Controller
         }
     }
 
-    /**
-     * Validate password format according to Xiaoice API requirements
-     */
+    private function handleFailedTenantCreation(\Illuminate\Http\Client\Response $response, User $user): array
+    {
+        $status = $response->status();
+        $errorMessage = "[$status] " . match ($status) {
+            400 => 'Bad Request - Missing required parameters.',
+            401 => 'Unauthorized - Invalid or expired subscription key.',
+            404 => 'Not Found - The requested resource does not exist.',
+            429 => 'Too Many Requests - Rate limit exceeded.',
+            500 => 'Internal Server Error - API server issue.',
+            default => 'Unexpected error occurred.'
+        };
+
+        Log::error('Xiaoice API call failed', [
+            'user_id' => $user->id,
+            'status' => $status,
+            'error_message' => $errorMessage,
+            'response_body' => $response->body()
+        ]);
+
+        return [
+            'success' => false,
+            'data' => null,
+            'error_message' => $errorMessage
+        ];
+    }
+
+    private function handleFailedPasswordBind(\Illuminate\Http\Client\Response $response, User $user): array
+    {
+        $status = $response->status();
+        $errorMessage = "[$status] " . match ($status) {
+            400 => 'Bad Request - Missing required parameters.',
+            401 => 'Unauthorized - Invalid or expired subscription key.',
+            404 => 'Not Found - The requested resource does not exist.',
+            429 => 'Too Many Requests - Rate limit exceeded.',
+            500 => 'Internal Server Error - API server issue.',
+            default => 'Unexpected error occurred.'
+        };
+
+        Log::error('Failed to bind password', [
+            'user_id' => $user->id,
+            'status' => $status,
+            'response' => $response->body()
+        ]);
+
+        return [
+            'success' => false,
+            'data' => null,
+            'error_message' => $errorMessage
+        ];
+    }
+
+    private function translateXiaoiceError(?int $code, string $defaultMessage): string
+    {
+        return match ($code) {
+            665 => 'The application is not activated for this tenant. Please contact support.',
+            730 => 'This admin is already registered with another company.',
+            400 => 'Invalid request parameters.',
+            401 => 'Authentication failed.',
+            404 => 'Resource not found.',
+            429 => 'Too many requests. Please try again later.',
+            500 => 'Internal server error.',
+            default => $defaultMessage
+        };
+    }
+
     private function validatePasswordFormat(string $password): bool
     {
-        // API regex: ^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$
         $pattern = '/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/';
         return preg_match($pattern, $password) === 1;
     }
