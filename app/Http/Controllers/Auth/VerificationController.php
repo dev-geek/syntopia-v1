@@ -147,7 +147,6 @@ class VerificationController extends Controller
                 'regionCode' => 'OTHER',
                 'adminName' => $user->name,
                 'adminEmail' => $user->email,
-                'adminPassword' => $plainPassword,
                 'appIds' => [1],
             ]);
 
