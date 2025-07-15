@@ -214,6 +214,54 @@ class VerificationController extends Controller
                             'user_id' => $user->id,
                             'response' => $bindJson
                         ]);
+
+                        // === LICENSE CREATION LOGIC START ===
+                        $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
+                        $subscriptionCode = null;
+                        if ($user->package && $user->package->subscription_code) {
+                            $subscriptionCode = $user->package->subscription_code;
+                        } else {
+                            $subscriptionCode = config('payment.gateways.License API.subscription_code', 'PKG-VD-STD-01');
+                        }
+                        $licenseEndpoint = config('payment.gateways.License API.endpoint', 'https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add');
+                        $licenseResponse = null;
+                        $licenseKey = null;
+                        if ($tenantId && $subscriptionCode) {
+                            $licenseResponse = Http::withHeaders([
+                                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                                'Content-Type' => 'application/json',
+                                'Accept' => 'application/json'
+                            ])->post($licenseEndpoint, [
+                                'tenantId' => $tenantId,
+                                'subscriptionCode' => $subscriptionCode,
+                            ]);
+                            $licenseJson = $licenseResponse->json();
+                            if (isset($licenseJson['code']) && $licenseJson['code'] == 200) {
+                                $licenseKey = $subscriptionCode;
+                                $user->license_key = $licenseKey;
+                                $user->save();
+                                Log::info('License created and saved for user', [
+                                    'user_id' => $user->id,
+                                    'tenant_id' => $tenantId,
+                                    'license_key' => $licenseKey
+                                ]);
+                            } else {
+                                Log::error('Failed to create license for tenant', [
+                                    'user_id' => $user->id,
+                                    'tenant_id' => $tenantId,
+                                    'subscription_code' => $subscriptionCode,
+                                    'response' => $licenseJson
+                                ]);
+                            }
+                        } else {
+                            Log::error('Missing tenantId or subscriptionCode for license creation', [
+                                'user_id' => $user->id,
+                                'tenant_id' => $tenantId,
+                                'subscription_code' => $subscriptionCode
+                            ]);
+                        }
+                        // === LICENSE CREATION LOGIC END ===
+
                         return [
                             'success' => true,
                             'data' => $createResponse->json()['data'] ?? null,
