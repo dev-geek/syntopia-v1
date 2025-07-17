@@ -55,6 +55,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
         Route::get('/paddle/success', [PaymentController::class, 'paddleSuccess'])->name('paddle.success');
         Route::get('/verify-order/{transactionId}', [PaymentController::class, 'verifyOrder'])->name('verify-order');
+        Route::get('/payproglobal/latest-order', [PaymentController::class, 'getLatestPayProGlobalOrder'])
+            ->name('payproglobal.latest-order');
     });
 
     // Orders

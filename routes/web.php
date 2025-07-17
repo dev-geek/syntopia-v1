@@ -63,6 +63,7 @@ Route::middleware(['web'])->group(function () {
     Route::get('/email/verify', [VerificationController::class, 'show'])->name('verification.notice');
     Route::post('/verify-code', [VerificationController::class, 'verifyCode'])->name('verification.verify');
     Route::post('/email/resend', [VerificationController::class, 'resend'])->name('verification.resend');
+    Route::post('/verification/delete-user', [VerificationController::class, 'deleteUserAndRedirect'])->name('verification.deleteUserAndRedirect');
 });
 
 // Protected Routes (Authenticated and Verified Users)

@@ -109,15 +109,16 @@
                             'Active' : 'In Active');
                     });
                 } else {
-                    alert('Failed to update status');
+                    Swal.fire({icon: 'error', title: 'Failed', text: 'Failed to update status'});
                 }
             },
             error: function() {
-                alert('Error occurred');
+                Swal.fire({icon: 'error', title: 'Error', text: 'Error occurred'});
             }
         });
     });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 </body>
 

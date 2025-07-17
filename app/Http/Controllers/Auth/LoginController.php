@@ -38,7 +38,7 @@ class LoginController extends Controller
         if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
             return redirect()->intended(route('admin.profile'));
         }
-        
+
         // Default redirect for regular users
         return redirect()->intended(route('user.profile'));
     }
@@ -51,7 +51,7 @@ class LoginController extends Controller
         // User must have status = 1 AND email_verified_at filled
         return ($user->status == 1) && !is_null($user->email_verified_at);
     }
-    
+
 
 
     public function redirectTo()

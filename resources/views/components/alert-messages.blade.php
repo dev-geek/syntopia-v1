@@ -15,8 +15,6 @@
                             setTimeout(showAlert, 100);
                         } else {
                             console.error('SweetAlert2 failed to load after maximum retries.');
-                            // Optionally show a fallback alert
-                            alert('An error occurred while loading the alert system. Please try again later.');
                         }
                         return;
                     }

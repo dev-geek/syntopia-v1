@@ -3,7 +3,7 @@ class UpgradeHandler {
       this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
       this.apiToken = localStorage.getItem("api_token")
     }
-  
+
     async checkEligibility() {
       try {
         const response = await fetch("/api/subscription/upgrade/eligibility", {
@@ -13,18 +13,18 @@ class UpgradeHandler {
             "X-CSRF-TOKEN": this.csrfToken,
           },
         })
-  
+
         if (!response.ok) {
           throw new Error("Failed to check upgrade eligibility")
         }
-  
+
         return await response.json()
       } catch (error) {
         console.error("Eligibility check failed:", error)
         throw error
       }
     }
-  
+
     async processUpgrade(packageName) {
       try {
         const response = await fetch(`/api/subscription/upgrade/${packageName}`, {
@@ -36,19 +36,19 @@ class UpgradeHandler {
             "X-CSRF-TOKEN": this.csrfToken,
           },
         })
-  
+
         if (!response.ok) {
           const errorData = await response.json()
           throw new Error(errorData.error || "Upgrade failed")
         }
-  
+
         return await response.json()
       } catch (error) {
         console.error("Upgrade processing failed:", error)
         throw error
       }
     }
-  
+
     showUpgradeModal(upgrades, currentPackage) {
       const modal = document.createElement("div")
       modal.className = "upgrade-modal"
@@ -82,14 +82,14 @@ class UpgradeHandler {
                   </div>
               </div>
           `
-  
+
       document.body.appendChild(modal)
-  
+
       // Add event listeners
       modal.querySelector(".close-modal").addEventListener("click", () => {
         document.body.removeChild(modal)
       })
-  
+
       modal.querySelectorAll(".upgrade-btn").forEach((btn) => {
         btn.addEventListener("click", async (e) => {
           const packageName = e.target.dataset.package
@@ -97,7 +97,7 @@ class UpgradeHandler {
         })
       })
     }
-  
+
     async handleUpgradeClick(packageName) {
       try {
         // Show loading state
@@ -105,9 +105,9 @@ class UpgradeHandler {
         const originalText = btn.textContent
         btn.disabled = true
         btn.textContent = "Processing..."
-  
+
         const result = await this.processUpgrade(packageName)
-  
+
         if (result.checkout_url) {
           // PayProGlobal - open checkout in new window
           window.open(result.checkout_url, "_blank", "width=800,height=600")
@@ -121,14 +121,14 @@ class UpgradeHandler {
         }
       } catch (error) {
         this.showMessage(error.message, "error")
-  
+
         // Reset button state
         const btn = document.querySelector(`[data-package="${packageName}"]`)
         btn.disabled = false
         btn.textContent = btn.textContent.replace("Processing...", "Upgrade to")
       }
     }
-  
+
     showMessage(message, type = "info") {
       if (typeof Swal !== "undefined") {
         Swal.fire({
@@ -138,11 +138,10 @@ class UpgradeHandler {
           confirmButtonText: "OK",
         })
       } else {
-        alert(message)
+        Swal.fire({icon: type, title: type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Info', text: message, confirmButtonText: 'OK'});
       }
     }
   }
-  
+
   // Initialize upgrade handler
   window.upgradeHandler = new UpgradeHandler()
-  

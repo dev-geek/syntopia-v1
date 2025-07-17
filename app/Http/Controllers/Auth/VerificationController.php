@@ -47,32 +47,48 @@ class VerificationController extends Controller
 
     public function verifyCode(Request $request)
     {
+        Log::info('[verifyCode] Incoming request', [
+            'input' => $request->all(),
+            'session_email' => session('email'),
+        ]);
         $request->validate([
-            'verification_code' => 'required|string|size:6'
+            'verification_code' => 'required|string|size:6',
+            'email' => 'required|email',
         ]);
 
         $email = session('email');
-
+        if (!$email && $request->has('email')) {
+            $email = $request->input('email');
+            session(['email' => $email]);
+            Log::info('[verifyCode] Set email from request', ['email' => $email]);
+        }
         if (!$email) {
+            Log::error('[verifyCode] No email in session or request');
             return redirect()->route('login')->withErrors('Session expired. Please login again.');
         }
 
         $user = User::where('email', $email)->first();
-
         if (!$user) {
+            Log::error('[verifyCode] User not found', ['email' => $email]);
             return redirect()->route('login')->withErrors('User not found. Please register again.');
         }
 
         if ($user->status == 1 && !is_null($user->email_verified_at)) {
+            Log::info('[verifyCode] User already verified', ['user_id' => $user->id]);
             return redirect()->route('login')->with('success', 'Email already verified. Please login.');
         }
 
         if ($user->verification_code !== $request->verification_code) {
+            Log::error('[verifyCode] Invalid verification code', [
+                'user_id' => $user->id,
+                'expected' => $user->verification_code,
+                'provided' => $request->verification_code
+            ]);
             return back()->withErrors(['verification_code' => 'Invalid verification code.']);
         }
 
         if (!$user->subscriber_password) {
-            Log::error('No subscriber_password found for user during verification', [
+            Log::error('[verifyCode] No subscriber_password found for user during verification', [
                 'user_id' => $user->id,
                 'email' => $user->email
             ]);
@@ -83,16 +99,22 @@ class VerificationController extends Controller
 
         try {
             DB::beginTransaction();
-
+            Log::info('[verifyCode] Calling callXiaoiceApiWithCreds', ['user_id' => $user->id]);
             $apiResponse = $this->callXiaoiceApiWithCreds($user, $user->subscriber_password);
+            Log::info('[verifyCode] callXiaoiceApiWithCreds response', ['user_id' => $user->id, 'apiResponse' => $apiResponse]);
 
             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                 DB::rollBack();
+                Log::error('[verifyCode] API returned swal error', ['user_id' => $user->id, 'error' => $apiResponse['error_message']]);
                 return back()->with('swal_error', $apiResponse['error_message']);
             }
 
             if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
                 DB::rollBack();
+                Log::error('[verifyCode] API failed or missing tenantId', [
+                    'user_id' => $user->id,
+                    'apiResponse' => $apiResponse
+                ]);
                 $user->delete(); // Delete user data on failure
                 $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
                 return redirect()->route('login')->with('error', $errorMsg);
@@ -106,22 +128,31 @@ class VerificationController extends Controller
             ]);
 
             DB::commit();
+            Log::info('[verifyCode] User verified and updated', ['user_id' => $user->id]);
 
             session()->forget('email');
             Auth::login($user);
 
             if ($user->hasRole('User')) {
+                Log::info('[verifyCode] Redirecting to pricing', ['user_id' => $user->id]);
                 return redirect()->route('pricing')
                     ->with('success', 'Email verified successfully!');
             }
             if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+                Log::info('[verifyCode] Redirecting to admin.dashboard', ['user_id' => $user->id]);
                 return redirect()->route('admin.dashboard')
                     ->with('success', 'Email verified successfully!');
             }
+            Log::info('[verifyCode] Redirecting to login (fallback)', ['user_id' => $user->id]);
             return redirect()->route('login')
                 ->with('success', 'Email verified successfully! You can now login.');
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('[verifyCode] Exception during verification', [
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $user->id ?? null
+            ]);
             if (isset($user)) {
                 $user->delete(); // Delete user data on failure
             }
@@ -143,6 +174,23 @@ class VerificationController extends Controller
         }
 
         return back()->with('message', 'Verification code has been resent');
+    }
+
+    public function deleteUserAndRedirect(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+        $email = $request->input('email');
+        $user = User::where('email', $email)->first();
+        if ($user) {
+            Log::info('[deleteUserAndRedirect] Deleting user', ['user_id' => $user->id, 'email' => $email]);
+            $user->delete();
+        } else {
+            Log::warning('[deleteUserAndRedirect] User not found', ['email' => $email]);
+        }
+        session()->forget('email');
+        return redirect()->route('login')->with('error', 'Your account was not created. Please register again with a different email.');
     }
 
     private function makeXiaoiceApiRequest(string $endpoint, array $data): \Illuminate\Http\Client\Response

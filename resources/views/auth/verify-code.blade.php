@@ -124,6 +124,7 @@
 
             <form method="POST" action="{{ url('/verify-code') }}">
                 @csrf
+                <input type="hidden" name="email" value="{{ $email ?? Auth::user()->email }}">
                 <div class="mb-3">
                     <label for="verification-code">Verification code</label>
                     <input type="text" name="verification_code" id="verification-code" class="form-control @error('verification_code') is-invalid @enderror" placeholder="Paste verification code" required>
@@ -161,6 +162,26 @@
         Having trouble? Contact us at
         <a href="mailto:info@syntopia.ai" class="text-primary">info@syntopia.ai</a>.
     </div>
+
+    @if (session('swal_error'))
+        <form id="swal-delete-user-form" method="POST" action="{{ route('verification.deleteUserAndRedirect') }}" style="display:none;">
+            @csrf
+            <input type="hidden" name="email" value="{{ $email ?? Auth::user()->email }}">
+        </form>
+        @push('scripts')
+            <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+            <script>
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Verification Error',
+                    text: @json(session('swal_error')),
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    document.getElementById('swal-delete-user-form').submit();
+                });
+            </script>
+        @endpush
+    @endif
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </div>

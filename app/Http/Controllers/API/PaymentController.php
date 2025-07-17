@@ -728,7 +728,7 @@ class PaymentController extends Controller
                 'amount' => $amount,
                 'currency' => $currency,
                 'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
-                'status' => 'completed',
+                // 'status' => 'completed', // <-- Remove this for now
                 'metadata' => $paymentData
             ];
 
@@ -739,10 +739,10 @@ class PaymentController extends Controller
 
             $order = Order::updateOrCreate(
                 ['transaction_id' => $transactionId],
-                $orderData
+                array_merge($orderData, ['status' => 'pending']) // Always set to pending first
             );
 
-            Log::info('Order created/updated successfully', [
+            Log::info('Order created/updated as pending', [
                 'order_id' => $order->id,
                 'transaction_id' => $transactionId,
                 'order_status' => $order->status,
@@ -759,6 +759,7 @@ class PaymentController extends Controller
                 $licenseKey = $this->makeLicense($user);
                 if (!$licenseKey) {
                     Log::error('Failed to generate license key', ['user_id' => $user->id]);
+                    // Do not mark as completed/subscribed, return error
                     throw new \Exception('License generation failed');
                 }
 
@@ -792,6 +793,9 @@ class PaymentController extends Controller
                 ]);
 
                 $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
+
+                // Now mark order as completed
+                $order->update(['status' => 'completed']);
             } else {
                 $userUpdateData = [
                     'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
@@ -814,6 +818,9 @@ class PaymentController extends Controller
                     'package_id' => $user->package_id,
                     'subscription_id' => $user->subscription_id
                 ]);
+
+                // Now mark order as completed
+                $order->update(['status' => 'completed']);
             }
 
             Log::info('=== PAYMENT PROCESSING COMPLETED ===', [
@@ -1807,5 +1814,56 @@ class PaymentController extends Controller
         ]);
 
         return view('payment.popup-cancel');
+    }
+
+    /**
+     * Get the latest PayProGlobal order for the current user
+     */
+    public function getLatestPayProGlobalOrder(Request $request)
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $vendorAccountId = config('payment.gateways.PayProGlobal.merchant_id');
+        $apiSecretKey = config('payment.gateways.PayProGlobal.webhook_secret');
+        $includeTestOrders = config('payment.gateways.PayProGlobal.test_mode', true);
+
+        $dateFrom = now()->subYear()->format('Y-m-d\TH:i:s');
+        $dateTo = now()->addDay()->format('Y-m-d\TH:i:s');
+
+        $payload = [
+            'skip' => 0,
+            'take' => 1,
+            'search' => [
+                'orderIds' => [],
+                'subscriptionId' => null,
+                'customerEmail' => $user->email,
+                'orderStatusId' => null,
+                'dateFrom' => $dateFrom,
+                'dateTo' => $dateTo,
+            ],
+            'sortByDate' => 'desc',
+            'includeTestOrders' => $includeTestOrders,
+            'vendorAccountId' => '170815',
+            'apiSecretKey' => 'dd8c46a2-53cd-40cd-b265-0e98efc8096d',
+        ];
+
+        $response = Http::post('https://store.payproglobal.com/api/Orders/GetList', $payload);
+        $data = $response->json();
+
+        if (!$response->successful() || empty($data['isSuccess'])) {
+            return response()->json(['error' => 'Failed to fetch orders', 'details' => $data], 500);
+        }
+
+        $orders = $data['response']['orders'] ?? [];
+        $latestOrder = $orders[0] ?? null;
+
+        return response()->json([
+            'success' => true,
+            'order' => $latestOrder,
+            'order_id' => $latestOrder['id'] ?? null,
+        ]);
     }
 }

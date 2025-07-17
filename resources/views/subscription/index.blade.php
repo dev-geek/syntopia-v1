@@ -1087,12 +1087,6 @@
                     </div>
                 @endforeach
             </div>
-            @if (isset($hasActiveSubscription) && $hasActiveSubscription)
-                <div class="cancel-section">
-                    <p>Want to cancel your current subscription?</p>
-                    <button class="btn cancel" id="cancel-subscription">Cancel Subscription</button>
-                </div>
-            @endif
         </div>
     </div>
     @include('subscription.includes._addons')
@@ -1456,71 +1450,93 @@
 
                         console.log('PayProGlobal popup opened successfully');
 
-                        // get order id from https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618
-                        const url =
-                            'https://store.payproglobal.com/thankyou?OrderId=36908520&ExternalOrderId=37898618';
-                        const params = new URLSearchParams(url.split('?')[1]);
-                        const orderId = params.get('OrderId');
-                        console.log(orderId, "order id");
+                        // Wait for the popup to close, then fetch the latest order
+                        const pollInterval = 1000;
+                        const pollPopupClosed = setInterval(() => {
+                            if (popup.closed) {
+                                clearInterval(pollPopupClosed);
+                                // Fetch latest order from backend
+                                fetch('/api/payments/payproglobal/latest-order', {
+                                    method: 'GET',
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    credentials: 'same-origin',
+                                })
+                                .then(response => response.json())
+                                .then(orderData => {
+                                    if (!orderData.success || !orderData.order_id) {
+                                        throw new Error(orderData.error || 'No order found');
+                                    }
+                                    const orderId = orderData.order_id;
+                                    console.log(orderId, 'order id');
 
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = '/payments/success';
-                        form.style.display = 'none';
+                                    const form = document.createElement('form');
+                                    form.method = 'POST';
+                                    form.action = '/payments/success';
+                                    form.style.display = 'none';
 
-                        // Add CSRF token
-                        const csrfInput = document.createElement('input');
-                        csrfInput.type = 'hidden';
-                        csrfInput.name = '_token';
-                        csrfInput.value = csrfToken;
-                        form.appendChild(csrfInput);
+                                    // Add CSRF token
+                                    const csrfInput = document.createElement('input');
+                                    csrfInput.type = 'hidden';
+                                    csrfInput.name = '_token';
+                                    csrfInput.value = csrfToken;
+                                    form.appendChild(csrfInput);
 
-                        // Add gateway
-                        const gatewayInput = document.createElement('input');
-                        gatewayInput.type = 'hidden';
-                        gatewayInput.name = 'gateway';
-                        gatewayInput.value = 'payproglobal';
-                        form.appendChild(gatewayInput);
+                                    // Add gateway
+                                    const gatewayInput = document.createElement('input');
+                                    gatewayInput.type = 'hidden';
+                                    gatewayInput.name = 'gateway';
+                                    gatewayInput.value = 'payproglobal';
+                                    form.appendChild(gatewayInput);
 
-                        // Add order ID
-                        const orderIdInput = document.createElement('input');
-                        orderIdInput.type = 'hidden';
-                        orderIdInput.name = 'order_id';
-                        orderIdInput.value = orderId;
-                        form.appendChild(orderIdInput);
+                                    // Add order ID
+                                    const orderIdInput = document.createElement('input');
+                                    orderIdInput.type = 'hidden';
+                                    orderIdInput.name = 'order_id';
+                                    orderIdInput.value = orderId;
+                                    form.appendChild(orderIdInput);
 
-                        // Add user ID
-                        const userIdInput = document.createElement('input');
-                        userIdInput.type = 'hidden';
-                        userIdInput.name = 'user_id';
-                        userIdInput.value = userId;
-                        form.appendChild(userIdInput);
+                                    // Add user ID
+                                    const userIdInput = document.createElement('input');
+                                    userIdInput.type = 'hidden';
+                                    userIdInput.name = 'user_id';
+                                    userIdInput.value = userId;
+                                    form.appendChild(userIdInput);
 
-                        // Add package name
-                        const packageInput = document.createElement('input');
-                        packageInput.type = 'hidden';
-                        packageInput.name = 'package';
-                        packageInput.value = packageName;
-                        form.appendChild(packageInput);
+                                    // Add package name
+                                    const packageInput = document.createElement('input');
+                                    packageInput.type = 'hidden';
+                                    packageInput.name = 'package';
+                                    packageInput.value = packageName;
+                                    form.appendChild(packageInput);
 
-                        // Add popup flag
-                        const popupInput = document.createElement('input');
-                        popupInput.type = 'hidden';
-                        popupInput.name = 'popup';
-                        popupInput.value = 'true';
-                        form.appendChild(popupInput);
+                                    // Add popup flag
+                                    const popupInput = document.createElement('input');
+                                    popupInput.type = 'hidden';
+                                    popupInput.name = 'popup';
+                                    popupInput.value = 'true';
+                                    form.appendChild(popupInput);
 
-                        document.body.appendChild(form);
+                                    document.body.appendChild(form);
 
-                        console.log('Submitting PayProGlobal success form with data:', {
-                            gateway: 'payproglobal',
-                            order_id: orderId,
-                            user_id: userId,
-                            package: packageName,
-                            popup: 'true'
-                        });
+                                    console.log('Submitting PayProGlobal success form with data:', {
+                                        gateway: 'payproglobal',
+                                        order_id: orderId,
+                                        user_id: userId,
+                                        package: packageName,
+                                        popup: 'true'
+                                    });
 
-                        form.submit();
+                                    form.submit();
+                                })
+                                .catch(error => {
+                                    console.error('Failed to fetch latest PayProGlobal order:', error);
+                                    showError('Order Error', error.message || 'Could not retrieve your order. Please contact support.');
+                                });
+                            }
+                        }, pollInterval);
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
