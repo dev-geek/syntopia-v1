@@ -99,7 +99,13 @@ class PaymentController extends Controller
                 'subscriptionCode' => $licenseKey,
             ];
 
-            $response = Http::post(config('payment.gateways.License API.endpoint'), $payload);
+            $response = Http::withHeaders([
+                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add', $payload);
+
+            Log::info("Licenese reposne", $response->json());
 
             if ($response->successful() && $response->json()['code'] === 200) {
                 $user->update([
