@@ -334,92 +334,108 @@ class PaymentController extends Controller
     }
 
     public function payProGlobalCheckout(Request $request, string $package)
-{
-    \Log::info('[payProGlobalCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
-    Log::info('PayProGlobal checkout started', ['package' => $package, 'user_id' => Auth::id()]);
-
-    try {
-        $processedPackage = str_replace('-plan', '', strtolower($package));
-        $validation = $this->validatePackageAndGetUser($processedPackage);
-        if (!is_array($validation)) {
-            return $validation;
-        }
-
-        $user = $validation['user'];
-        $packageData = $validation['packageData'];
-
-        $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
-        if (!$productId) {
-            Log::error('PayProGlobal product ID not found', ['package' => $processedPackage]);
-            return response()->json(['error' => 'Product not configured'], 400);
-        }
-
-        $secretKey = config('payment.gateways.PayProGlobal.webhook_secret');
-        $testMode = config('payment.gateways.PayProGlobal.test_mode', true);
-
-        // Create a pending order with a unique identifier
-        $pendingOrderId = 'PPG-PENDING-' . Str::random(10);
-        $order = Order::create([
-            'user_id' => $user->id,
-            'package_id' => $packageData->id,
-            'amount' => $packageData->price,
-            'currency' => 'USD',
-            'transaction_id' => $pendingOrderId,
-            'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
-            'status' => 'pending',
-            'metadata' => [
-                'package' => $processedPackage,
-                'pending_order_id' => $pendingOrderId
-            ]
+    {
+        Log::info('PayProGlobal checkout started', [
+            'package' => $package,
+            'user_id' => Auth::id(),
+            'is_upgrade' => $request->input('is_upgrade', false),
+            'is_downgrade' => $request->input('is_downgrade', false)
         ]);
 
-        // Don't use {order_id} placeholder, instead pass the necessary data
-        $successUrl = route('payments.success') . '?' . http_build_query([
-            'gateway' => 'payproglobal',
-            'user_id' => $user->id,
-            'package' => $processedPackage,
-            'popup' => 'true',
-            'pending_order_id' => $pendingOrderId
-        ]);
+        try {
+            $processedPackage = strtolower($package);
+            $user = Auth::user();
 
-        $checkoutUrl = "https://store.payproglobal.com/checkout?" . http_build_query([
-            'products[1][id]' => $productId,
-            'email' => $user->email,
-            'first_name' => $user->first_name ?? '',
-            'last_name' => $user->last_name ?? '',
-            'custom' => json_encode([
+            if (!$user) {
+                Log::error('User not authenticated for PayProGlobal checkout');
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            $packageData = Package::whereRaw('LOWER(name) = ?', [$processedPackage])->first();
+            if (!$packageData) {
+                Log::error('Package not found', ['package' => $processedPackage]);
+                return response()->json(['error' => 'Invalid package selected'], 400);
+            }
+
+            $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
+            if (!$productId) {
+                Log::error('PayProGlobal product ID not configured', ['package' => $processedPackage]);
+                return response()->json(['error' => 'Product not configured'], 400);
+            }
+
+            // Create a pending order
+            $pendingOrderId = 'PPG-PENDING-' . Str::random(10);
+            $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'transaction_id' => $pendingOrderId,
+                'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
+                'status' => 'pending',
+                'metadata' => [
+                    'package' => $processedPackage,
+                    'pending_order_id' => $pendingOrderId,
+                    'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
+                ]
+            ]);
+
+            // Build success URL with all necessary parameters
+            $successParams = [
+                'gateway' => 'payproglobal',
+                'user_id' => $user->id,
                 'package' => $processedPackage,
+                'popup' => 'true',
+                'pending_order_id' => $pendingOrderId,
+                'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
+            ];
+
+            $successUrl = route('payments.success', $successParams);
+
+            // Build checkout URL
+            $checkoutParams = [
+                'products[1][id]' => $productId,
+                'email' => $user->email,
+                'first_name' => $user->first_name ?? '',
+                'last_name' => $user->last_name ?? '',
+                'custom' => json_encode([
+                    'user_id' => $user->id,
+                    'package_id' => $packageData->id,
+                    'package' => $processedPackage,
+                    'pending_order_id' => $pendingOrderId,
+                    'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
+                ]),
+                'page-template' => 'ID',
+                'currency' => 'USD',
+                'use-test-mode' => config('payment.gateways.PayProGlobal.test_mode', true) ? 'true' : 'false',
+                'secret-key' => config('payment.gateways.PayProGlobal.webhook_secret'),
+                'success-url' => $successUrl,
+                'cancel-url' => route('payments.popup-cancel')
+            ];
+
+            $checkoutUrl = "https://store.payproglobal.com/checkout?" . http_build_query($checkoutParams);
+
+            Log::info('PayProGlobal checkout created', [
+                'user_id' => $user->id,
+                'pending_order_id' => $pendingOrderId,
+                'checkout_url' => $checkoutUrl
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $checkoutUrl,
                 'pending_order_id' => $pendingOrderId
-            ]),
-            'page-template' => 'ID',
-            'currency' => 'USD',
-            'use-test-mode' => $testMode ? 'true' : 'false',
-            'secret-key' => $secretKey,
-            'success-url' => $successUrl,
-            'cancel-url' => route('payments.popup-cancel')
-        ]);
-
-        Log::info('PayProGlobal checkout created', [
-            'user_id' => $user->id,
-            'pending_order_id' => $pendingOrderId,
-            'checkout_url' => $checkoutUrl
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'checkout_url' => $checkoutUrl
-        ]);
-    } catch (\Exception $e) {
-        Log::error('PayProGlobal checkout error', [
-            'error' => $e->getMessage(),
-            'package' => $package,
-            'user_id' => Auth::id()
-        ]);
-        return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PayProGlobal checkout error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'package' => $package,
+                'user_id' => Auth::id()
+            ]);
+            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
+        }
     }
-}
 
     private function getSubscriptionId($orderId)
     {
@@ -927,7 +943,6 @@ class PaymentController extends Controller
                     Log::info('Paddle webhook event ignored', ['event_type' => $eventType]);
                     return response()->json(['status' => 'ignored']);
             }
-
         } catch (\Exception $e) {
             Log::error('Paddle webhook error', [
                 'error' => $e->getMessage(),
@@ -968,39 +983,137 @@ class PaymentController extends Controller
 
     public function handlePayProGlobalWebhook(Request $request)
     {
-        \Log::info('[handlePayProGlobalWebhook] called', ['payload' => $request->all()]);
-        try {
-            $payload = $request->all();
-            Log::info('PayProGlobal webhook received', ['payload' => $payload]);
+        Log::info('PayProGlobal Webhook Raw Content:', [
+            'content' => $request->getContent(),
+            'headers' => $request->headers->all()
+        ]);
 
-            if (($payload['order_status'] ?? null) === 'Processed' && ($payload['payment_status'] ?? null) === 'Paid') {
-                $customData = json_decode($payload['custom'] ?? '{}', true);
-                return $this->processPayment([
-                    'order_id' => $payload['order_id'],
-                    'user_id' => $customData['user_id'] ?? null,
-                    'package' => $customData['package'] ?? null,
-                    'amount' => 0,
-                    'currency' => 'USD',
-                    'action' => $customData['action'] ?? 'new'
-                ], 'payproglobal');
+        $payload = [];
+        parse_str($request->getContent(), $payload);
+
+        Log::info('PayProGlobal Webhook Parsed Data:', ['payload' => $payload]);
+
+        try {
+            if (empty($payload)) {
+                Log::error('Empty PayProGlobal webhook payload');
+                return response()->json(['success' => false, 'error' => 'Empty payload'], 400);
             }
-            Log::info('PayProGlobal webhook ignored', [
-                'order_status' => $payload['order_status'],
-                'payment_status' => $payload['payment_status']
+            Log::info('PayProGlobal webhook payload extracted', [
+                'payload_count' => count($payload),
+                'payload_keys' => array_keys($payload),
+                'payload' => $payload
             ]);
-            return response()->json(['status' => 'ignored']);
+
+            // Extract key fields from the webhook
+            $orderId = $payload['ORDER_ID'] ?? null;
+            $ipnType = $payload['IPN_TYPE_NAME'] ?? null;
+            $orderStatus = $payload['ORDER_STATUS'] ?? null;
+            $customerEmail = $payload['CUSTOMER_EMAIL'] ?? null;
+            $productId = $payload['PRODUCT_ID'] ?? null;
+            $orderTotal = $payload['ORDER_TOTAL_AMOUNT'] ?? null;
+            $currency = $payload['ORDER_CURRENCY_CODE'] ?? null;
+
+            Log::info('PayProGlobal webhook fields extracted', [
+                'order_id' => $orderId,
+                'ipn_type' => $ipnType,
+                'order_status' => $orderStatus,
+                'customer_email' => $customerEmail,
+                'product_id' => $productId,
+                'order_total' => $orderTotal,
+                'currency' => $currency
+            ]);
+
+            // Check if this is an OrderCharged event
+            if ($ipnType === 'OrderCharged' && $orderId) {
+                Log::info('PayProGlobal OrderCharged event detected', [
+                    'order_id' => $orderId,
+                    'ipn_type' => $ipnType
+                ]);
+
+                // Find user by email
+                $user = User::where('email', $customerEmail)->first();
+                if (!$user) {
+                    Log::error('PayProGlobal webhook: User not found by email', [
+                        'customer_email' => $customerEmail,
+                        'order_id' => $orderId
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'User not found'], 404);
+                }
+
+                Log::info('PayProGlobal webhook: User found', [
+                    'user_id' => $user->id,
+                    'user_email' => $user->email,
+                    'order_id' => $orderId
+                ]);
+
+                // Find package by product ID
+                $package = Package::where('payproglobal_product_id', $productId)->first();
+                if (!$package) {
+                    Log::error('PayProGlobal webhook: Package not found by product ID', [
+                        'product_id' => $productId,
+                        'order_id' => $orderId
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'Package not found'], 404);
+                }
+
+                Log::info('PayProGlobal webhook: Package found', [
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'product_id' => $productId
+                ]);
+
+                // Process the payment
+                $paymentData = [
+                    'order_id' => $orderId,
+                    'user_id' => $user->id,
+                    'package' => $package->name,
+                    'amount' => $orderTotal,
+                    'currency' => $currency,
+                    'customer_email' => $customerEmail,
+                    'product_id' => $productId,
+                    'action' => 'new'
+                ];
+
+                Log::info('PayProGlobal webhook: Processing payment', [
+                    'payment_data' => $paymentData
+                ]);
+
+                $result = $this->processPayment($paymentData, 'payproglobal');
+
+                if ($result) {
+                    Log::info('PayProGlobal webhook: Payment processed successfully', [
+                        'order_id' => $orderId,
+                        'user_id' => $user->id
+                    ]);
+                    return response()->json(['success' => true, 'message' => 'Payment processed', 'order_id' => $orderId], 200);
+                } else {
+                    Log::error('PayProGlobal webhook: Payment processing failed', [
+                        'order_id' => $orderId,
+                        'user_id' => $user->id
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'Payment processing failed'], 500);
+                }
+            }
+
+            Log::info('PayProGlobal webhook: Event ignored', [
+                'ipn_type' => $ipnType,
+                'order_id' => $orderId,
+                'reason' => 'Not an OrderCharged event or missing order ID'
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'Event ignored'], 200);
         } catch (\Exception $e) {
-            Log::error('PayProGlobal webhook error', [
+            Log::error('PayProGlobal webhook processing error', [
                 'error' => $e->getMessage(),
-                'payload' => $request->all()
+                'trace' => $e->getTraceAsString()
             ]);
-            return response()->json(['error' => 'Processing failed'], 500);
+            return response()->json(['success' => false, 'error' => 'Processing failed'], 500);
         }
     }
 
     public function getOrdersList(Request $request)
     {
-        \Log::info('[getOrdersList] called', ['user_id' => \Auth::id()]);
+        Log::info('[getOrdersList] called', ['user_id' => Auth::id()]);
         $user = Auth::user();
         $orders = Order::where('user_id', $user->id)
             ->with('package')
@@ -1236,7 +1349,6 @@ class PaymentController extends Controller
                 ]);
                 return response()->json(['error' => 'Processing failed'], 500);
             }
-
         } catch (\Exception $e) {
             Log::error('Error handling Paddle transaction completed webhook', [
                 'error' => $e->getMessage(),
@@ -1271,7 +1383,6 @@ class PaymentController extends Controller
             }
 
             return response()->json(['status' => 'processed']);
-
         } catch (\Exception $e) {
             Log::error('Error handling Paddle subscription webhook', [
                 'error' => $e->getMessage(),
@@ -1306,7 +1417,6 @@ class PaymentController extends Controller
             }
 
             return response()->json(['status' => 'processed']);
-
         } catch (\Exception $e) {
             Log::error('Error handling Paddle cancellation webhook', [
                 'error' => $e->getMessage(),
@@ -1502,7 +1612,6 @@ class PaymentController extends Controller
             } else {
                 return response()->json(['error' => 'Unsupported payment gateway for upgrade'], 400);
             }
-
         } catch (\Exception $e) {
             Log::error('Package upgrade error', [
                 'error' => $e->getMessage(),
@@ -1585,7 +1694,6 @@ class PaymentController extends Controller
                 'success' => true,
                 'message' => 'Subscription upgraded successfully'
             ]);
-
         } catch (\Exception $e) {
             Log::error('Paddle upgrade error', [
                 'error' => $e->getMessage(),
@@ -1665,7 +1773,7 @@ class PaymentController extends Controller
                 ]);
             }
 
-                        // Verify with Paddle API
+            // Verify with Paddle API
             $apiKey = config('payment.gateways.Paddle.api_key');
             if (empty($apiKey)) {
                 Log::error('Paddle API key missing for order verification');
@@ -1712,7 +1820,7 @@ class PaymentController extends Controller
                 ]);
             }
 
-                        // Process the payment if not already processed
+            // Process the payment if not already processed
             if (!$order || $order->status !== 'completed') {
                 Log::info('Processing payment - order needs to be created/updated', [
                     'transaction_id' => $transactionId,
@@ -1773,7 +1881,6 @@ class PaymentController extends Controller
                 'status' => 'completed',
                 'message' => 'Order verified successfully'
             ]);
-
         } catch (\Exception $e) {
             Log::error('Order verification error', [
                 'error' => $e->getMessage(),
@@ -1819,16 +1926,49 @@ class PaymentController extends Controller
     /**
      * Get the latest PayProGlobal order for the current user
      */
+    public function testPayProGlobalWebhook(Request $request)
+    {
+        Log::info('=== PAYPROGLOBAL WEBHOOK TEST ===', [
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'data' => $request->all()
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'PayProGlobal webhook test successful',
+            'timestamp' => now()->toISOString(),
+            'data' => $request->all()
+        ]);
+    }
+
     public function getLatestPayProGlobalOrder(Request $request)
     {
+        Log::info('=== GET LATEST PAYPROGLOBAL ORDER STARTED ===', [
+            'user_id' => auth()->id(),
+            'request_data' => $request->all()
+        ]);
+
         $user = auth()->user();
         if (!$user) {
+            Log::error('[getLatestPayProGlobalOrder] Unauthorized access attempt');
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
+        Log::info('[getLatestPayProGlobalOrder] User authenticated', [
+            'user_id' => $user->id,
+            'user_email' => $user->email
+        ]);
+
         $vendorAccountId = config('payment.gateways.PayProGlobal.merchant_id');
-        $apiSecretKey = config('payment.gateways.PayProGlobal.webhook_secret');
+        $apiKey = config('payment.gateways.PayProGlobal.api_key');
         $includeTestOrders = config('payment.gateways.PayProGlobal.test_mode', true);
+
+        Log::info('[getLatestPayProGlobalOrder] Configuration loaded', [
+            'vendor_account_id' => $vendorAccountId,
+            'api_key_exists' => !empty($apiKey),
+            'include_test_orders' => $includeTestOrders
+        ]);
 
         $dateFrom = now()->subYear()->format('Y-m-d\TH:i:s');
         $dateTo = now()->addDay()->format('Y-m-d\TH:i:s');
@@ -1846,24 +1986,69 @@ class PaymentController extends Controller
             ],
             'sortByDate' => 'desc',
             'includeTestOrders' => $includeTestOrders,
-            'vendorAccountId' => '170815',
-            'apiSecretKey' => 'dd8c46a2-53cd-40cd-b265-0e98efc8096d',
+            'vendorAccountId' => $vendorAccountId,
+            'apiSecretKey' => $apiKey,
         ];
 
-        $response = Http::post('https://store.payproglobal.com/api/Orders/GetList', $payload);
-        $data = $response->json();
+        Log::info('[getLatestPayProGlobalOrder] Sending payload', ['payload' => $payload]);
 
-        if (!$response->successful() || empty($data['isSuccess'])) {
-            return response()->json(['error' => 'Failed to fetch orders', 'details' => $data], 500);
+        try {
+            $response = Http::post('https://store.payproglobal.com/api/Orders/GetList', $payload);
+            $data = $response->json();
+
+            Log::info('[getLatestPayProGlobalOrder] API response received', [
+                'response_status' => $response->status(),
+                'response_successful' => $response->successful(),
+                'data_keys' => array_keys($data),
+                'data' => $data
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('[getLatestPayProGlobalOrder] HTTP request failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                return response()->json(['error' => 'HTTP request failed', 'status' => $response->status()], 500);
+            }
+
+            if (empty($data['isSuccess'])) {
+                Log::error('[getLatestPayProGlobalOrder] API returned failure', ['details' => $data]);
+                return response()->json(['error' => 'API returned failure', 'details' => $data], 500);
+            }
+
+            $orders = $data['response']['orders'] ?? [];
+            $latestOrder = $orders[0] ?? null;
+
+            Log::info('[getLatestPayProGlobalOrder] Orders processed', [
+                'orders_count' => count($orders),
+                'latest_order' => $latestOrder
+            ]);
+
+            if (!$latestOrder) {
+                Log::warning('[getLatestPayProGlobalOrder] No orders found for user', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No orders found for this user',
+                    'orders' => $orders,
+                ]);
+            }
+
+            Log::info('[getLatestPayProGlobalOrder] Latest order found', ['order' => $latestOrder]);
+
+            return response()->json([
+                'success' => true,
+                'order' => $latestOrder,
+                'order_id' => $latestOrder['id'] ?? null,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[getLatestPayProGlobalOrder] Exception occurred', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Exception occurred: ' . $e->getMessage()], 500);
         }
-
-        $orders = $data['response']['orders'] ?? [];
-        $latestOrder = $orders[0] ?? null;
-
-        return response()->json([
-            'success' => true,
-            'order' => $latestOrder,
-            'order_id' => $latestOrder['id'] ?? null,
-        ]);
     }
 }

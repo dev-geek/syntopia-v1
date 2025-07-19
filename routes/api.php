@@ -18,6 +18,12 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
     Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal');
 });
 
+// PayProGlobal webhook (direct route for external calls)
+Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal.webhook');
+
+// Test endpoint
+Route::post('/payproglobal/test', [PaymentController::class, 'testPayProGlobalWebhook'])->name('payproglobal.test');
+
 // Authenticated API routes
 Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/user', function (Request $request) {

@@ -537,69 +537,69 @@
                             clearInterval(popupCheckInterval);
                             console.log('PayProGlobal popup closed');
 
-                            // Check if payment was successful via session storage
-                            const successFlag = sessionStorage.getItem('payProGlobalSuccess');
-                            if (!successFlag) {
+                            // Check if we have a success flag
+                            const successUrl = sessionStorage.getItem('payProGlobalSuccessUrl');
+                            if (successUrl) {
+                                console.log('Redirecting to success URL:', successUrl);
+                                window.location.href = successUrl;
+                            } else {
                                 showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
                             }
-                            sessionStorage.removeItem('payProGlobalSuccess');
+
+                            // Clean up
+                            sessionStorage.removeItem('payProGlobalSuccessUrl');
                             sessionStorage.removeItem('payProGlobalUserId');
                             sessionStorage.removeItem('payProGlobalPackageName');
-                            sessionStorage.removeItem('payProGlobalAction');
                             return;
                         }
 
                         // Try to check the popup URL for the thank you page
-                        const popupUrl = popup.location.href;
-                        if (popupUrl && popupUrl.includes('/thankyou')) {
-                            console.log('PayProGlobal thank you page detected');
+                        try {
+                            const popupUrl = popup.location.href;
+                            if (popupUrl && popupUrl.includes('/thankyou')) {
+                                console.log('PayProGlobal thank you page detected');
 
-                            // Extract OrderId from the URL
-                            const urlParams = new URLSearchParams(popup.location.search);
-                            const orderId = urlParams.get('OrderId');
+                                // Extract OrderId from the URL
+                                const urlParams = new URLSearchParams(popup.location.search);
+                                const orderId = urlParams.get('OrderId');
 
-                            if (orderId) {
-                                console.log('Found OrderId in thank you URL:', orderId);
+                                if (orderId) {
+                                    console.log('Found OrderId in thank you URL:', orderId);
+                                    sessionStorage.setItem('payProGlobalSuccessUrl',
+                                        `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}`
+                                    );
 
-                                // Send message to parent window
-                                window.postMessage({
-                                    type: 'payproglobal_success',
-                                    orderId: orderId,
-                                    userId: sessionStorage.getItem('payProGlobalUserId'),
-                                    packageName: sessionStorage.getItem('payProGlobalPackageName')
-                                }, '*');
-
-                                clearInterval(popupCheckInterval);
-                                setTimeout(() => popup.close(), 1000);
+                                    clearInterval(popupCheckInterval);
+                                    setTimeout(() => popup.close(), 1000);
+                                }
                             }
+                        } catch (e) {
+                            // Cross-origin error expected, we'll rely on postMessage
                         }
-                    } catch (e) {
-                        // Cross-origin restrictions may prevent URL access
-                        // This is expected and we'll rely on postMessage instead
+                    } catch (error) {
+                        console.error('Popup monitoring error:', error);
+                        clearInterval(popupCheckInterval);
                     }
                 }, 500);
             }
-
-            // Inject script into PayProGlobal thank you page
             // This script will run on the PayProGlobal domain and send the OrderId back
             const thankYouScript = `
-                    <script>
-                    (function() {
-                        if (window.location.href.includes('/thankyou')) {
-                            const urlParams = new URLSearchParams(window.location.search);
-                            const orderId = urlParams.get('OrderId');
-                            if (orderId && window.opener) {
-                                window.opener.postMessage({
-                                    type: 'payproglobal_success',
-                                    orderId: orderId,
-                                    userId: '${sessionStorage.getItem('payProGlobalUserId') || ''}',
-                                    packageName: '${sessionStorage.getItem('payProGlobalPackageName') || ''}'
-                                }, '*');
-                            }
-                        }
-                    })();
-        </script>
-        `;
+                            <script>
+                            (function() {
+                                if (window.location.href.includes('/thankyou')) {
+                                    const urlParams = new URLSearchParams(window.location.search);
+                                    const orderId = urlParams.get('OrderId');
+                                    if (orderId && window.opener) {
+                                        window.opener.postMessage({
+                                            type: 'payproglobal_success',
+                                            orderId: orderId,
+                                            userId: '${sessionStorage.getItem('payProGlobalUserId') || ''}',
+                                            packageName: '${sessionStorage.getItem('payProGlobalPackageName') || ''}'
+                                        }, '*');
+                                    }
+                                }
+                            })();
+        </script>`;
         </script>
     @endif
 
@@ -1358,11 +1358,20 @@
                     });
             }
 
+            let isProcessingPayProGlobal = false;
+
             function processPayProGlobal(packageName, action) {
+                if (isProcessingPayProGlobal) {
+                    console.log('PayProGlobal checkout already in progress');
+                    return;
+                }
+
+                isProcessingPayProGlobal = true;
                 console.log('=== PAYPROGLOBAL PROCESSING ===', {
                     packageName,
                     action
                 });
+
 
                 const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
                 const requestBody = {
@@ -1451,97 +1460,122 @@
                         console.log('PayProGlobal popup opened successfully');
 
                         // Wait for the popup to close, then fetch the latest order
-                        const pollInterval = 1000;
                         const pollPopupClosed = setInterval(() => {
                             if (popup.closed) {
                                 clearInterval(pollPopupClosed);
-                                // Fetch latest order from backend
-                                fetch('/api/payments/payproglobal/latest-order', {
-                                    method: 'GET',
-                                    headers: {
-                                        'Accept': 'application/json',
-                                        'X-Requested-With': 'XMLHttpRequest',
-                                    },
-                                    credentials: 'same-origin',
-                                })
-                                .then(response => response.json())
-                                .then(orderData => {
-                                    if (!orderData.success || !orderData.order_id) {
-                                        throw new Error(orderData.error || 'No order found');
-                                    }
-                                    const orderId = orderData.order_id;
-                                    console.log(orderId, 'order id');
+                                console.log('PayProGlobal popup closed, fetching latest order...');
 
-                                    const form = document.createElement('form');
-                                    form.method = 'POST';
-                                    form.action = '/payments/success';
-                                    form.style.display = 'none';
+                                // Fetch order from webhook
+                                fetch('/api/webhooks/payproglobal', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Accept': 'application/json',
+                                            'X-Requested-With': 'XMLHttpRequest',
+                                            'Content-Type': 'application/x-www-form-urlencoded'
+                                        },
+                                        credentials: 'same-origin',
+                                    })
+                                    .then(response => {
+                                        console.log('PayProGlobal API response status:', response
+                                            .status);
+                                        console.log('PayProGlobal API response headers:', response
+                                            .headers);
+                                        if (!response.ok) {
+                                            throw new Error(
+                                                `HTTP ${response.status}: ${response.statusText}`
+                                                );
+                                        }
+                                        return response.json();
+                                    })
+                                    .then(orderData => {
+                                        console.log('PayProGlobal API response data:', orderData);
 
-                                    // Add CSRF token
-                                    const csrfInput = document.createElement('input');
-                                    csrfInput.type = 'hidden';
-                                    csrfInput.name = '_token';
-                                    csrfInput.value = csrfToken;
-                                    form.appendChild(csrfInput);
+                                        if (!orderData.success || !orderData.order_id) {
+                                            console.error('PayProGlobal API error:', orderData
+                                                .error || orderData.message || 'No order found');
+                                            throw new Error(orderData.error || orderData.message ||
+                                                'No order found');
+                                        }
+                                        const orderId = orderData.order_id;
+                                        console.log('PayProGlobal order ID extracted:', orderId);
 
-                                    // Add gateway
-                                    const gatewayInput = document.createElement('input');
-                                    gatewayInput.type = 'hidden';
-                                    gatewayInput.name = 'gateway';
-                                    gatewayInput.value = 'payproglobal';
-                                    form.appendChild(gatewayInput);
+                                        const form = document.createElement('form');
+                                        form.method = 'POST';
+                                        form.action = '/payments/success';
+                                        form.style.display = 'none';
 
-                                    // Add order ID
-                                    const orderIdInput = document.createElement('input');
-                                    orderIdInput.type = 'hidden';
-                                    orderIdInput.name = 'order_id';
-                                    orderIdInput.value = orderId;
-                                    form.appendChild(orderIdInput);
+                                        // Add CSRF token
+                                        const csrfInput = document.createElement('input');
+                                        csrfInput.type = 'hidden';
+                                        csrfInput.name = '_token';
+                                        csrfInput.value = csrfToken;
+                                        form.appendChild(csrfInput);
 
-                                    // Add user ID
-                                    const userIdInput = document.createElement('input');
-                                    userIdInput.type = 'hidden';
-                                    userIdInput.name = 'user_id';
-                                    userIdInput.value = userId;
-                                    form.appendChild(userIdInput);
+                                        // Add gateway
+                                        const gatewayInput = document.createElement('input');
+                                        gatewayInput.type = 'hidden';
+                                        gatewayInput.name = 'gateway';
+                                        gatewayInput.value = 'payproglobal';
+                                        form.appendChild(gatewayInput);
 
-                                    // Add package name
-                                    const packageInput = document.createElement('input');
-                                    packageInput.type = 'hidden';
-                                    packageInput.name = 'package';
-                                    packageInput.value = packageName;
-                                    form.appendChild(packageInput);
+                                        // Add order ID
+                                        const orderIdInput = document.createElement('input');
+                                        orderIdInput.type = 'hidden';
+                                        orderIdInput.name = 'order_id';
+                                        orderIdInput.value = orderId;
+                                        form.appendChild(orderIdInput);
 
-                                    // Add popup flag
-                                    const popupInput = document.createElement('input');
-                                    popupInput.type = 'hidden';
-                                    popupInput.name = 'popup';
-                                    popupInput.value = 'true';
-                                    form.appendChild(popupInput);
+                                        // Add user ID
+                                        const userIdInput = document.createElement('input');
+                                        userIdInput.type = 'hidden';
+                                        userIdInput.name = 'user_id';
+                                        userIdInput.value = userId;
+                                        form.appendChild(userIdInput);
 
-                                    document.body.appendChild(form);
+                                        // Add package name
+                                        const packageInput = document.createElement('input');
+                                        packageInput.type = 'hidden';
+                                        packageInput.name = 'package';
+                                        packageInput.value = packageName;
+                                        form.appendChild(packageInput);
 
-                                    console.log('Submitting PayProGlobal success form with data:', {
-                                        gateway: 'payproglobal',
-                                        order_id: orderId,
-                                        user_id: userId,
-                                        package: packageName,
-                                        popup: 'true'
+                                        // Add popup flag
+                                        const popupInput = document.createElement('input');
+                                        popupInput.type = 'hidden';
+                                        popupInput.name = 'popup';
+                                        popupInput.value = 'true';
+                                        form.appendChild(popupInput);
+
+                                        document.body.appendChild(form);
+
+                                        console.log(
+                                            'Submitting PayProGlobal success form with data:', {
+                                                gateway: 'payproglobal',
+                                                order_id: orderId,
+                                                user_id: userId,
+                                                package: packageName,
+                                                popup: 'true'
+                                            });
+
+                                        form.submit();
+                                    })
+                                    .catch(error => {
+                                        console.error('Failed to fetch latest PayProGlobal order:',
+                                            error);
+                                        showError('Order Error', error.message ||
+                                            'Could not retrieve your order. Please contact support.'
+                                            );
                                     });
-
-                                    form.submit();
-                                })
-                                .catch(error => {
-                                    console.error('Failed to fetch latest PayProGlobal order:', error);
-                                    showError('Order Error', error.message || 'Could not retrieve your order. Please contact support.');
-                                });
                             }
-                        }, pollInterval);
+                        });
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
                         showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
                             error.message || 'An unexpected error occurred. Please try again.');
+                    })
+                    .finally(() => {
+                        isProcessingPayProGlobal = false;
                     });
             }
 

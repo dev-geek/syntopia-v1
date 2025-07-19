@@ -15,5 +15,8 @@ class VerifyCsrfToken extends Middleware
         '/verify-code',
         'payment/webhook/fastspring',
         'payment/webhook/payproglobal',
+        'webhooks/paddle',
+        'webhooks/fastspring',
+        '/api/webhooks/payproglobal',
     ];
 }
