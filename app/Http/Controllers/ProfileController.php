@@ -13,25 +13,8 @@ class ProfileController extends Controller
 {
     public function profile()
     {
-        // Ensure the user is authenticated and return their details
-        $user = Auth::user();
-        
-
-         // Check if user already has the Starter package
-         $hasStarterPackage = "No";
-
-         
-
-            // Check Free package status too if you're showing both buttons on the same view
-            $hasFreePackage = "No";
-
-                $hasProPackage = "No";
-
-                
-                $hasBusinessPackage = "No";
-
-            
-        return view('auth.profile', compact('user','hasStarterPackage','hasFreePackage','hasProPackage','hasBusinessPackage'));
+        $user = auth()->user()->load('package');
+        return view('auth.profile', compact('user'));
     }
     public function updatePassword(Request $request)
     {
@@ -39,54 +22,52 @@ class ProfileController extends Controller
     }
     public function updateProfile(Request $request)
     {
-        $request->validate([
-            
-            'password' => 'nullable|string|min:8',
-            'subscriber_password' => 'nullable|string', // Allow subscriber_password to be nullable
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'password' => 'nullable|string|min:8|confirmed',
         ]);
-    
-        $user = Auth::user();
-        $originalName = $user->name; // Store original name
-        $originalPassword = $user->password; // Store original hashed password
-    
-        
-        $user->subscriber_password = $request->input('password');
-    
-        $passwordChanged = false;
-    
-        // Check if password is provided and different from the existing one
-        if ($request->filled('password') && !Hash::check($request->password, $originalPassword)) {
-            $user->password = Hash::make($request->input('password'));
-            $passwordChanged = true;
-        }
-    
-        $user->save();
-    
-        // Determine the activity log message
-        if ($originalName !== $user->name && !$passwordChanged) {
-            // Name updated but password remains the same
-            $activity = "User Updated Name to {$user->name}";
-        } elseif ($passwordChanged) {
-            // Password was updated
-            $activity = "{$user->name} Updated Password";
-        } else {
-            // No meaningful changes, do not log
-            return back()->with('info', 'No changes detected.');
-        }
-    
-        // Log the user activity
-        UserLog::create([
-            'user_id' => $user->id,
-            'activity' => $activity,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->header('User-Agent'),
-        ]);
-    
-        return back()->with('success', 'User updated successfully.');
-    }
-    
 
- 
+        $user = Auth::user();
+
+        $user->name = $validated['name'];
+
+        if (!empty($validated['password'])) {
+            $user->password = $validated['password']; // Let mutator/cast handle hashing
+            $user->subscriber_password = $validated['password'];
+        }
+
+        // Check if any attributes were changed
+        if (!$user->isDirty()) {
+            return back()->with('info', 'No changes were made.')->withInput();
+        }
+
+        // Determine what was changed for the log message
+        $changes = [];
+        if ($user->isDirty('name')) {
+            $changes[] = 'name';
+        }
+        if ($user->isDirty('password')) {
+            $changes[] = 'password';
+        }
+
+        $user->save();
+
+        // Log the activity if something was saved
+        if (!empty($changes)) {
+            $activityMessage = "{$user->name} updated " . implode(' and ', $changes) . ".";
+            UserLog::create([
+                'user_id' => $user->id,
+                'activity' => $activityMessage,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->header('User-Agent'),
+            ]);
+        }
+
+        return back()->with('success', 'Profile updated successfully.');
+    }
+
+
+
     public function package($package_name)
     {
         $packages = [
@@ -95,18 +76,18 @@ class ProfileController extends Controller
             'business' => ['name' => 'Business', 'amount' => 2800],
             'free' => ['name' => 'Free', 'amount' => 0],
         ];
-    
+
         if (!array_key_exists($package_name, $packages)) {
             abort(404, 'Package not found.');
         }
-    
+
         $userId = Auth::id();
-        
+
         // Get the latest order for the user
         $latest_order = Order::where('user_id', $userId)
             ->orderBy('created_at', 'desc')
             ->first();
-            
+
         $latest_order_package = $latest_order ? $latest_order->package : null;
         $user_order = Order::where('user_id', $userId)->get();
 
@@ -114,7 +95,7 @@ class ProfileController extends Controller
         if ($latest_order_package === $packages[$package_name]['name']) {
             return view('subscription.package', compact('user_order', 'latest_order_package'));
         }
-        
+
         // Create new order if latest order is different or no orders exist
         $order = new Order();
         $order->user_id = $userId;
@@ -122,18 +103,18 @@ class ProfileController extends Controller
         $order->amount = $packages[$package_name]['amount'];
         $order->payment = 'Yes';
         $order->save();
-     
+
         $user_order = Order::where('user_id', $userId)->get();
         $latest_order = Order::where('user_id', $userId)
             ->orderBy('created_at', 'desc')
-            ->first(); 
-        
+            ->first();
+
         $latest_order_package = $latest_order->package ?? null;
 
         return view('subscription.package', compact('user_order', 'latest_order_package'));
     }
-    
-    
+
+
 
 
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    
+
 <meta http-equiv="Content-Security-Policy" content="
         default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
@@ -22,7 +22,7 @@
     <!-- Fonts -->
     <link rel="dns-prefetch" href="//fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=Nunito" rel="stylesheet">
-    
+
     <!-- Bootstrap CSS (CDN) -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
 
@@ -32,14 +32,14 @@
     <!-- Scripts -->
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    
+
 
 
 </head>
 <body>
     <div id="app">
         @include('components.alert-messages')
-       
+
 
         <main class="py-4">
             @yield('content')
@@ -48,10 +48,10 @@
     <!-- Bootstrap JS and Popper.js (for Bootstrap components) -->
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    
+
     <!-- Stack for scripts from components -->
     @stack('scripts')
-    
+
     <!-- Your custom scripts -->
     @yield('scripts')
 </body>
