@@ -215,49 +215,6 @@
                                             </div>
                                         </div>
                                     @endif
-
-                                    @if ($user->orders->count() > 0)
-                                        <div class="card bg-light">
-                                            <div class="card-header">
-                                                <h3 class="card-title">Order History</h3>
-                                            </div>
-                                            <div class="card-body">
-                                                <div class="table-responsive">
-                                                    <table class="table table-hover">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Date</th>
-                                                                <th>Package</th>
-                                                                <th>Amount</th>
-                                                                <th>Status</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            @foreach ($user->orders->sortByDesc('created_at')->take(5) as $order)
-                                                                <tr>
-                                                                    <td>{{ $order->created_at->format('M j, Y') }}</td>
-                                                                    <td>{{ $order->package->name }}</td>
-                                                                    <td>${{ number_format($order->amount, 2) }}</td>
-                                                                    <td>
-                                                                        <span
-                                                                            class="badge {{ $order->status === 'completed' ? 'badge-success' : 'badge-warning' }}">
-                                                                            {{ ucfirst($order->status) }}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            @endforeach
-                                                        </tbody>
-                                                    </table>
-                                                    @if ($user->orders->count() > 5)
-                                                        <p class="text-muted text-center mt-2">
-                                                            Showing latest 5 orders. <a href="#">View all
-                                                                orders</a>
-                                                        </p>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        </div>
-                                    @endif
                                 </div>
                             </div>
                         </div>
