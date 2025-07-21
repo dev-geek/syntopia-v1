@@ -74,7 +74,7 @@
                 </a>
             </li>
             <li class="nav-item mb-1">
-                <a href="https://live.syntopia.ai" class="nav-link d-flex align-items-center" target="_blank">
+                <a href="https://live.syntopia.ai/login" class="nav-link d-flex align-items-center" target="_blank">
                     <i class="bi bi-box-arrow-up-right mr-4 sidebar-animate-icon" style="font-size:1.2rem;"></i><span class="ms-3">ACCESS THE SOFTWARE</span>
                 </a>
             </li>
