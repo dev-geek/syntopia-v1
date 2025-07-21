@@ -102,7 +102,7 @@
                   <tr>
                     @foreach($orders as $order)
                     <td>{{$order->id}}</td>
-                    <td>{{$order->user->name}} </td>
+                    <td>{{ $order->user->name ?? 'Unknown' }}</td>
                     <td>{{$order->package}}</td>
                     <td>{{ number_format($order->amount, 0) }}</td>
                     <td>{{ $order->created_at->format('d F Y') }}</td>
