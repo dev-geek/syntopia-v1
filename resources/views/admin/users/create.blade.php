@@ -15,7 +15,7 @@
                             </button>
                         </div>
                     </div>
-                    <form method="POST" action="{{ route('store.user') }}">
+                    <form method="POST" action="{{ route('admin.store.user') }}">
                         @csrf
 
                         <div class="card-body">
