@@ -174,6 +174,143 @@
         .toast .toast-title {
             font-weight: bold;
         }
+        .header-bell {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            color: #fff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(13,110,253,0.12);
+            position: relative;
+            transition: box-shadow 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+        .header-bell:hover, .header-bell.has-notifications {
+            animation: bell-shake 0.7s;
+            box-shadow: 0 4px 16px rgba(13,110,253,0.18);
+            background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
+        }
+        @keyframes bell-shake {
+            0%, 100% { transform: rotate(0); }
+            20% { transform: rotate(-15deg); }
+            40% { transform: rotate(10deg); }
+            60% { transform: rotate(-8deg); }
+            80% { transform: rotate(8deg); }
+        }
+        .header-bell .navbar-badge {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 0.7rem;
+            background: #dc3545;
+            color: #fff;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-weight: bold;
+            box-shadow: 0 1px 4px rgba(220,53,69,0.18);
+        }
+        .header-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 8px;
+            border: 2px solid #0d6efd;
+            box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+        }
+        .header-user-dropdown .dropdown-menu {
+            animation: fadeInDown 0.35s;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.10);
+            min-width: 200px;
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .header-user-name {
+            font-weight: bold;
+            color: #0d6efd;
+            margin-right: 6px;
+        }
+        .dropdown-menu.notifications-dropdown {
+            background: #f8fafd;
+            border-radius: 1.1rem;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.13);
+            min-width: 320px;
+            padding: 0.5rem 0;
+            animation: fadeInDown 0.35s;
+        }
+        .notifications-dropdown .dropdown-header {
+            font-weight: 700;
+            color: #0d6efd;
+            background: #e9f3ff;
+            border-radius: 1.1rem 1.1rem 0 0;
+            padding: 1rem 1.2rem 0.7rem 1.2rem;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #e3eafc;
+        }
+        .notification-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 0.8rem 1.2rem;
+            background: transparent;
+            border: none;
+            transition: background 0.18s;
+            cursor: pointer;
+        }
+        .notification-item:hover {
+            background: #e9f3ff;
+        }
+        .notification-icon {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            color: #fff;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+        }
+        .notification-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .notification-activity {
+            font-weight: 600;
+            color: #222;
+            font-size: 1rem;
+            margin-bottom: 2px;
+            white-space: normal;
+            word-break: break-word;
+        }
+        .notification-time {
+            color: #6c757d;
+            font-size: 0.85rem;
+            font-weight: 400;
+        }
+        .dropdown-footer.notifications-footer {
+            text-align: center;
+            padding: 0.7rem 1.2rem 0.9rem 1.2rem;
+            color: #0d6efd;
+            font-weight: 600;
+            background: #e9f3ff;
+            border-radius: 0 0 1.1rem 1.1rem;
+            border-top: 1px solid #e3eafc;
+            transition: background 0.18s;
+        }
+        .dropdown-footer.notifications-footer:hover {
+            background: #d0e7ff;
+            color: #0a58ca;
+            text-decoration: underline;
+        }
     </style>
 
 </head>
@@ -184,50 +321,15 @@
         <nav class="main-header navbar navbar-expand navbar-white navbar-light">
             <!-- Left navbar links -->
             <ul class="navbar-nav">
+                <li class="nav-item d-lg-none">
+                    <button class="btn btn-outline-primary border-0" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas">
+                        <i class="bi bi-list" style="font-size: 1.7rem;"></i>
+                    </button>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i
                             class="fas fa-bars"></i></a>
                 </li>
-                <li class="nav-item d-none d-sm-inline-block">
-                    @if (Auth::check() && (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin')))
-                        <a href="{{ route('admin.dashboard') }}" class="nav-link">Home</a>
-                    @else
-                        <a href="{{ route('user.dashboard') }}" class="nav-link">Home</a>
-                    @endif
-                </li>
-                @if (Auth::check() && (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin')))
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('admin.users') }}" class="nav-link">Users</a>
-                    </li>
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('admin.orders') }}" class="nav-link">Subscriptions</a>
-                    </li>
-                @endif
-                @if (Auth::user()->hasRole('Super Admin'))
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('admin.subadmins') }}" class="nav-link">Sub Admin</a>
-                    </li>
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('admin.payment-gateways.index') }}" class="nav-link">Payment Gateways</a>
-                    </li>
-                @endif
-                @if (Auth::check() && (Auth::user()->hasRole('Super Admin') || Auth::user()->hasRole('Sub Admin')))
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('admin.users-logs') }}" class="nav-link">User Logs</a>
-                    </li>
-                @endif
-                @if (Auth::user()->hasRole('User'))
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('orders.index') }}" class="nav-link">Orders</a>
-                    </li>
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="{{ route('user.subscription.details') }}" class="nav-link">Subscriptions</a>
-                    </li>
-
-                    <li class="nav-item d-none d-sm-inline-block">
-                        <a href="https://live.syntopia.ai" class="nav-link">ACCESS THE SOFTWARE</a>
-                    </li>
-                @endif
             </ul>
 
             {{-- <!-- SEARCH FORM --> --}}
@@ -247,35 +349,35 @@
             <ul class="navbar-nav ml-auto">
                 @if (!Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item dropdown">
-                        <a class="nav-link" data-toggle="dropdown" href="#">
+                        <a class="nav-link position-relative header-bell @if($userLogs->count()) has-notifications @endif" data-toggle="dropdown" href="#">
                             <i class="far fa-bell"></i>
-                            <span class="badge badge-danger navbar-badge">{{ $userLogs->count() }}</span>
+                            @if($userLogs->count())
+                                <span class="badge navbar-badge">{{ $userLogs->count() }}</span>
+                            @endif
                         </a>
-                        <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
-                            <span class="dropdown-item dropdown-header">{{ $userLogs->count() }} Notifications</span>
-                            <div class="dropdown-divider"></div>
-
+                        <div class="dropdown-menu notifications-dropdown dropdown-menu-lg dropdown-menu-right">
+                            <div class="dropdown-header">{{ $userLogs->count() }} Notifications</div>
+                            <div class="dropdown-divider m-0"></div>
                             @foreach ($userLogs->take(5) as $log)
-                                <!-- Show latest 5 logs -->
-                                <a href="#" class="dropdown-item">
-                                    <i class="fas fa-user mr-2"></i> {{ $log->activity }}
-                                    <span class="float-right text-muted text-sm">
-                                        {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}
-                                    </span>
-                                </a>
-                                <div class="dropdown-divider"></div>
+                                <div class="notification-item">
+                                    <span class="notification-icon"><i class="fas fa-user"></i></span>
+                                    <div class="notification-content">
+                                        <div class="notification-activity">{{ $log->activity }}</div>
+                                        <div class="notification-time">{{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>
+                                    </div>
+                                </div>
+                                <div class="dropdown-divider m-0"></div>
                             @endforeach
-
-                            <a href="{{ route('admin.users-logs') }}" class="dropdown-item dropdown-footer">See All
-                                Notifications</a>
+                            <a href="{{ route('admin.users-logs') }}" class="dropdown-footer notifications-footer">See All Notifications</a>
                         </div>
                     </li>
                 @endif
-
-                <!-- Notifications Dropdown Menu -->
-                <li class="nav-item dropdown">
-                    <a class="nav-link" data-toggle="dropdown" href="#">
-                        {{ Auth::user()->name }} <i class="fas fa-caret-down"></i>
+                <!-- User Dropdown -->
+                <li class="nav-item dropdown header-user-dropdown">
+                    <a class="nav-link d-flex align-items-center" data-toggle="dropdown" href="#">
+                        <img src="{{ asset('dist/img/user2-160x160.jpg') }}" class="header-avatar" alt="User Avatar">
+                        <span class="header-user-name">{{ Auth::user()->name }}</span>
+                        <i class="fas fa-caret-down"></i>
                     </a>
                     <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
                         <div class="dropdown-divider"></div>
@@ -295,3 +397,6 @@
             </ul>
         </nav>
         <!-- /.navbar -->
+
+@push('scripts')
+@endpush

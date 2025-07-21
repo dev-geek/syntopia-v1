@@ -1,5 +1,66 @@
-@include('dashboard.includes.header')
-@include('dashboard.includes.sidebar')
+@include('dashboard.includes/header')
+@include('dashboard.includes/sidebar')
+<style>
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        border-radius: 0.5rem !important;
+        margin: 0 2px;
+        padding: 0.3rem 0.8rem;
+        background: #f8f9fa;
+        color: #0d6efd !important;
+        border: none !important;
+        font-weight: 600;
+        transition: background 0.2s, color 0.2s;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current,
+    .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+        background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%) !important;
+        color: #fff !important;
+        font-weight: 700;
+        box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+    }
+    .dataTables_wrapper .dataTables_length select,
+    .dataTables_wrapper .dataTables_filter input {
+        border-radius: 0.5rem;
+        border: 1px solid #dee2e6;
+        padding: 0.3rem 0.7rem;
+        background: #f8fafd;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    .card .card-body {
+        box-shadow: 0 8px 32px rgba(13,110,253,0.07);
+        border-radius: 1.2rem;
+        padding: 2rem 1.5rem 1.5rem 1.5rem;
+    }
+    table.dataTable {
+        border-radius: 1rem !important;
+        overflow: hidden !important;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(13,110,253,0.07);
+    }
+    table.dataTable thead th {
+        background: linear-gradient(90deg, #e3eafc 0%, #f1f5fb 100%);
+        color: #0d6efd;
+        font-weight: 800;
+        border-bottom: 2px solid #e3eafc;
+        font-size: 1.08rem;
+        letter-spacing: 0.5px;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    table.dataTable tbody tr {
+        transition: background 0.18s, transform 0.18s;
+    }
+    table.dataTable tbody tr:hover {
+        background: #e9f3ff;
+        transform: scale(1.012);
+        box-shadow: 0 2px 8px rgba(13,110,253,0.07);
+    }
+    table.dataTable td, table.dataTable th {
+        vertical-align: middle;
+        padding: 0.85rem 0.75rem;
+    }
+</style>
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -27,7 +88,7 @@
                         <!-- /.card-header -->
                         <div class="card-body">
                             @if (Auth::user()->hasRole('Super Admin'))
-                                <a href="{{ route('add-users') }}" class="btn btn-success mb-3">
+                                <a href="{{ route('admin.add-users') }}" class="btn btn-success mb-3">
                                     <i class="fas fa-plus"></i> Add User
                                 </a>
                             @endif
@@ -65,7 +126,7 @@
                                             @endif
                                             @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
                                                 <td>
-                                                    <a href="{{ route('manage.profile', $user->id) }}"
+                                                    <a href="{{ route('admin.manage.profile', $user->id) }}"
                                                         class="btn btn-sm btn-primary mx-2" title="Edit">
                                                         <i class="fas fa-edit"></i></a>
                                                     <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
@@ -97,7 +158,7 @@
     <!-- /.content -->
 </div>
 <!-- /.content-wrapper -->
-@include('dashboard.includes.footer')
+@include('dashboard.includes/footer')
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>
