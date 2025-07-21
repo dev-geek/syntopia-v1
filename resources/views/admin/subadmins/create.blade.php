@@ -19,6 +19,18 @@
                         @csrf
 
                         <div class="card-body">
+                            @if(session('error'))
+                                <div class="alert alert-danger">{{ session('error') }}</div>
+                            @endif
+                            @if ($errors->any())
+                                <div class="alert alert-danger">
+                                    <ul class="mb-0">
+                                        @foreach ($errors->all() as $error)
+                                            <li>{{ $error }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
                             <!-- Email -->
                             <div class="form-group">
                                 <label for="inputName">Email</label>
@@ -114,6 +126,33 @@
 
 <!-- /.control-sidebar -->
 </div>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    @if(session('success'))
+        Swal.fire({
+            icon: 'success',
+            title: 'Success',
+            text: @json(session('success')),
+            confirmButtonColor: '#3085d6',
+        });
+    @endif
+    @if(session('error'))
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: @json(session('error')),
+            confirmButtonColor: '#d33',
+        });
+    @endif
+    @if($errors->any())
+        Swal.fire({
+            icon: 'error',
+            title: 'Validation Error',
+            html: `<ul style='text-align:left;'>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>`,
+            confirmButtonColor: '#d33',
+        });
+    @endif
+</script>
 <script>
     $(function() {
         $("#example1").DataTable({
