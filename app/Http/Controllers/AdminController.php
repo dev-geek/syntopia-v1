@@ -188,7 +188,7 @@ class AdminController extends Controller
         $user->save();
 
         // Return a success message
-        return redirect()->route('subadmins')->with('success', 'Sub Admin updated successfully!');
+        return redirect()->route('admin.subadmins')->with('success', 'Sub Admin updated successfully!');
     }
 
     public function adminOrders()

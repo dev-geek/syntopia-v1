@@ -36,7 +36,7 @@ class SubAdminController extends Controller
 
             $user->assignRole('Sub Admin');
 
-            return redirect()->route('subadmins')->with('success', 'Sub Admin created successfully.');
+            return redirect()->route('admin.subadmins')->with('success', 'Sub Admin created successfully.');
         } catch (\Exception $e) {
             Log::error('Sub Admin creation failed: ' . $e->getMessage());
             return back()->withInput()->with('error', 'Failed to create Sub Admin. Try again.');
@@ -51,7 +51,7 @@ class SubAdminController extends Controller
             // Check if the user has the correct role
             if (!$subadmin->hasRole('Sub Admin')) {
                 return redirect()
-                    ->route('subadmins')
+                    ->route('admin.subadmins')
                     ->with('error', 'Invalid subadmin access attempt.');
             }
 
