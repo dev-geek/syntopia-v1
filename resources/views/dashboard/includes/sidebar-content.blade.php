@@ -81,7 +81,7 @@
             </a>
         </li>
         <li class="nav-item mt-3">
-            <form method="POST" action="{{ route('logout') }}">
+            <form method="POST" action="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin']) ? 'admin.logout' : 'logout') }}">
                 @csrf
                 <button type="submit" class="nav-link d-flex align-items-center w-100 text-start bg-transparent border-0">
                     <i class="bi bi-box-arrow-right mr-4 sidebar-animate-icon" style="font-size:1.2rem;"></i><span class="ms-3">Logout</span>

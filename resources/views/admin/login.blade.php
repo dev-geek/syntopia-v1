@@ -24,7 +24,7 @@
     <div class="card-body">
 {{--      <p class="login-box-msg">Sign in </p>--}}
 
-      <form method="POST" action="{{ route('login') }}">
+      <form method="POST" action="{{ route('admin.login') }}">
         @csrf
         <div class="input-group mb-3">
           <input id="email" type="email" placeholder="Email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" autofocus>

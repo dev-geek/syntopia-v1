@@ -29,8 +29,12 @@ Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
     Route::post('/register', [RegisterController::class, 'register'])->name('register.user');
     Route::get('/admin-login', [AdminController::class, 'login'])->name('admin-login');
+    Route::post('/admin-login', [AdminController::class, 'adminLogin'])->name('admin.login');
     Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
 });
+
+// Admin logout route
+Route::post('/admin-logout', [LoginController::class, 'logout'])->name('admin.logout');
 
 // Admin Password Reset Routes
 Route::prefix('admin')->group(function () {

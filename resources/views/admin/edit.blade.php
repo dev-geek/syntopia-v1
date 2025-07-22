@@ -20,7 +20,7 @@
 
                     {{-- Component --}}
                     @include('components.alert-messages')
-                    <form method="POST" action="{{ route('manage-profile.update', $user->id) }}">
+                    <form method="POST" action="{{ route('admin.manage-profile.update', $user->id) }}">
                         @csrf
 
                         <div class="card-body">

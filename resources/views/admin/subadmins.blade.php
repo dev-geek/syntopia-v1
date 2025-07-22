@@ -178,23 +178,16 @@
     });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/swal-utils.js') }}"></script>
 
 <script>
     function confirmDelete(id, deleteUrl) {
-        Swal.fire({
-            title: 'Are you sure?',
-            text: 'You will not be able to recover this record!',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, delete it!',
-            cancelButtonText: 'Cancel'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                deleteRecord(deleteUrl);
-            }
-        });
+        SwalUtils.showDeleteConfirm('This action cannot be undone!')
+            .then((result) => {
+                if (result.isConfirmed) {
+                    deleteRecord(deleteUrl);
+                }
+            });
     }
 
     function deleteRecord(url) {

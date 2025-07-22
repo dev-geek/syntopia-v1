@@ -10,6 +10,7 @@ use App\Models\Order;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Imports\UsersImport;
 use Spatie\Permission\Models\Role;
+use Illuminate\Validation\ValidationException;
 
 
 class AdminController extends Controller
@@ -17,6 +18,50 @@ class AdminController extends Controller
     public function login()
     {
         return view('admin.login');
+    }
+
+    public function adminLogin(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required'],
+        ]);
+
+        $credentials = $request->only('email', 'password');
+
+        // Check if user exists
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            throw ValidationException::withMessages([
+                'email' => ['User does not exist.'],
+            ]);
+        }
+
+        // Check if user has admin role
+        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            throw ValidationException::withMessages([
+                'email' => ['Access denied. Admin privileges required.'],
+            ]);
+        }
+
+        // Attempt login
+        if (!Auth::attempt($credentials)) {
+            throw ValidationException::withMessages([
+                'password' => ['Password is incorrect.'],
+            ]);
+        }
+
+        // Check if account is active
+        if ($user->status == 0) {
+            Auth::logout();
+            throw ValidationException::withMessages([
+                'email' => ['Your account is deactivated. Please contact support.'],
+            ]);
+        }
+
+        // Redirect to admin dashboard
+        return redirect()->route('admin.dashboard');
     }
     public function register()
     {
@@ -35,7 +80,7 @@ class AdminController extends Controller
     {
         $user->delete();
 
-        return redirect()->route('admin.users')->with('success', 'User deleted successfully.');
+        return redirect()->route('admin.users')->with('success', 'User deleted successfully!');
     }
 
     public function subadmins()
@@ -104,7 +149,7 @@ class AdminController extends Controller
         $user->save();
 
         // Return a success message
-        return redirect()->route('admin.users')->with('success', 'User updated successfully.');
+        return redirect()->route('admin.users')->with('success', 'User updated successfully!');
     }
     public function manageAdminProfileUpdate(Request $request, $id)
     {
@@ -143,7 +188,7 @@ class AdminController extends Controller
         $user->save();
 
         // Return a success message
-        return redirect()->route('subadmins')->with('success', 'Sub Admin   updated successfully.');
+        return redirect()->route('subadmins')->with('success', 'Sub Admin updated successfully!');
     }
 
     public function adminOrders()
@@ -198,6 +243,6 @@ class AdminController extends Controller
         // Assign the role of 'User'
         $user->assignRole('User');
 
-        return redirect()->route('admin.users')->with('success', 'User created successfully.');
+        return redirect()->route('admin.users')->with('success', 'User created successfully!');
     }
 }

@@ -27,6 +27,7 @@
     <!-- Theme style -->
     <link rel="stylesheet" href="{{ asset('dist/css/adminlte.min.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{{ asset('js/swal-utils.js') }}"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -731,9 +732,9 @@
                             </a>
                         @endif
                         <div class="dropdown-divider m-0"></div>
-                        <a href="{{ route('logout') }}" class="dropdown-footer"
+                        <a href="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin']) ? 'admin.logout' : 'logout') }}" class="dropdown-footer"
                             onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
-                        <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
+                        <form id="logout-form" action="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin']) ? 'admin.logout' : 'logout') }}" method="POST" style="display: none;">
                             @csrf
                         </form>
                     </div>

@@ -127,7 +127,7 @@
                                             @endif
                                             @if (Auth::check() && Auth::user()->role == 1)
                                                 <td>
-                                                    <a href="{{ route('manage.admin.profile', $user->id) }}"><i
+                                                    <a href="{{ route('admin.manage.admin.profile', $user->id) }}"><i
                                                             class="bi bi-pencil-square"></i></a>
                                             @endif
                                             </td>

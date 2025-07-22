@@ -94,10 +94,11 @@ class LoginController extends Controller
 
         // Redirect based on role
         if ($user && $user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            return redirect()->route('admin.dashboard');
+            return redirect()->route('admin-login');
         }
 
-        return redirect('/');
+        // Redirect regular users to login page
+        return redirect()->route('login');
     }
 
     /**
