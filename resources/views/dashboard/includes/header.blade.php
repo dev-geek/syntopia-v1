@@ -222,10 +222,69 @@
             box-shadow: 0 2px 8px rgba(13,110,253,0.10);
         }
         .header-user-dropdown .dropdown-menu {
+            background: #f8fafd;
+            border-radius: 1.1rem;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.13);
+            min-width: 280px;
+            padding: 0.5rem 0;
             animation: fadeInDown 0.35s;
-            border-radius: 1rem;
-            box-shadow: 0 8px 32px rgba(13,110,253,0.10);
-            min-width: 200px;
+        }
+        .header-user-dropdown .dropdown-header {
+            font-weight: 700;
+            color: #0d6efd;
+            background: #e9f3ff;
+            border-radius: 1.1rem 1.1rem 0 0;
+            padding: 1rem 1.2rem 0.7rem 1.2rem;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #e3eafc;
+        }
+        .header-user-dropdown .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0.8rem 1.2rem;
+            background: transparent;
+            border: none;
+            transition: background 0.18s;
+            cursor: pointer;
+            color: #222;
+            font-weight: 500;
+        }
+        .header-user-dropdown .dropdown-item:hover {
+            background: #e9f3ff;
+            color: #0d6efd;
+        }
+        .header-user-dropdown .dropdown-item i {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            color: #fff;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+        }
+        .header-user-dropdown .dropdown-divider {
+            margin: 0;
+            border-color: #e3eafc;
+        }
+        .header-user-dropdown .dropdown-footer {
+            text-align: center;
+            padding: 0.7rem 1.2rem 0.9rem 1.2rem;
+            color: #dc3545;
+            font-weight: 600;
+            background: #e9f3ff;
+            border-radius: 0 0 1.1rem 1.1rem;
+            border-top: 1px solid #e3eafc;
+            transition: background 0.18s;
+        }
+        .header-user-dropdown .dropdown-footer:hover {
+            background: #d0e7ff;
+            color: #c82333;
+            text-decoration: underline;
         }
         @keyframes fadeInDown {
             from { opacity: 0; transform: translateY(-16px); }
@@ -311,6 +370,276 @@
             color: #0a58ca;
             text-decoration: underline;
         }
+
+        /* Header Software Button Styles */
+        .header-software-btn {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            margin-right: 15px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(13,110,253,0.15);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-software-btn:hover {
+            background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
+            color: #fff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(13,110,253,0.25);
+            text-decoration: none;
+        }
+
+        .header-software-btn:focus {
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+        }
+
+        .header-software-btn i {
+            font-size: 1rem;
+        }
+
+        /* Responsive adjustments for header software button */
+        @media (max-width: 768px) {
+            .header-software-btn {
+                padding: 6px 12px;
+                font-size: 0.8rem;
+                margin-right: 10px;
+            }
+
+            .header-software-btn i {
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Password Toggle Styles */
+        .password-field-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+
+        .password-toggle-btn:hover {
+            background-color: #f8f9fa;
+            color: #0d6efd;
+        }
+
+        .password-toggle-btn:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+        }
+
+        .password-toggle-btn i {
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        /* Ensure password input has right padding to accommodate the toggle button */
+        .password-field-wrapper input[type="password"],
+        .password-field-wrapper input[type="text"] {
+            padding-right: 45px !important;
+        }
+
+        /* Responsive adjustments for password toggle */
+        @media (max-width: 768px) {
+            .password-toggle-btn {
+                padding: 6px;
+            }
+
+            .password-toggle-btn i {
+                font-size: 14px;
+            }
+
+            .password-field-wrapper input[type="password"],
+            .password-field-wrapper input[type="text"] {
+                padding-right: 40px !important;
+            }
+        }
+
+        /* Footer Styles */
+        .main-footer {
+            background: linear-gradient(135deg, #f8fafd 0%, #e9f3ff 100%);
+            border-top: 1px solid #e3eafc;
+            padding: 1.5rem 0;
+            margin-top: auto;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .footer-left {
+            flex: 1;
+        }
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .footer-logo {
+            width: 120px;
+            height: auto;
+            object-fit: contain;
+            border: none;
+            box-shadow: none;
+        }
+
+        .footer-brand-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .footer-brand-text strong {
+            color: #0d6efd;
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .footer-tagline {
+            color: #6c757d;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .footer-center {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .footer-link {
+            color: #6c757d;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .footer-link:hover {
+            color: #0d6efd;
+            background: rgba(13,110,253,0.08);
+            text-decoration: none;
+            transform: translateY(-1px);
+        }
+
+        .footer-link i {
+            font-size: 0.9rem;
+        }
+
+        .footer-right {
+            flex: 1;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .footer-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.5rem;
+        }
+
+        .footer-version,
+        .footer-copyright {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #6c757d;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .footer-version i,
+        .footer-copyright i {
+            font-size: 0.8rem;
+            color: #0d6efd;
+        }
+
+        /* Responsive Footer */
+        @media (max-width: 768px) {
+            .footer-content {
+                flex-direction: column;
+                gap: 1.5rem;
+                text-align: center;
+                padding: 0 1rem;
+            }
+
+            .footer-left,
+            .footer-center,
+            .footer-right {
+                flex: none;
+                width: 100%;
+            }
+
+            .footer-brand {
+                justify-content: center;
+            }
+
+            .footer-links {
+                justify-content: center;
+                gap: 1rem;
+            }
+
+            .footer-info {
+                align-items: center;
+            }
+
+            .footer-link {
+                font-size: 0.8rem;
+                padding: 0.4rem 0.6rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .footer-links {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .footer-link {
+                justify-content: center;
+            }
+        }
     </style>
 
 </head>
@@ -347,6 +676,14 @@
 
             <!-- Right navbar links -->
             <ul class="navbar-nav ml-auto">
+                @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
+                    <li class="nav-item">
+                        <a href="https://live.syntopia.ai/login" class="btn btn-primary header-software-btn" target="_blank">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                            <span class="d-none d-md-inline">ACCESS THE SOFTWARE</span>
+                        </a>
+                    </li>
+                @endif
                 @if (!Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item dropdown">
                         <a class="nav-link position-relative header-bell @if($userLogs->count()) has-notifications @endif" data-toggle="dropdown" href="#">
@@ -380,14 +717,21 @@
                         <i class="fas fa-caret-down"></i>
                     </a>
                     <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
-                        <div class="dropdown-divider"></div>
+                        <div class="dropdown-header">User Menu</div>
+                        <div class="dropdown-divider m-0"></div>
                         @if (auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))
-                            <a href="{{ route('admin.profile') }}" class="dropdown-item">Edit Profile</a>
+                            <a href="{{ route('admin.profile') }}" class="dropdown-item">
+                                <i class="fas fa-user-edit"></i>
+                                <span>Edit Profile</span>
+                            </a>
                         @else
-                            <a href="{{ route('user.profile') }}" class="dropdown-item">Edit Profile</a>
+                            <a href="{{ route('user.profile') }}" class="dropdown-item">
+                                <i class="fas fa-user-edit"></i>
+                                <span>Edit Profile</span>
+                            </a>
                         @endif
-                        <div class="dropdown-divider"></div>
-                        <a href="{{ route('logout') }}" class="dropdown-item dropdown-footer"
+                        <div class="dropdown-divider m-0"></div>
+                        <a href="{{ route('logout') }}" class="dropdown-footer"
                             onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
                         <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
                             @csrf

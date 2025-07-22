@@ -1,5 +1,3 @@
-import './bootstrap';
-
 // Password Toggle Functionality
 document.addEventListener('DOMContentLoaded', function() {
     // Find all password fields

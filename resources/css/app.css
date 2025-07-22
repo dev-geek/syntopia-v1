@@ -1,0 +1,167 @@
+/* Dropdown Menu Styles */
+.dropdown-menu {
+    border: none;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 0.5rem 0;
+    min-width: 12rem;
+    margin-top: 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dropdown-item {
+    padding: 0.6rem 1.25rem;
+    color: #333;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-item:hover, .dropdown-item:focus {
+    background-color: #f8f9fa;
+    color: #0d6efd;
+    padding-left: 1.5rem;
+}
+
+.dropdown-divider {
+    margin: 0.3rem 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dropdown-item.dropdown-footer {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    font-weight: 500;
+    border-radius: 0 0 8px 8px;
+    margin-top: 0.25rem;
+}
+
+.dropdown-item.dropdown-footer:hover {
+    background-color: #e9ecef;
+    color: #0d6efd;
+    padding-left: 1.25rem;
+}
+
+/* Animation for dropdown */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdown-menu.show {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Navbar Badge Styles */
+.navbar-badge {
+    position: absolute;
+    right: 0.25rem;
+    top: 0.5rem;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 0.25em 0.5em;
+    border-radius: 10px;
+    background-color: #dc3545;
+    color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    animation: pulse 2s infinite;
+    transition: all 0.3s ease;
+}
+
+/* Hover effect */
+.navbar-badge:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Pulse animation */
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 7px rgba(220, 53, 69, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .navbar-badge {
+        font-size: 0.55rem;
+        padding: 0.2em 0.4em;
+    }
+}
+
+/* Make sure the parent has position relative */
+.nav-link {
+    position: relative;
+}
+
+/* Password Toggle Styles */
+.password-field-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.password-toggle-btn:hover {
+    background-color: #f8f9fa;
+    color: #0d6efd;
+}
+
+.password-toggle-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+
+.password-toggle-btn i {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Ensure password input has right padding to accommodate the toggle button */
+.password-field-wrapper input[type="password"],
+.password-field-wrapper input[type="text"] {
+    padding-right: 45px !important;
+}
+
+/* Responsive adjustments for password toggle */
+@media (max-width: 768px) {
+    .password-toggle-btn {
+        padding: 6px;
+    }
+
+    .password-toggle-btn i {
+        font-size: 14px;
+    }
+
+    .password-field-wrapper input[type="password"],
+    .password-field-wrapper input[type="text"] {
+        padding-right: 40px !important;
+    }
+}

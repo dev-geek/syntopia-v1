@@ -15,6 +15,65 @@
         overflow: hidden;
     }
 
+    /* Password Toggle Styles */
+    .password-field-wrapper {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+    }
+
+    .password-toggle-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #6c757d;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+        z-index: 10;
+    }
+
+    .password-toggle-btn:hover {
+        background-color: #f8f9fa;
+        color: #0d6efd;
+    }
+
+    .password-toggle-btn:focus {
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+
+    .password-toggle-btn i {
+        font-size: 16px;
+        line-height: 1;
+    }
+
+    /* Ensure password input has right padding to accommodate the toggle button */
+    .password-field-wrapper input[type="password"],
+    .password-field-wrapper input[type="text"] {
+        padding-right: 45px !important;
+    }
+
+    /* Responsive adjustments for password toggle */
+    @media (max-width: 768px) {
+        .password-toggle-btn {
+            padding: 6px;
+        }
+
+        .password-toggle-btn i {
+            font-size: 14px;
+        }
+
+        .password-field-wrapper input[type="password"],
+        .password-field-wrapper input[type="text"] {
+            padding-right: 40px !important;
+        }
+    }
+
     body {
         display: flex;
         justify-content: center;
@@ -335,6 +394,9 @@
                 passwordField.style.display = 'block';
                 continueBtn.textContent = 'Login';
                 continueBtn.onclick = () => loginForm.submit();
+
+                // Initialize password toggle for the newly shown password field
+                initializePasswordToggle();
             } else {
                 // Redirect to register page if user doesn't exist
                 window.location.href = '/register?email=' + encodeURIComponent(email);
@@ -343,6 +405,58 @@
             console.error('Error:', error);
         }
     }
+
+    // Password Toggle Functionality
+    function initializePasswordToggle() {
+        const passwordFields = document.querySelectorAll('input[type="password"]');
+
+        passwordFields.forEach(function(passwordField) {
+            // Skip if already has toggle button
+            if (passwordField.parentElement.querySelector('.password-toggle-btn')) {
+                return;
+            }
+
+            // Create wrapper div if it doesn't exist
+            let wrapper = passwordField.parentElement;
+            if (!wrapper.classList.contains('password-field-wrapper')) {
+                wrapper = document.createElement('div');
+                wrapper.className = 'password-field-wrapper position-relative';
+                passwordField.parentNode.insertBefore(wrapper, passwordField);
+                wrapper.appendChild(passwordField);
+            }
+
+            // Create toggle button
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'password-toggle-btn';
+            toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
+            toggleBtn.setAttribute('aria-label', 'Toggle password visibility');
+
+            // Add toggle button to wrapper
+            wrapper.appendChild(toggleBtn);
+
+            // Add click event
+            toggleBtn.addEventListener('click', function() {
+                const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordField.setAttribute('type', type);
+
+                // Update icon
+                const icon = toggleBtn.querySelector('i');
+                if (type === 'text') {
+                    icon.className = 'fas fa-eye-slash';
+                    toggleBtn.setAttribute('aria-label', 'Hide password');
+                } else {
+                    icon.className = 'fas fa-eye';
+                    toggleBtn.setAttribute('aria-label', 'Show password');
+                }
+            });
+        });
+    }
+
+    // Initialize password toggle on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializePasswordToggle();
+    });
     </script>
 </body>
 

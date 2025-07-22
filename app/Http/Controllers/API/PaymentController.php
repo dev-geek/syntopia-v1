@@ -151,6 +151,11 @@ class PaymentController extends Controller
             $packageData = $validation['packageData'];
 
             $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
             if (empty($apiKey)) {
                 Log::error('Paddle API key missing');
                 return response()->json(['error' => 'Payment configuration error'], 500);
@@ -162,7 +167,7 @@ class PaymentController extends Controller
             ];
 
             if (!$user->paddle_customer_id) {
-                $customerResponse = Http::withHeaders($headers)->post('https://sandbox-api.paddle.com/customers', [
+                $customerResponse = Http::withHeaders($headers)->post("{$apiBaseUrl}/customers", [
                     'email' => $user->email,
                     'name' => $user->name,
                     'custom_data' => ['user_id' => (string) $user->id]
@@ -178,7 +183,7 @@ class PaymentController extends Controller
             }
 
             $productsResponse = Http::withHeaders($headers)
-                ->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
+                ->get("{$apiBaseUrl}/products", ['include' => 'prices']);
 
             if (!$productsResponse->successful()) {
                 Log::error('Paddle products fetch failed', ['status' => $productsResponse->status()]);
@@ -216,7 +221,7 @@ class PaymentController extends Controller
             ];
 
             $response = Http::withHeaders($headers)
-                ->post('https://sandbox-api.paddle.com/transactions', $transactionData);
+                ->post("{$apiBaseUrl}/transactions", $transactionData);
 
             if (!$response->successful()) {
                 Log::error('Paddle transaction creation failed', ['status' => $response->status(), 'response' => $response->body()]);
@@ -540,9 +545,14 @@ class PaymentController extends Controller
                 }
 
                 $apiKey = config('payment.gateways.Paddle.api_key');
+                $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+                $apiBaseUrl = $environment === 'production'
+                    ? 'https://api.paddle.com'
+                    : 'https://sandbox-api.paddle.com';
+
                 $response = Http::withHeaders([
                     'Authorization' => 'Bearer ' . $apiKey
-                ])->get("https://sandbox-api.paddle.com/transactions/{$transactionId}");
+                ])->get("{$apiBaseUrl}/transactions/{$transactionId}");
 
                 if (!$response->successful() || !in_array($response->json()['data']['status'], ['completed', 'paid'])) {
                     Log::error('Paddle transaction verification failed', [
@@ -983,13 +993,20 @@ class PaymentController extends Controller
 
     public function handlePayProGlobalWebhook(Request $request)
     {
+        Log::info('PayProGlobal Webhook Client IP', ['ip' => $request->ip()]);
         Log::info('PayProGlobal Webhook Raw Content:', [
             'content' => $request->getContent(),
             'headers' => $request->headers->all()
         ]);
 
+        $contentType = $request->header('Content-Type');
         $payload = [];
-        parse_str($request->getContent(), $payload);
+
+        if (str_contains($contentType, 'application/json')) {
+            $payload = $request->json()->all();
+        } else {
+            parse_str($request->getContent(), $payload);
+        }
 
         Log::info('PayProGlobal Webhook Parsed Data:', ['payload' => $payload]);
 
@@ -1131,11 +1148,67 @@ class PaymentController extends Controller
         \Log::info('[cancelSubscription] called', ['user_id' => \Auth::id()]);
         Log::info('Subscription cancellation started', ['user_id' => Auth::id()]);
 
+        // Debug request details
+        Log::info('Request details', [
+            'wantsJson' => $request->wantsJson(),
+            'accept' => $request->header('Accept'),
+            'contentType' => $request->header('Content-Type'),
+            'method' => $request->method(),
+            'url' => $request->url()
+        ]);
+
         try {
             $user = Auth::user();
-            if (!$user->is_subscribed || !$user->subscription_id) {
+            if (!$user->is_subscribed) {
                 Log::error('User has no active subscription to cancel', ['user_id' => $user->id]);
                 return redirect()->back()->with('error', 'No active subscription to cancel');
+            }
+
+            // Check if user has subscription_id, if not, we'll just mark as cancelled in database
+            if (!$user->subscription_id) {
+                Log::info('User has subscription but no subscription_id, marking as cancelled in database', [
+                    'user_id' => $user->id,
+                    'is_subscribed' => $user->is_subscribed,
+                    'package_id' => $user->package_id,
+                    'payment_gateway_id' => $user->payment_gateway_id
+                ]);
+
+                // Mark subscription as cancelled in database only
+                DB::transaction(function () use ($user) {
+                    $user->update([
+                        'is_subscribed' => 0,
+                        'subscription_ends_at' => now(),
+                        'subscription_starts_at' => null,
+                        'package_id' => null,
+                        'payment_gateway_id' => null
+                    ]);
+
+                    // Update order status
+                    $order = Order::where('user_id', $user->id)
+                        ->latest('created_at')
+                        ->first();
+
+                    if ($order) {
+                        $order->update(['status' => 'canceled']);
+                        Log::info('Updated order status to canceled', [
+                            'order_id' => $order->id,
+                            'user_id' => $user->id
+                        ]);
+                    }
+                });
+
+                Log::info('Subscription marked as cancelled in database (no external subscription_id)', [
+                    'user_id' => $user->id
+                ]);
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Subscription cancelled successfully'
+                    ]);
+                }
+
+                return redirect()->back()->with('success', 'Subscription cancelled successfully');
             }
 
             $gateway = $user->paymentGateway ? $user->paymentGateway->name : null;
@@ -1200,18 +1273,25 @@ class PaymentController extends Controller
                 ]);
             } elseif ($gateway === 'paddle') {
                 $apiKey = config('payment.gateways.Paddle.api_key');
+                $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+
+                // Use the correct API URL based on environment
+                $apiBaseUrl = $environment === 'production'
+                    ? 'https://api.paddle.com'
+                    : 'https://sandbox-api.paddle.com';
 
                 Log::info('Canceling Paddle subscription', [
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId,
-                    'api_endpoint' => "https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel"
+                    'environment' => $environment,
+                    'api_endpoint' => "{$apiBaseUrl}/subscriptions/{$subscriptionId}/cancel"
                 ]);
 
-                // Use the correct Paddle API endpoint for subscription cancellation (sandbox for development)
+                // Use the correct Paddle API endpoint for subscription cancellation
                 $response = Http::withHeaders([
                     'Authorization' => 'Bearer ' . $apiKey,
                     'Content-Type' => 'application/json'
-                ])->post("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel", [
+                ])->post("{$apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
                     'effective_from' => 'immediately' // Cancel immediately instead of at end of billing period
                 ]);
 
@@ -1220,7 +1300,8 @@ class PaymentController extends Controller
                         'user_id' => $user->id,
                         'subscription_id' => $subscriptionId,
                         'response_status' => $response->status(),
-                        'response_body' => $response->body()
+                        'response_body' => $response->body(),
+                        'environment' => $environment
                     ]);
                     return redirect()->back()->with('error', 'Failed to cancel subscription');
                 }
@@ -1229,30 +1310,9 @@ class PaymentController extends Controller
                 Log::info('Paddle cancellation response', [
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId,
-                    'response_data' => $responseData
+                    'response_data' => $responseData,
+                    'environment' => $environment
                 ]);
-
-                // Check if the subscription was successfully canceled
-                if (isset($responseData['data']['status']) && $responseData['data']['status'] === 'canceled') {
-                    Log::info('Paddle subscription canceled successfully', [
-                        'user_id' => $user->id,
-                        'subscription_id' => $subscriptionId,
-                        'status' => $responseData['data']['status']
-                    ]);
-                } else {
-                    Log::warning('Paddle subscription cancellation response indicates pending cancellation', [
-                        'user_id' => $user->id,
-                        'subscription_id' => $subscriptionId,
-                        'status' => $responseData['data']['status'] ?? 'unknown'
-                    ]);
-                }
-            } elseif ($gateway === 'payproglobal') {
-                // PayProGlobal cancellation requires contacting support or custom API integration
-                Log::warning('PayProGlobal cancellation not fully supported', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId
-                ]);
-                return redirect()->back()->with('error', 'Please contact support to cancel PayProGlobal subscription');
             } else {
                 Log::error('Unsupported payment gateway for cancellation', ['gateway' => $gateway, 'user_id' => $user->id]);
                 return redirect()->back()->with('error', 'Unsupported payment gateway');
@@ -1260,6 +1320,7 @@ class PaymentController extends Controller
 
             // Update user and order records
             DB::transaction(function () use ($user, $subscriptionId) {
+                // First update the user's subscription status
                 $user->update([
                     'is_subscribed' => 0,
                     'subscription_id' => null,
@@ -1269,9 +1330,24 @@ class PaymentController extends Controller
                     'payment_gateway_id' => null
                 ]);
 
-                Order::where('user_id', $user->id)
-                    ->where('subscription_id', $subscriptionId)
-                    ->update(['status' => 'canceled']);
+                // Find the most recent order for this user and update its status
+                $order = Order::where('user_id', $user->id)
+                    ->latest('created_at')
+                    ->first();
+
+                if ($order) {
+                    $order->update(['status' => 'canceled']);
+                    Log::info('Updated order status to canceled', [
+                        'order_id' => $order->id,
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId
+                    ]);
+                } else {
+                    Log::warning('No order found for user when canceling subscription', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId
+                    ]);
+                }
             });
 
             Log::info('Subscription cancellation completed', [
@@ -1279,13 +1355,22 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId
             ]);
 
+            // Debug response decision
+            Log::info('Response decision', [
+                'wantsJson' => $request->wantsJson(),
+                'accept' => $request->header('Accept'),
+                'willReturnJson' => $request->wantsJson()
+            ]);
+
             if ($request->wantsJson()) {
+                Log::info('Returning JSON response');
                 return response()->json([
                     'success' => true,
                     'message' => 'Subscription canceled successfully'
                 ]);
             }
 
+            Log::info('Returning redirect response');
             return redirect()->back()->with('success', 'Subscription canceled successfully');
         } catch (\Exception $e) {
             Log::error('Subscription cancellation error', [
@@ -1626,6 +1711,11 @@ class PaymentController extends Controller
     {
         try {
             $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
             if (empty($apiKey)) {
                 Log::error('Paddle API key missing for upgrade');
                 return response()->json(['error' => 'Payment configuration error'], 500);
@@ -1635,7 +1725,7 @@ class PaymentController extends Controller
             $productsResponse = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json'
-            ])->get('https://sandbox-api.paddle.com/products', ['include' => 'prices']);
+            ])->get("{$apiBaseUrl}/products", ['include' => 'prices']);
 
             if (!$productsResponse->successful()) {
                 Log::error('Paddle products fetch failed for upgrade', ['status' => $productsResponse->status()]);
@@ -1660,7 +1750,7 @@ class PaymentController extends Controller
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json'
-            ])->patch("https://sandbox-api.paddle.com/subscriptions/{$user->subscription_id}", [
+            ])->patch("{$apiBaseUrl}/subscriptions/{$user->subscription_id}", [
                 'items' => [
                     [
                         'price_id' => $price['id'],
@@ -1775,6 +1865,11 @@ class PaymentController extends Controller
 
             // Verify with Paddle API
             $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
             if (empty($apiKey)) {
                 Log::error('Paddle API key missing for order verification');
                 return response()->json(['error' => 'Payment configuration error'], 500);
@@ -1782,12 +1877,12 @@ class PaymentController extends Controller
 
             Log::info('Verifying transaction with Paddle API', [
                 'transaction_id' => $transactionId,
-                'api_endpoint' => "https://sandbox-api.paddle.com/transactions/{$transactionId}"
+                'api_endpoint' => "{$apiBaseUrl}/transactions/{$transactionId}"
             ]);
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey
-            ])->get("https://sandbox-api.paddle.com/transactions/{$transactionId}");
+            ])->get("{$apiBaseUrl}/transactions/{$transactionId}");
 
             if (!$response->successful()) {
                 Log::error('Paddle transaction verification failed', [
@@ -1921,134 +2016,5 @@ class PaymentController extends Controller
         ]);
 
         return view('payment.popup-cancel');
-    }
-
-    /**
-     * Get the latest PayProGlobal order for the current user
-     */
-    public function testPayProGlobalWebhook(Request $request)
-    {
-        Log::info('=== PAYPROGLOBAL WEBHOOK TEST ===', [
-            'method' => $request->method(),
-            'url' => $request->fullUrl(),
-            'data' => $request->all()
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'PayProGlobal webhook test successful',
-            'timestamp' => now()->toISOString(),
-            'data' => $request->all()
-        ]);
-    }
-
-    public function getLatestPayProGlobalOrder(Request $request)
-    {
-        Log::info('=== GET LATEST PAYPROGLOBAL ORDER STARTED ===', [
-            'user_id' => auth()->id(),
-            'request_data' => $request->all()
-        ]);
-
-        $user = auth()->user();
-        if (!$user) {
-            Log::error('[getLatestPayProGlobalOrder] Unauthorized access attempt');
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-
-        Log::info('[getLatestPayProGlobalOrder] User authenticated', [
-            'user_id' => $user->id,
-            'user_email' => $user->email
-        ]);
-
-        $vendorAccountId = config('payment.gateways.PayProGlobal.merchant_id');
-        $apiKey = config('payment.gateways.PayProGlobal.api_key');
-        $includeTestOrders = config('payment.gateways.PayProGlobal.test_mode', true);
-
-        Log::info('[getLatestPayProGlobalOrder] Configuration loaded', [
-            'vendor_account_id' => $vendorAccountId,
-            'api_key_exists' => !empty($apiKey),
-            'include_test_orders' => $includeTestOrders
-        ]);
-
-        $dateFrom = now()->subYear()->format('Y-m-d\TH:i:s');
-        $dateTo = now()->addDay()->format('Y-m-d\TH:i:s');
-
-        $payload = [
-            'skip' => 0,
-            'take' => 1,
-            'search' => [
-                'orderIds' => [],
-                'subscriptionId' => null,
-                'customerEmail' => $user->email,
-                'orderStatusId' => null,
-                'dateFrom' => $dateFrom,
-                'dateTo' => $dateTo,
-            ],
-            'sortByDate' => 'desc',
-            'includeTestOrders' => $includeTestOrders,
-            'vendorAccountId' => $vendorAccountId,
-            'apiSecretKey' => $apiKey,
-        ];
-
-        Log::info('[getLatestPayProGlobalOrder] Sending payload', ['payload' => $payload]);
-
-        try {
-            $response = Http::post('https://store.payproglobal.com/api/Orders/GetList', $payload);
-            $data = $response->json();
-
-            Log::info('[getLatestPayProGlobalOrder] API response received', [
-                'response_status' => $response->status(),
-                'response_successful' => $response->successful(),
-                'data_keys' => array_keys($data),
-                'data' => $data
-            ]);
-
-            if (!$response->successful()) {
-                Log::error('[getLatestPayProGlobalOrder] HTTP request failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                return response()->json(['error' => 'HTTP request failed', 'status' => $response->status()], 500);
-            }
-
-            if (empty($data['isSuccess'])) {
-                Log::error('[getLatestPayProGlobalOrder] API returned failure', ['details' => $data]);
-                return response()->json(['error' => 'API returned failure', 'details' => $data], 500);
-            }
-
-            $orders = $data['response']['orders'] ?? [];
-            $latestOrder = $orders[0] ?? null;
-
-            Log::info('[getLatestPayProGlobalOrder] Orders processed', [
-                'orders_count' => count($orders),
-                'latest_order' => $latestOrder
-            ]);
-
-            if (!$latestOrder) {
-                Log::warning('[getLatestPayProGlobalOrder] No orders found for user', [
-                    'user_id' => $user->id,
-                    'email' => $user->email
-                ]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No orders found for this user',
-                    'orders' => $orders,
-                ]);
-            }
-
-            Log::info('[getLatestPayProGlobalOrder] Latest order found', ['order' => $latestOrder]);
-
-            return response()->json([
-                'success' => true,
-                'order' => $latestOrder,
-                'order_id' => $latestOrder['id'] ?? null,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('[getLatestPayProGlobalOrder] Exception occurred', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json(['error' => 'Exception occurred: ' . $e->getMessage()], 500);
-        }
     }
 }

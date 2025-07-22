@@ -174,7 +174,7 @@
                                                             <div class="input-group-append">
                                                                 <button class="btn btn-outline-secondary"
                                                                     type="button"
-                                                                    onclick="copyToClipboard('licenseKey')">
+                                                                    data-copy="element" data-copy-element="licenseKey" data-toast="true" data-success-text="License key copied to clipboard!">
                                                                     <i class="fas fa-copy"></i>
                                                                 </button>
                                                             </div>
@@ -242,16 +242,6 @@
 </form>
 
 <script>
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text)
-            .then(() => {
-                Swal.fire({icon: 'success', title: 'Copied!', text: 'Text copied to clipboard!'});
-            })
-            .catch(err => {
-                console.error('Failed to copy text: ', err);
-                Swal.fire({icon: 'error', title: 'Error', text: 'Failed to copy text. Please try again.'});
-            });
-    }
 
     // Initialize SweetAlert for cancellation
     document.getElementById('cancelSubscriptionBtn')?.addEventListener('click', function() {

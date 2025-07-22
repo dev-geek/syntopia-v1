@@ -58,6 +58,11 @@ Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'h
 Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payments.cancel');
 Route::get('/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
 
+// Subscription cancellation route (web-based)
+Route::post('/payments/cancel-subscription', [PaymentController::class, 'cancelSubscription'])
+    ->name('payments.cancel-subscription')
+    ->middleware(['auth', 'verified.custom']);
+
 // Email Verification Routes
 Route::middleware(['web'])->group(function () {
     Route::get('/email/verify', [VerificationController::class, 'show'])->name('verification.notice');

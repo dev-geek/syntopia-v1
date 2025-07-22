@@ -50,7 +50,7 @@
                                 <div class="input-group">
                                     <input type="text" class="form-control" value="{{ $user->license_key }}" readonly id="licenseKey">
                                     <div class="input-group-append">
-                                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('licenseKey')">
+                                        <button class="btn btn-outline-secondary" type="button" data-copy="element" data-copy-element="licenseKey" data-toast="true" data-success-text="License key copied to clipboard!">
                                             <i class="fas fa-copy"></i>
                                         </button>
                                     </div>
@@ -87,14 +87,6 @@
 @include('dashboard.includes.footer')
 
 <script>
-    function copyToClipboard(elementId) {
-        var copyText = document.getElementById(elementId);
-        copyText.select();
-        copyText.setSelectionRange(0, 99999);
-        document.execCommand("copy");
-        alert("Copied the text: " + copyText.value);
-    }
-
     // Show SWAL for success message
     @if(session('success'))
         window.addEventListener('DOMContentLoaded', function() {

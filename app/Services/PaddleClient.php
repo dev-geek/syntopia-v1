@@ -15,10 +15,15 @@ class PaddleClient
 
     public function upgradeSubscription(string $subscriptionId, string $newProductId)
     {
+        $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+        $apiBaseUrl = $environment === 'production'
+            ? 'https://api.paddle.com'
+            : 'https://sandbox-api.paddle.com';
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey,
             'Content-Type' => 'application/json'
-        ])->patch("https://api.paddle.com/subscriptions/{$subscriptionId}", [
+        ])->patch("{$apiBaseUrl}/subscriptions/{$subscriptionId}", [
             'items' => [
                 [
                     'price_id' => $newProductId,
@@ -38,10 +43,15 @@ class PaddleClient
 
     public function cancelSubscription(string $subscriptionId)
     {
+        $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+        $apiBaseUrl = $environment === 'production'
+            ? 'https://api.paddle.com'
+            : 'https://sandbox-api.paddle.com';
+
         return Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey,
             'Content-Type' => 'application/json'
-        ])->post("https://sandbox-api.paddle.com/subscriptions/{$subscriptionId}/cancel", [
+        ])->post("{$apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
             'effective_from' => 'immediately'
         ]);
     }

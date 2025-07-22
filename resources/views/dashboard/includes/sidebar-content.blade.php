@@ -73,11 +73,7 @@
                     <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('user.subscription.details') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Subscriptions</span>
                 </a>
             </li>
-            <li class="nav-item mb-1">
-                <a href="https://live.syntopia.ai/login" class="nav-link d-flex align-items-center" target="_blank">
-                    <i class="bi bi-box-arrow-up-right mr-4 sidebar-animate-icon" style="font-size:1.2rem;"></i><span class="ms-3">ACCESS THE SOFTWARE</span>
-                </a>
-            </li>
+
         @endif
         <li class="nav-item mb-1">
             <a href="{{ route(auth()->user()->hasRole('User') ? 'user.profile' : 'admin.profile') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('user.profile') || request()->routeIs('admin.profile') ? 'active' : '' }}">

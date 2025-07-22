@@ -1591,7 +1591,7 @@
                     confirmButtonColor: '#ef4444'
                 }).then(result => {
                     if (result.isConfirmed) {
-                        fetch('/api/pricing/cancel', {
+                        fetch('/payments/cancel-subscription', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
