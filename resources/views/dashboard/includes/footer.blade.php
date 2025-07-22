@@ -2,13 +2,15 @@
             <div class="footer-content">
                 <div class="footer-left">
                     <div class="footer-brand">
-                        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia" class="footer-logo">
+                        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp"
+                            alt="Syntopia" class="footer-logo">
                         <div class="footer-brand-text">
                             <strong>Syntopia</strong>
                             <span class="footer-tagline">AI-Powered Solutions</span>
                         </div>
                     </div>
                 </div>
+
                 <div class="footer-center">
                     <div class="footer-links">
                         <a href="https://syntopia.ai" target="_blank" class="footer-link">
@@ -19,6 +21,7 @@
                         </a>
                     </div>
                 </div>
+
                 <div class="footer-right">
                     <div class="footer-info">
                         <div class="footer-version">
@@ -27,7 +30,7 @@
                         </div>
                         <div class="footer-copyright">
                             <i class="fas fa-copyright"></i>
-                            <span>2025 Syntopia. All rights reserved.</span>
+                            <span>2025 Syntopia.</span>
                         </div>
                     </div>
                 </div>
@@ -75,9 +78,9 @@
         <!-- AdminLTE dashboard demo (This is only for demo purposes) -->
         <script src="{{ asset('dist/js/pages/dashboard2.js') }}"></script>
 
-            <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="{{ asset('js/swal-utils.js') }}"></script>
+        <!-- SweetAlert2 -->
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <script src="{{ asset('js/swal-utils.js') }}"></script>
         <!-- Bootstrap 5 Bundle JS (for Offcanvas) -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 

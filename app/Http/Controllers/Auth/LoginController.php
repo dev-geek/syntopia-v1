@@ -36,7 +36,16 @@ class LoginController extends Controller
 
         // Redirect based on user role
         if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
-            return redirect()->intended(route('admin.profile'));
+            return redirect()->intended(route('admin.dashboard'));
+        }
+
+        // For regular users, check subscription status
+        if ($user->hasRole('User')) {
+            if ($this->hasActiveSubscription($user)) {
+                return redirect()->intended(route('user.dashboard'));
+            } else {
+                return redirect()->intended(route('pricing'));
+            }
         }
 
         // Default redirect for regular users
@@ -50,6 +59,26 @@ class LoginController extends Controller
     {
         // User must have status = 1 AND email_verified_at filled
         return ($user->status == 1) && !is_null($user->email_verified_at);
+    }
+
+    /**
+     * Check if user has an active subscription
+     */
+    private function hasActiveSubscription($user)
+    {
+        if (!$user->is_subscribed || !$user->subscription_starts_at || !$user->package) {
+            return false;
+        }
+
+        if (strtolower($user->package->name) === 'free') {
+            return true;
+        }
+
+        $startDate = \Carbon\Carbon::parse($user->subscription_starts_at);
+        $durationInDays = $user->package->getDurationInDays();
+        $endDate = $durationInDays ? $startDate->copy()->addDays($durationInDays) : null;
+
+        return $endDate ? \Carbon\Carbon::now()->lte($endDate) : $user->is_subscribed;
     }
 
 
@@ -67,12 +96,14 @@ class LoginController extends Controller
                 return redirect()->route('verification.code');
             }
 
-            if($user->is_subscribed === true || $user->is_subscribed === 1)
-            {
-                return redirect()->route('user.dashboard');
+            // For regular users, check subscription status
+            if ($user->hasRole('User')) {
+                if ($this->hasActiveSubscription($user)) {
+                    return redirect()->route('user.dashboard');
+                } else {
+                    return redirect()->route('pricing');
+                }
             }
-
-            return redirect()->route('pricing');
         }
 
         return '/';
@@ -151,6 +182,15 @@ class LoginController extends Controller
         $user = Auth::user();
         if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
             return redirect()->intended(route('admin.dashboard'));
+        }
+
+        // For regular users, check subscription status
+        if ($user->hasRole('User')) {
+            if ($this->hasActiveSubscription($user)) {
+                return redirect()->intended(route('user.dashboard'));
+            } else {
+                return redirect()->intended(route('pricing'));
+            }
         }
 
         return redirect()->intended(route('user.profile'));

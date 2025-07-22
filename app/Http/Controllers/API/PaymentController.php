@@ -1133,6 +1133,7 @@ class PaymentController extends Controller
         Log::info('[getOrdersList] called', ['user_id' => Auth::id()]);
         $user = Auth::user();
         $orders = Order::where('user_id', $user->id)
+            ->where('status', '!=', 'Processing') // Exclude Processing status
             ->with('package')
             ->orderBy('created_at', 'desc')
             ->get();

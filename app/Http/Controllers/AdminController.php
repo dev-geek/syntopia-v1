@@ -193,7 +193,10 @@ class AdminController extends Controller
 
     public function adminOrders()
     {
-        $orders = Order::with('user')->get(); // Eager load the user relationship
+        $orders = Order::where('status', '!=', 'Processing')
+            ->with('user') // Eager load the user relationship
+            ->orderBy('created_at', 'desc')
+            ->get();
         return view('admin.orders', compact('orders'));
     }
     public function addusers()

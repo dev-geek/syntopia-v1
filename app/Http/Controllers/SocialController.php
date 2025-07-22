@@ -29,10 +29,19 @@ class SocialController extends Controller
                 // Log in the existing user
                 Auth::login($user);
                 if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                    return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                    return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
                 }
 
-                return redirect()->route('profile')->with('login_success', 'User Login Successfully');
+                // For regular users, check subscription status
+                if ($user->hasRole('User')) {
+                    if ($this->hasActiveSubscription($user)) {
+                        return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
+                    } else {
+                        return redirect()->route('pricing')->with('login_success', 'User Login Successfully');
+                    }
+                }
+
+                return redirect()->route('user.profile')->with('login_success', 'User Login Successfully');
 
             } else {
                 // Check if a user with the same email exists
@@ -47,10 +56,19 @@ class SocialController extends Controller
                     ]);
                     Auth::login($existingUser);
                     if ($existingUser->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                        return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                        return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
                     }
 
-                    return redirect()->route('profile')->with('login_success', 'Account linked with Google successfully');
+                    // For regular users, check subscription status
+                    if ($existingUser->hasRole('User')) {
+                        if ($this->hasActiveSubscription($existingUser)) {
+                            return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Google successfully');
+                        } else {
+                            return redirect()->route('pricing')->with('login_success', 'Account linked with Google successfully');
+                        }
+                    }
+
+                    return redirect()->route('user.profile')->with('login_success', 'Account linked with Google successfully');
                 } else {
                     // Create a new user
                     $userData = User::create([
@@ -67,7 +85,8 @@ class SocialController extends Controller
 
                     if ($userData) {
                         Auth::login($userData);
-                        return redirect()->route('profile')->with('login_success', 'Welcome! Account created successfully with Google');
+                        // New users should go to pricing since they don't have a subscription yet
+                        return redirect()->route('pricing')->with('login_success', 'Welcome! Account created successfully with Google');
                     }
                 }
             }
@@ -96,10 +115,19 @@ class SocialController extends Controller
 
                 // Redirect based on role
                 if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                    return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                    return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
                 }
 
-                return redirect()->route('profile')->with('login_success', 'User Login Successfully');
+                // For regular users, check subscription status
+                if ($user->hasRole('User')) {
+                    if ($this->hasActiveSubscription($user)) {
+                        return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
+                    } else {
+                        return redirect()->route('pricing')->with('login_success', 'User Login Successfully');
+                    }
+                }
+
+                return redirect()->route('user.profile')->with('login_success', 'User Login Successfully');
             } else {
                 // Check if user with same email exists
                 $existingUser = User::where('email', $facebookUser->email)->first();
@@ -116,10 +144,19 @@ class SocialController extends Controller
 
                     // Redirect based on role
                     if ($existingUser->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                        return redirect()->route('admin.index')->with('login_success', 'Admin Login Successfully');
+                        return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
                     }
 
-                    return redirect()->route('profile')->with('login_success', 'Account linked with Facebook successfully');
+                    // For regular users, check subscription status
+                    if ($existingUser->hasRole('User')) {
+                        if ($this->hasActiveSubscription($existingUser)) {
+                            return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Facebook successfully');
+                        } else {
+                            return redirect()->route('pricing')->with('login_success', 'Account linked with Facebook successfully');
+                        }
+                    }
+
+                    return redirect()->route('user.profile')->with('login_success', 'Account linked with Facebook successfully');
                 } else {
                     // Create new user
                     $newUser = User::create([
@@ -145,5 +182,25 @@ class SocialController extends Controller
             return redirect()->route('login')->withErrors('Failed to authenticate with Facebook. Please try again.');
         }
 
+    }
+
+    /**
+     * Check if user has an active subscription
+     */
+    private function hasActiveSubscription($user)
+    {
+        if (!$user->is_subscribed || !$user->subscription_starts_at || !$user->package) {
+            return false;
+        }
+
+        if (strtolower($user->package->name) === 'free') {
+            return true;
+        }
+
+        $startDate = \Carbon\Carbon::parse($user->subscription_starts_at);
+        $durationInDays = $user->package->getDurationInDays();
+        $endDate = $durationInDays ? $startDate->copy()->addDays($durationInDays) : null;
+
+        return $endDate ? \Carbon\Carbon::now()->lte($endDate) : $user->is_subscribed;
     }
 }

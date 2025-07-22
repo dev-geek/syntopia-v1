@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <title>Login Page</title>
     <style>
     html,
@@ -24,53 +25,62 @@
 
     .password-toggle-btn {
         position: absolute;
-        right: 10px;
+        right: 8px;
         top: 50%;
         transform: translateY(-50%);
         background: none;
         border: none;
-        color: #6c757d;
+        color: #777;
         cursor: pointer;
-        padding: 8px;
-        border-radius: 4px;
+        padding: 6px 4px;
+        border-radius: 3px;
         transition: all 0.2s ease;
         z-index: 10;
+        font-size: 13px;
+        height: 24px;
+        width: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .password-toggle-btn:hover {
-        background-color: #f8f9fa;
-        color: #0d6efd;
+        background-color: #E7E7E9;
+        color: #333;
     }
 
     .password-toggle-btn:focus {
         outline: none;
-        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+        box-shadow: 0 0 0 2px rgba(62, 87, 218, 0.25);
     }
 
     .password-toggle-btn i {
-        font-size: 16px;
+        font-size: 14px;
         line-height: 1;
     }
 
     /* Ensure password input has right padding to accommodate the toggle button */
     .password-field-wrapper input[type="password"],
     .password-field-wrapper input[type="text"] {
-        padding-right: 45px !important;
+        padding-right: 40px !important;
     }
 
     /* Responsive adjustments for password toggle */
     @media (max-width: 768px) {
         .password-toggle-btn {
-            padding: 6px;
+            padding: 4px 3px;
+            right: 6px;
+            height: 22px;
+            width: 22px;
         }
 
         .password-toggle-btn i {
-            font-size: 14px;
+            font-size: 12px;
         }
 
         .password-field-wrapper input[type="password"],
         .password-field-wrapper input[type="text"] {
-            padding-right: 40px !important;
+            padding-right: 32px !important;
         }
     }
 

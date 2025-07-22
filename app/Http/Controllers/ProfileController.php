@@ -83,13 +83,16 @@ class ProfileController extends Controller
 
         $userId = Auth::id();
 
-        // Get the latest order for the user
+        // Get the latest order for the user (excluding Processing status)
         $latest_order = Order::where('user_id', $userId)
+            ->where('status', '!=', 'pending')
             ->orderBy('created_at', 'desc')
             ->first();
 
         $latest_order_package = $latest_order ? $latest_order->package : null;
-        $user_order = Order::where('user_id', $userId)->get();
+        $user_order = Order::where('user_id', $userId)
+            ->where('status', '!=', 'pending')
+            ->get();
 
         // Only prevent duplicate if the latest order has the same package
         if ($latest_order_package === $packages[$package_name]['name']) {
@@ -104,8 +107,11 @@ class ProfileController extends Controller
         $order->payment = 'Yes';
         $order->save();
 
-        $user_order = Order::where('user_id', $userId)->get();
+        $user_order = Order::where('user_id', $userId)
+            ->where('status', '!=', 'pending')
+            ->get();
         $latest_order = Order::where('user_id', $userId)
+            ->where('status', '!=', 'pending')
             ->orderBy('created_at', 'desc')
             ->first();
 

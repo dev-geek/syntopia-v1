@@ -134,9 +134,16 @@ class VerificationController extends Controller
             Auth::login($user);
 
             if ($user->hasRole('User')) {
-                Log::info('[verifyCode] Redirecting to pricing', ['user_id' => $user->id]);
-                return redirect()->route('pricing')
-                    ->with('success', 'Email verified successfully!');
+                // Check if user has active subscription
+                if ($this->hasActiveSubscription($user)) {
+                    Log::info('[verifyCode] Redirecting to user dashboard', ['user_id' => $user->id]);
+                    return redirect()->route('user.dashboard')
+                        ->with('success', 'Email verified successfully!');
+                } else {
+                    Log::info('[verifyCode] Redirecting to pricing', ['user_id' => $user->id]);
+                    return redirect()->route('pricing')
+                        ->with('success', 'Email verified successfully!');
+                }
             }
             if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
                 Log::info('[verifyCode] Redirecting to admin.dashboard', ['user_id' => $user->id]);
@@ -174,6 +181,26 @@ class VerificationController extends Controller
         }
 
         return back()->with('message', 'Verification code has been resent');
+    }
+
+    /**
+     * Check if user has an active subscription
+     */
+    private function hasActiveSubscription($user)
+    {
+        if (!$user->is_subscribed || !$user->subscription_starts_at || !$user->package) {
+            return false;
+        }
+
+        if (strtolower($user->package->name) === 'free') {
+            return true;
+        }
+
+        $startDate = \Carbon\Carbon::parse($user->subscription_starts_at);
+        $durationInDays = $user->package->getDurationInDays();
+        $endDate = $durationInDays ? $startDate->copy()->addDays($durationInDays) : null;
+
+        return $endDate ? \Carbon\Carbon::now()->lte($endDate) : $user->is_subscribed;
     }
 
     public function deleteUserAndRedirect(Request $request)

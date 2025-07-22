@@ -15,10 +15,14 @@ class OrderController extends Controller
 
         if ($user->hasRole('User')) {
             $orders = Order::where('user_id', $user->id)
+                ->where('status', '!=', 'pending') // Exclude Processing status
+                ->with('package') // Eager load package relationship
                 ->orderBy('created_at', 'desc')
-                ->paginate(10);
+                ->get();
+        } else {
+            $orders = collect(); // Empty collection for non-users
         }
 
-        return view('subscription.order', compact('orders'));
+        return view('orders.order', compact('orders'));
     }
 }
