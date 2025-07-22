@@ -41,10 +41,17 @@ class LoginController extends Controller
 
         // For regular users, check subscription status
         if ($user->hasRole('User')) {
+            // Check if there's an intended URL (like subscription page with package)
+            if (session()->has('url.intended')) {
+                $intendedUrl = session('url.intended');
+                session()->forget('url.intended');
+                return redirect()->to($intendedUrl);
+            }
+
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->intended(route('user.dashboard'));
             } else {
-                return redirect()->intended(route('pricing'));
+                return redirect()->intended(route('home'));
             }
         }
 
@@ -101,7 +108,7 @@ class LoginController extends Controller
                 if ($this->hasActiveSubscription($user)) {
                     return redirect()->route('user.dashboard');
                 } else {
-                    return redirect()->route('pricing');
+                    return redirect()->route('home');
                 }
             }
         }
@@ -189,7 +196,7 @@ class LoginController extends Controller
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->intended(route('user.dashboard'));
             } else {
-                return redirect()->intended(route('pricing'));
+                return redirect()->intended(route('home'));
             }
         }
 

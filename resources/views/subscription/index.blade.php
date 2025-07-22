@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1103,6 +1102,7 @@
         const isUpgrade = '{{ isset($isUpgrade) && $isUpgrade ? 'true' : 'false' }}';
         const pageType = '{{ $pageType ?? 'new' }}';
         const hasActiveSubscription = '{{ isset($hasActiveSubscription) && $hasActiveSubscription ? 'true' : 'false' }}';
+        const selectedPackage = @json($selectedPackage ?? null);
 
         document.addEventListener("DOMContentLoaded", function() {
             console.log('Page configuration:', {
@@ -1125,6 +1125,17 @@
 
             if (isUpgrade === 'true' || pageType === 'downgrade') {
                 setupSubscriptionUI();
+            }
+
+            // Auto-select package if provided via URL
+            if (selectedPackage) {
+                const targetButton = document.querySelector(`[data-package="${selectedPackage.name}"]`);
+                if (targetButton && !targetButton.disabled) {
+                    console.log('Auto-selecting package:', selectedPackage.name);
+                    // Highlight the selected package
+                    targetButton.closest('.card').style.border = '2px solid #5b0dd5';
+                    targetButton.closest('.card').style.transform = 'scale(1.02)';
+                }
             }
 
             document.querySelectorAll('.checkout-button').forEach(button => {

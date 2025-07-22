@@ -141,7 +141,7 @@ class VerificationController extends Controller
                         ->with('success', 'Email verified successfully!');
                 } else {
                     Log::info('[verifyCode] Redirecting to pricing', ['user_id' => $user->id]);
-                    return redirect()->route('pricing')
+                    return redirect()->route('home')
                         ->with('success', 'Email verified successfully!');
                 }
             }

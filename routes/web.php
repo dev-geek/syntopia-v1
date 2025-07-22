@@ -54,7 +54,7 @@ Route::controller(SocialController::class)->group(function () {
 });
 
 // Public routes
-Route::get('/pricing', [SubscriptionController::class, 'index'])->name('pricing');
+Route::get('/subscription', [SubscriptionController::class, 'showSubscriptionWithPackage'])->name('subscription');
 Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check-email');
 
 // Payment callback routes

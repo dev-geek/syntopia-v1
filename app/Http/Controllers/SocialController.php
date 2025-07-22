@@ -37,7 +37,7 @@ class SocialController extends Controller
                     if ($this->hasActiveSubscription($user)) {
                         return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
                     } else {
-                        return redirect()->route('pricing')->with('login_success', 'User Login Successfully');
+                        return redirect()->route('home')->with('login_success', 'User Login Successfully');
                     }
                 }
 
@@ -64,7 +64,7 @@ class SocialController extends Controller
                         if ($this->hasActiveSubscription($existingUser)) {
                             return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Google successfully');
                         } else {
-                            return redirect()->route('pricing')->with('login_success', 'Account linked with Google successfully');
+                            return redirect()->route('home')->with('login_success', 'Account linked with Google successfully');
                         }
                     }
 
@@ -85,8 +85,8 @@ class SocialController extends Controller
 
                     if ($userData) {
                         Auth::login($userData);
-                        // New users should go to pricing since they don't have a subscription yet
-                        return redirect()->route('pricing')->with('login_success', 'Welcome! Account created successfully with Google');
+                        // New users should go to home since they don't have a subscription yet
+                        return redirect()->route('home')->with('login_success', 'Welcome! Account created successfully with Google');
                     }
                 }
             }
@@ -123,7 +123,7 @@ class SocialController extends Controller
                     if ($this->hasActiveSubscription($user)) {
                         return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
                     } else {
-                        return redirect()->route('pricing')->with('login_success', 'User Login Successfully');
+                        return redirect()->route('home')->with('login_success', 'User Login Successfully');
                     }
                 }
 
@@ -152,7 +152,7 @@ class SocialController extends Controller
                         if ($this->hasActiveSubscription($existingUser)) {
                             return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Facebook successfully');
                         } else {
-                            return redirect()->route('pricing')->with('login_success', 'Account linked with Facebook successfully');
+                            return redirect()->route('home')->with('login_success', 'Account linked with Facebook successfully');
                         }
                     }
 

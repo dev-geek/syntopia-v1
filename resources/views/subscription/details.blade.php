@@ -271,10 +271,10 @@
                             <div class="float-right">
                                 @if ($hasActiveSubscription && $canUpgrade)
                                 <a class="btn btn-success"
-                                        href="{{ route('pricing', ['type' => 'upgrade']) }}">
+                                        href="{{ route('subscription', ['type' => 'upgrade']) }}">
                                     <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
                                 </a>
-                                <a class="btn btn-info" href="{{ route('pricing', ['type' => 'downgrade']) }}">
+                                <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
                                     <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
                                 </a>
                                 <button class="btn btn-danger" id="cancelSubscriptionBtn">
@@ -282,17 +282,17 @@
                                 </button>
                                 @elseif ($hasActiveSubscription && !$canUpgrade)
                                     <a class="btn btn-success"
-                                        href="{{ route('pricing', ['type' => 'upgrade']) }}">
+                                        href="{{ route('subscription', ['type' => 'upgrade']) }}">
                                         <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
                                     </a>
-                                    <a class="btn btn-info" href="{{ route('pricing', ['type' => 'downgrade']) }}">
+                                    <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
                                         <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
                                     </a>
                                     <button class="btn btn-danger" id="cancelSubscriptionBtn">
                                         <i class="fas fa-times mr-1"></i>Cancel Subscription
                                     </button>
                                 @elseif (!$hasActiveSubscription)
-                                    <a class="btn btn-warning" href="{{ route('pricing', ['type' => 'new']) }}">
+                                    <a class="btn btn-warning" href="{{ route('subscription', ['type' => 'new']) }}">
                                         <i class="fas fa-shopping-cart mr-1"></i>Buy Subscription
                                     </a>
                                 @endif
@@ -443,7 +443,7 @@
                                             </div>
                                             <div class="card-body">
                                                 <p>Choose from our available subscription plans to get started.</p>
-                                                <a href="{{ route('pricing') }}" class="btn btn-light">
+                                                <a href="{{ route('home') }}" class="btn btn-light">
                                                     <i class="fas fa-eye"></i> View Plans
                                                 </a>
                                             </div>
@@ -457,7 +457,7 @@
                                             </div>
                                             <div class="card-body">
                                                 <p>Unlock premium features with our paid plans.</p>
-                                                <a href="{{ route('pricing') }}" class="btn btn-light">
+                                                <a href="{{ route('home') }}" class="btn btn-light">
                                                     <i class="fas fa-star"></i> View Premium Plans
                                                 </a>
                                             </div>

@@ -509,7 +509,7 @@ class PaymentController extends Controller
                     'query' => $request->query(),
                     'url' => $request->fullUrl()
                 ]);
-                return redirect()->route('pricing')->with('error', 'Invalid payment gateway');
+                return redirect()->route('home')->with('error', 'Invalid payment gateway');
             }
 
             if ($gateway === 'paddle') {
@@ -529,7 +529,7 @@ class PaymentController extends Controller
 
                 if (!$transactionId) {
                     Log::error('Missing Paddle transaction_id', ['params' => $request->all()]);
-                    return redirect()->route('pricing')->with('error', 'Invalid payment request');
+                    return redirect()->route('home')->with('error', 'Invalid payment request');
                 }
 
                 Log::info('Processing Paddle success callback', [
@@ -559,7 +559,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'response' => $response->body()
                     ]);
-                    return redirect()->route('pricing')->with('error', 'Payment verification failed');
+                    return redirect()->route('home')->with('error', 'Payment verification failed');
                 }
 
                 $transactionData = $response->json()['data'];
@@ -571,7 +571,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'custom_data' => $customData
                     ]);
-                    return redirect()->route('pricing')->with('error', 'Invalid transaction data');
+                    return redirect()->route('home')->with('error', 'Invalid transaction data');
                 }
 
                 Log::info('Processing Paddle payment with user_id from custom_data', [
@@ -587,7 +587,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'custom_data' => $customData
                     ]);
-                    return redirect()->route('pricing')->with('error', 'Invalid transaction data');
+                    return redirect()->route('home')->with('error', 'Invalid transaction data');
                 }
 
                 $result = $this->processPaddlePaymentFromWebhook($transactionData, $packageName, $userId);
@@ -603,7 +603,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'user_id' => $userId
                     ]);
-                    return redirect()->route('pricing')->with('error', 'Payment processing failed');
+                    return redirect()->route('home')->with('error', 'Payment processing failed');
                 }
             }
 
@@ -615,7 +615,7 @@ class PaymentController extends Controller
                 // Handle errors from getSubscriptionId
                 if (isset($subscriptionData['error'])) {
                     Log::error('FastSpring Error: ' . $subscriptionData['error']);
-                    return redirect()->route('pricing')->with('error', $subscriptionData['error']);
+                    return redirect()->route('home')->with('error', $subscriptionData['error']);
                 }
 
                 // Proceed if successfull
@@ -623,7 +623,7 @@ class PaymentController extends Controller
 
                 if (!$orderId) {
                     Log::error('Missing FastSpring orderId', ['params' => $request->all()]);
-                    return redirect()->route('pricing')->with('error', 'Invalid order ID');
+                    return redirect()->route('home')->with('error', 'Invalid order ID');
                 }
 
                 $order = Order::where('transaction_id', $orderId)->first();
@@ -643,7 +643,7 @@ class PaymentController extends Controller
                         'order_id' => $orderId,
                         'response' => $response->body()
                     ]);
-                    return redirect()->route('pricing')->with('error', 'Order verification failed');
+                    return redirect()->route('home')->with('error', 'Order verification failed');
                 }
 
                 $orderData = $response->json()['orders'][0] ?? $response->json();
@@ -2000,7 +2000,7 @@ class PaymentController extends Controller
             'url' => $request->fullUrl()
         ]);
 
-        return redirect()->route('pricing')->with('info', 'Payment was cancelled');
+        return redirect()->route('home')->with('info', 'Payment was cancelled');
     }
 
     public function handlePopupCancel(Request $request)

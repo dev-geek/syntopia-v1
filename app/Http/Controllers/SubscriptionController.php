@@ -60,6 +60,30 @@ class SubscriptionController extends Controller
         return $this->showSubscriptionPage('new');
     }
 
+    public function showSubscriptionWithPackage(Request $request)
+    {
+        $packageName = $request->query('package_name');
+
+        // Check if user is authenticated
+        if (!auth()->check()) {
+            // Store the intended URL to redirect back after login
+            session(['url.intended' => $request->fullUrl()]);
+            return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
+        }
+
+        // Validate package name
+        if (!$packageName) {
+            return redirect()->route('home')->with('error', 'No package selected.');
+        }
+
+        $package = Package::where('name', $packageName)->first();
+        if (!$package) {
+            return redirect()->route('home')->with('error', 'Invalid package selected.');
+        }
+
+        return $this->showSubscriptionPage('new', $package);
+    }
+
     public function upgrade(Request $request, $package = null)
     {
         $user = Auth::user();
@@ -192,7 +216,7 @@ class SubscriptionController extends Controller
         }
     }
 
-    private function showSubscriptionPage(string $type)
+    private function showSubscriptionPage(string $type, $selectedPackage = null)
     {
         $user = Auth::user();
 
@@ -226,7 +250,8 @@ class SubscriptionController extends Controller
             'pageType' => $type,
             'isUpgrade' => $type === 'upgrade',
             'upgradeEligible' => $type === 'upgrade' && $targetGateway && $targetGateway->is_active,
-            'hasActiveSubscription' => $this->hasActiveSubscription($user)
+            'hasActiveSubscription' => $this->hasActiveSubscription($user),
+            'selectedPackage' => $selectedPackage
         ]);
     }
 }
