@@ -61,6 +61,13 @@ class SocialController extends Controller
 
                     // For regular users, check subscription status
                     if ($existingUser->hasRole('User')) {
+                        // Check for intended URL first
+                        if (session()->has('url.intended')) {
+                            $intendedUrl = session('url.intended');
+                            session()->forget('url.intended');
+                            return redirect()->to($intendedUrl)->with('login_success', 'Account linked with Google successfully');
+                        }
+
                         if ($this->hasActiveSubscription($existingUser)) {
                             return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Google successfully');
                         } else {
@@ -85,6 +92,14 @@ class SocialController extends Controller
 
                     if ($userData) {
                         Auth::login($userData);
+
+                        // Check for intended URL first
+                        if (session()->has('url.intended')) {
+                            $intendedUrl = session('url.intended');
+                            session()->forget('url.intended');
+                            return redirect()->to($intendedUrl)->with('login_success', 'Welcome! Account created successfully with Google');
+                        }
+
                         // New users should go to home since they don't have a subscription yet
                         return redirect()->route('home')->with('login_success', 'Welcome! Account created successfully with Google');
                     }
@@ -120,6 +135,13 @@ class SocialController extends Controller
 
                 // For regular users, check subscription status
                 if ($user->hasRole('User')) {
+                    // Check for intended URL first
+                    if (session()->has('url.intended')) {
+                        $intendedUrl = session('url.intended');
+                        session()->forget('url.intended');
+                        return redirect()->to($intendedUrl)->with('login_success', 'User Login Successfully');
+                    }
+
                     if ($this->hasActiveSubscription($user)) {
                         return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
                     } else {
@@ -149,6 +171,13 @@ class SocialController extends Controller
 
                     // For regular users, check subscription status
                     if ($existingUser->hasRole('User')) {
+                        // Check for intended URL first
+                        if (session()->has('url.intended')) {
+                            $intendedUrl = session('url.intended');
+                            session()->forget('url.intended');
+                            return redirect()->to($intendedUrl)->with('login_success', 'Account linked with Facebook successfully');
+                        }
+
                         if ($this->hasActiveSubscription($existingUser)) {
                             return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Facebook successfully');
                         } else {
@@ -173,6 +202,13 @@ class SocialController extends Controller
                     $newUser->assignRole('User');
 
                     Auth::login($newUser);
+
+                    // Check for intended URL first
+                    if (session()->has('url.intended')) {
+                        $intendedUrl = session('url.intended');
+                        session()->forget('url.intended');
+                        return redirect()->to($intendedUrl)->with('login_success', 'Welcome! Account created successfully with Facebook');
+                    }
 
                     return redirect()->route('profile')->with('login_success', 'Welcome! Account created successfully with Facebook');
                 }

@@ -39,12 +39,19 @@ class LoginController extends Controller
             return redirect()->intended(route('admin.dashboard'));
         }
 
-        // For regular users, check subscription status
+                // For regular users, check subscription status
         if ($user->hasRole('User')) {
             // Check if there's an intended URL (like subscription page with package)
             if (session()->has('url.intended')) {
                 $intendedUrl = session('url.intended');
                 session()->forget('url.intended');
+                return redirect()->to($intendedUrl);
+            }
+
+            // Also check for verification intended URL
+            if (session()->has('verification_intended_url')) {
+                $intendedUrl = session('verification_intended_url');
+                session()->forget('verification_intended_url');
                 return redirect()->to($intendedUrl);
             }
 
@@ -105,6 +112,13 @@ class LoginController extends Controller
 
             // For regular users, check subscription status
             if ($user->hasRole('User')) {
+                // Check for intended URL first
+                if (session()->has('url.intended')) {
+                    $intendedUrl = session('url.intended');
+                    session()->forget('url.intended');
+                    return redirect()->to($intendedUrl);
+                }
+
                 if ($this->hasActiveSubscription($user)) {
                     return redirect()->route('user.dashboard');
                 } else {
@@ -193,6 +207,13 @@ class LoginController extends Controller
 
         // For regular users, check subscription status
         if ($user->hasRole('User')) {
+            // Check for intended URL first
+            if (session()->has('url.intended')) {
+                $intendedUrl = session('url.intended');
+                session()->forget('url.intended');
+                return redirect()->to($intendedUrl);
+            }
+
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->intended(route('user.dashboard'));
             } else {

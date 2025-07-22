@@ -144,6 +144,11 @@ class RegisterController extends Controller
 
     public function showRegistrationForm(Request $request)
     {
+        // Preserve the intended URL if it exists
+        if (session()->has('url.intended')) {
+            // Keep the intended URL in session for after registration
+            session(['registration_intended_url' => session('url.intended')]);
+        }
         return view('auth.register');
     }
 
@@ -221,6 +226,15 @@ class RegisterController extends Controller
 
             auth()->login($user);
             session(['email' => $user->email]);
+
+            // Preserve the intended URL for after verification
+            if (session()->has('registration_intended_url')) {
+                session(['verification_intended_url' => session('registration_intended_url')]);
+                session()->forget('registration_intended_url');
+            } elseif (session()->has('url.intended')) {
+                session(['verification_intended_url' => session('url.intended')]);
+                session()->forget('url.intended');
+            }
 
             return redirect('/email/verify');
 

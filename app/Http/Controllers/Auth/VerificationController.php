@@ -134,13 +134,25 @@ class VerificationController extends Controller
             Auth::login($user);
 
             if ($user->hasRole('User')) {
+                // Check if there's an intended URL from the subscription flow
+                if (session()->has('verification_intended_url')) {
+                    $intendedUrl = session('verification_intended_url');
+                    session()->forget('verification_intended_url');
+                    Log::info('[verifyCode] Redirecting to intended URL', [
+                        'user_id' => $user->id,
+                        'intended_url' => $intendedUrl
+                    ]);
+                    return redirect()->to($intendedUrl)
+                        ->with('success', 'Email verified successfully!');
+                }
+
                 // Check if user has active subscription
                 if ($this->hasActiveSubscription($user)) {
                     Log::info('[verifyCode] Redirecting to user dashboard', ['user_id' => $user->id]);
                     return redirect()->route('user.dashboard')
                         ->with('success', 'Email verified successfully!');
                 } else {
-                    Log::info('[verifyCode] Redirecting to pricing', ['user_id' => $user->id]);
+                    Log::info('[verifyCode] Redirecting to home', ['user_id' => $user->id]);
                     return redirect()->route('home')
                         ->with('success', 'Email verified successfully!');
                 }
