@@ -30,7 +30,7 @@ class LoginController extends Controller
         if (!$this->isUserVerified($user)) {
             Auth::logout();
             session(['email' => $user->email]);
-            return redirect()->route('verification.code')
+            return redirect()->route('verification.notice')
                 ->withErrors('Please verify your email before logging in.');
         }
 
@@ -100,7 +100,7 @@ class LoginController extends Controller
             }
 
             if (!$this->isUserVerified($user)) {
-                return redirect()->route('verification.code');
+                return redirect()->route('verification.notice');
             }
 
             // For regular users, check subscription status
@@ -173,7 +173,7 @@ class LoginController extends Controller
         if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
             if (!$this->isUserVerified($user)) {
                 session(['email' => $user->email]);
-                return redirect()->route('verification.code')
+                return redirect()->route('verification.notice')
                     ->withErrors('Please verify your email before logging in.');
             }
         }

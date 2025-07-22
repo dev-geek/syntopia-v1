@@ -37,7 +37,7 @@ class EnsureEmailIsVerifiedCustom
             // Logout the user
             Auth::logout();
 
-            return redirect()->route('verification.code')
+            return redirect()->route('verification.notice')
                 ->withErrors('Please verify your email before accessing this page.');
         }
 
