@@ -694,6 +694,16 @@ class PaymentController extends Controller
                 'params' => $request->all(),
                 'url' => $request->fullUrl()
             ]);
+
+            // Check if this is a license API failure
+            if ($e->getMessage() === 'license_api_failed') {
+                Log::error('License API failed during payment processing', [
+                    'gateway' => $gateway ?? 'unknown',
+                    'params' => $request->all()
+                ]);
+                return redirect()->route('payments.license-error')->with('error', 'license_api_failed');
+            }
+
             return redirect()->route('pricing')->with('error', 'Payment processing failed');
         }
     }
@@ -818,7 +828,31 @@ class PaymentController extends Controller
                     'license_key' => $user->license_key
                 ]);
 
-                $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
+                // Try to add license to external API - if this fails, we need to rollback
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license via API - rolling back payment process', [
+                        'user_id' => $user->id,
+                        'license_key' => $licenseKey,
+                        'transaction_id' => $transactionId
+                    ]);
+
+                    // Rollback user changes
+                    $user->update([
+                        'payment_gateway_id' => null,
+                        'package_id' => null,
+                        'subscription_starts_at' => null,
+                        'license_key' => null,
+                        'is_subscribed' => false,
+                        'subscription_id' => null
+                    ]);
+
+                    // Mark order as failed
+                    $order->update(['status' => 'failed']);
+
+                    // Throw exception to trigger rollback and show error
+                    throw new \Exception('license_api_failed');
+                }
 
                 // Now mark order as completed
                 $order->update(['status' => 'completed']);
@@ -987,6 +1021,16 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
                 'payload' => $request->all()
             ]);
+
+            // Check if this is a license API failure
+            if ($e->getMessage() === 'license_api_failed') {
+                Log::error('License API failed during FastSpring webhook processing', [
+                    'payload' => $request->all()
+                ]);
+                // For webhooks, we return a 200 status to prevent retries, but log the error
+                return response()->json(['status' => 'failed_license_api'], 200);
+            }
+
             return response()->json(['error' => 'Processing failed'], 500);
         }
     }
@@ -1124,6 +1168,16 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+
+            // Check if this is a license API failure
+            if ($e->getMessage() === 'license_api_failed') {
+                Log::error('License API failed during PayProGlobal webhook processing', [
+                    'payload' => $payload
+                ]);
+                // For webhooks, we return a 200 status to prevent retries, but log the error
+                return response()->json(['success' => false, 'status' => 'failed_license_api'], 200);
+            }
+
             return response()->json(['success' => false, 'error' => 'Processing failed'], 500);
         }
     }
@@ -1433,6 +1487,17 @@ class PaymentController extends Controller
                 Log::error('Failed to process Paddle webhook transaction', [
                     'transaction_id' => $transactionId
                 ]);
+
+                // Check if this is a license API failure
+                if ($e->getMessage() === 'license_api_failed') {
+                    Log::error('License API failed during webhook processing', [
+                        'transaction_id' => $eventData['id'] ?? null,
+                        'event_data' => $eventData
+                    ]);
+                    // For webhooks, we return a 200 status to prevent retries, but log the error
+                    return response()->json(['status' => 'failed_license_api'], 200);
+                }
+
                 return response()->json(['error' => 'Processing failed'], 500);
             }
         } catch (\Exception $e) {
@@ -1440,6 +1505,17 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
                 'event_data' => $eventData
             ]);
+
+            // Check if this is a license API failure
+            if ($e->getMessage() === 'license_api_failed') {
+                Log::error('License API failed during webhook processing', [
+                    'transaction_id' => $eventData['id'] ?? null,
+                    'event_data' => $eventData
+                ]);
+                // For webhooks, we return a 200 status to prevent retries, but log the error
+                return response()->json(['status' => 'failed_license_api'], 200);
+            }
+
             return response()->json(['error' => 'Processing failed'], 500);
         }
     }
@@ -1602,9 +1678,35 @@ class PaymentController extends Controller
                         'user_id' => $user->id,
                         'license_key' => $licenseKey
                     ]);
-                    $this->addLicenseToExternalAPI($user, $licenseKey);
+
+                    // Try to add license to external API - if this fails, we need to rollback
+                    $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                    if (!$licenseApiSuccess) {
+                        Log::error('Failed to add license via API from webhook - rolling back payment process', [
+                            'user_id' => $user->id,
+                            'license_key' => $licenseKey,
+                            'transaction_id' => $transactionId
+                        ]);
+
+                        // Rollback user changes
+                        $user->update([
+                            'payment_gateway_id' => null,
+                            'package_id' => null,
+                            'subscription_starts_at' => null,
+                            'license_key' => null,
+                            'is_subscribed' => false,
+                            'subscription_id' => null
+                        ]);
+
+                        // Mark order as failed
+                        $order->update(['status' => 'failed']);
+
+                        // Throw exception to trigger rollback and show error
+                        throw new \Exception('license_api_failed');
+                    }
                 } else {
                     Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
+                    throw new \Exception('License generation failed');
                 }
             } else {
                 Log::info('User already has license key, skipping generation', [
@@ -2005,17 +2107,11 @@ class PaymentController extends Controller
 
     public function handlePopupCancel(Request $request)
     {
-        \Log::info('[handlePopupCancel] called', [
-            'params' => $request->all(),
-            'query' => $request->query(),
-            'url' => $request->fullUrl()
-        ]);
-        Log::info('Popup payment cancelled', [
-            'params' => $request->all(),
-            'query' => $request->query(),
-            'url' => $request->fullUrl()
-        ]);
+        return view('payments.popup-cancel');
+    }
 
-        return view('payment.popup-cancel');
+    public function handleLicenseError(Request $request)
+    {
+        return view('payments.license-error');
     }
 }

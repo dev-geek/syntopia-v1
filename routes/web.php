@@ -61,6 +61,7 @@ Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check
 Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payments.success');
 Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payments.cancel');
 Route::get('/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
+Route::get('/payments/license-error', [PaymentController::class, 'handleLicenseError'])->name('payments.license-error');
 
 // Subscription cancellation route (web-based)
 Route::post('/payments/cancel-subscription', [PaymentController::class, 'cancelSubscription'])

@@ -18,6 +18,85 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+    <!-- Loading Spinner Styles -->
+    <style>
+        .loading-spinner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+        }
+
+        .spinner-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 300px;
+            width: 90%;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #5b0dd5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        .spinner-text {
+            color: #333;
+            font-size: 16px;
+            font-weight: 500;
+            margin: 0;
+        }
+
+        .spinner-subtext {
+            color: #666;
+            font-size: 14px;
+            margin: 5px 0 0 0;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .button-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .button-loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid transparent;
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .button-loading .btn-text {
+            opacity: 0;
+        }
+    </style>
+
     <!-- Payment Gateway Scripts -->
     @php
         $activeGateways = isset($payment_gateways) ? $payment_gateways->pluck('name')->toArray() : [];
@@ -50,6 +129,10 @@
                     if (typeof fastspring === 'undefined' || !fastspring.builder) {
                         throw new Error('FastSpring is not properly initialized');
                     }
+
+                    // Show spinner for FastSpring processing
+                    showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
+
                     fastspring.builder.reset();
                     console.log('FastSpring builder reset');
 
@@ -74,9 +157,12 @@
                     setTimeout(() => {
                         fastspring.builder.checkout();
                         console.log('FastSpring checkout launched');
+                        // Hide spinner when checkout is launched
+                        hideSpinner();
                     }, 500);
                 } catch (error) {
                     console.error('FastSpring processing error:', error);
+                    hideSpinner(); // Hide spinner on error
                     showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
                 }
             }
@@ -1014,6 +1100,15 @@
 </head>
 
 <body>
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="loading-spinner">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p class="spinner-text" id="spinnerText">Loading...</p>
+            <p class="spinner-subtext" id="spinnerSubtext">Please wait while we prepare your payment</p>
+        </div>
+    </div>
+
     <div class="pricing-header">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
         <div class="dropdown">
@@ -1138,6 +1233,83 @@
                 }
             }
 
+            // Auto-popup functionality for package_name in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const packageNameFromUrl = urlParams.get('package_name');
+
+            if (packageNameFromUrl) {
+                console.log('=== AUTO-POPUP TRIGGERED ===');
+                console.log('Package name from URL:', packageNameFromUrl);
+                console.log('Current package:', currentPackage);
+                console.log('Has active subscription:', hasActiveSubscription);
+                console.log('Selected gateway:', selectedGateway);
+
+                // Validate package name
+                const validPackages = ['Free', 'Starter', 'Pro', 'Business', 'Enterprise'];
+                const normalizedPackageName = packageNameFromUrl.charAt(0).toUpperCase() + packageNameFromUrl.slice(1).toLowerCase();
+
+                console.log('Normalized package name:', normalizedPackageName);
+                console.log('Valid packages:', validPackages);
+
+                if (!validPackages.includes(normalizedPackageName)) {
+                    console.error('Invalid package name in URL:', packageNameFromUrl);
+                    showError('Invalid Package', `Package "${packageNameFromUrl}" is not valid. Available packages: ${validPackages.join(', ')}`);
+                    return;
+                }
+
+                // Prevent multiple auto-popups
+                if (sessionStorage.getItem('autoPopupTriggered') === 'true') {
+                    console.log('Auto-popup already triggered, skipping');
+                    return;
+                }
+
+                // Wait a bit for the page to fully load and payment gateways to initialize
+                setTimeout(() => {
+                    // Determine the action based on current subscription status
+                    let action = 'new';
+                    if (hasActiveSubscription === 'true' && currentPackage) {
+                        // Compare packages to determine if it's an upgrade or downgrade
+                        const packageOrder = ['Free', 'Starter', 'Pro', 'Business', 'Enterprise'];
+                        const currentIndex = packageOrder.indexOf(currentPackage);
+                        const targetIndex = packageOrder.indexOf(normalizedPackageName);
+
+                        console.log('Package comparison:', {
+                            currentPackage: currentPackage,
+                            targetPackage: normalizedPackageName,
+                            currentIndex: currentIndex,
+                            targetIndex: targetIndex
+                        });
+
+                        if (targetIndex > currentIndex) {
+                            action = 'upgrade';
+                        } else if (targetIndex < currentIndex) {
+                            action = 'downgrade';
+                        }
+                    }
+
+                    console.log('Auto-triggering checkout with:', {
+                        packageName: normalizedPackageName,
+                        action: action,
+                        selectedGateway: selectedGateway
+                    });
+
+                    // Mark as triggered to prevent multiple popups
+                    sessionStorage.setItem('autoPopupTriggered', 'true');
+
+                    // Trigger the checkout process
+                    if (selectedGateway) {
+                        // Show spinner for auto-popup
+                        showSpinner('Preparing payment...', `Setting up ${normalizedPackageName} plan checkout`);
+                        processCheckout(normalizedPackageName, action);
+                    } else {
+                        console.error('No payment gateway available for auto-popup');
+                        showError('Payment Error', 'No payment gateway is currently available. Please try again later.');
+                        // Clear the flag if there's an error so user can try again
+                        sessionStorage.removeItem('autoPopupTriggered');
+                    }
+                }, 1000); // Wait 1 second for everything to load
+            }
+
             document.querySelectorAll('.checkout-button').forEach(button => {
                 button.addEventListener('click', function() {
                     const packageName = this.getAttribute('data-package');
@@ -1149,9 +1321,18 @@
                         });
                         return;
                     }
-                    this.disabled = true;
+
+                    // Show loading state
+                    setButtonLoading(this, true);
+                    showSpinner('Preparing payment...', `Setting up ${packageName} plan checkout`);
+
                     processCheckout(packageName, action);
-                    setTimeout(() => this.disabled = false, 3000);
+
+                    // Reset button after 3 seconds if no response
+                    setTimeout(() => {
+                        setButtonLoading(this, false);
+                        hideSpinner();
+                    }, 3000);
                 });
             });
 
@@ -1175,12 +1356,14 @@
                         throw new Error('No payment gateway available');
                     }
                     if (action === 'upgrade' || action === 'downgrade') {
+                        hideSpinner(); // Hide spinner for confirmation dialog
                         showConfirmation(packageName, action, selectedGateway);
                     } else {
                         executeCheckout(packageName, action);
                     }
                 } catch (error) {
                     console.error('Checkout error:', error);
+                    hideSpinner(); // Hide spinner on error
                     showError('Checkout Error', error.message || 'Failed to process checkout.');
                 }
             }
@@ -1200,6 +1383,8 @@
                     confirmButtonColor: '#5b0dd5'
                 }).then(result => {
                     if (result.isConfirmed) {
+                        // Show spinner when user confirms
+                        showSpinner('Processing...', `Setting up ${packageName} plan checkout`);
                         executeCheckout(packageName, action);
                     }
                 });
@@ -1211,6 +1396,14 @@
                     action,
                     selectedGateway
                 });
+
+                // Show appropriate spinner message
+                const spinnerText = action === 'upgrade' ? 'Processing upgrade...' :
+                                  action === 'downgrade' ? 'Processing downgrade...' :
+                                  'Setting up payment...';
+                const spinnerSubtext = `Preparing ${packageName} plan checkout`;
+                showSpinner(spinnerText, spinnerSubtext);
+
                 let apiUrl;
                 if (action === 'upgrade') {
                     apiUrl = `/api/payments/upgrade/${packageName}`;
@@ -1254,6 +1447,10 @@
                             throw new Error(data.error || 'No checkout URL received');
                         }
                         console.log('Checkout URL received:', data.checkout_url);
+
+                        // Hide spinner before opening payment popup
+                        hideSpinner();
+
                         if (selectedGateway === 'FastSpring') {
                             processFastSpring(packageName, action);
                         } else if (selectedGateway === 'Paddle') {
@@ -1266,6 +1463,7 @@
                     })
                     .catch(error => {
                         console.error(`${action.charAt(0).toUpperCase() + action.slice(1)} error:`, error);
+                        hideSpinner(); // Hide spinner on error
                         showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
                     });
             }
@@ -1276,9 +1474,13 @@
                     action
                 });
 
+                // Show spinner for Paddle processing
+                showSpinner('Opening payment window...', 'Please wait while we connect to Paddle');
+
                 // Check if Paddle is properly initialized
                 if (typeof Paddle === 'undefined') {
                     console.error('Paddle is not initialized');
+                    hideSpinner(); // Hide spinner on error
                     showError('Payment Error',
                         'Payment system is not properly initialized. Please refresh the page and try again.');
                     return;
@@ -1286,6 +1488,7 @@
 
                 if (typeof Paddle.Checkout === 'undefined') {
                     console.error('Paddle.Checkout is not available');
+                    hideSpinner(); // Hide spinner on error
                     showError('Payment Error',
                         'Payment checkout is not available. Please refresh the page and try again.');
                     return;
@@ -1358,13 +1561,17 @@
                                 transactionId: data.transaction_id,
                                 eventCallback: paddleEventCallback
                             });
+                            // Hide spinner when checkout is opened
+                            hideSpinner();
                         } catch (error) {
                             console.error('Error opening Paddle checkout:', error);
+                            hideSpinner(); // Hide spinner on error
                             showError('Checkout Error', 'Failed to open payment checkout. Please try again.');
                         }
                     })
                     .catch(error => {
                         console.error('Paddle processing error:', error);
+                        hideSpinner(); // Hide spinner on error
                         showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
                     });
             }
@@ -1383,6 +1590,8 @@
                     action
                 });
 
+                // Show spinner for PayProGlobal processing
+                showSpinner('Opening payment window...', 'Please wait while we connect to PayProGlobal');
 
                 const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
                 const requestBody = {
@@ -1462,6 +1671,7 @@
 
                         if (!popup) {
                             console.error('Popup was blocked');
+                            hideSpinner(); // Hide spinner on error
                             showError('Popup Blocked',
                                 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.'
                             );
@@ -1469,119 +1679,12 @@
                         }
 
                         console.log('PayProGlobal popup opened successfully');
-
-                        // Wait for the popup to close, then fetch the latest order
-                        const pollPopupClosed = setInterval(() => {
-                            if (popup.closed) {
-                                clearInterval(pollPopupClosed);
-                                console.log('PayProGlobal popup closed, fetching latest order...');
-
-                                // Fetch order from webhook
-                                fetch('/api/webhooks/payproglobal', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Accept': 'application/json',
-                                            'X-Requested-With': 'XMLHttpRequest',
-                                            'Content-Type': 'application/x-www-form-urlencoded'
-                                        },
-                                        credentials: 'same-origin',
-                                    })
-                                    .then(response => {
-                                        console.log('PayProGlobal API response status:', response
-                                            .status);
-                                        console.log('PayProGlobal API response headers:', response
-                                            .headers);
-                                        if (!response.ok) {
-                                            throw new Error(
-                                                `HTTP ${response.status}: ${response.statusText}`
-                                                );
-                                        }
-                                        return response.json();
-                                    })
-                                    .then(orderData => {
-                                        console.log('PayProGlobal API response data:', orderData);
-
-                                        if (!orderData.success || !orderData.order_id) {
-                                            console.error('PayProGlobal API error:', orderData
-                                                .error || orderData.message || 'No order found');
-                                            throw new Error(orderData.error || orderData.message ||
-                                                'No order found');
-                                        }
-                                        const orderId = orderData.order_id;
-                                        console.log('PayProGlobal order ID extracted:', orderId);
-
-                                        const form = document.createElement('form');
-                                        form.method = 'POST';
-                                        form.action = '/payments/success';
-                                        form.style.display = 'none';
-
-                                        // Add CSRF token
-                                        const csrfInput = document.createElement('input');
-                                        csrfInput.type = 'hidden';
-                                        csrfInput.name = '_token';
-                                        csrfInput.value = csrfToken;
-                                        form.appendChild(csrfInput);
-
-                                        // Add gateway
-                                        const gatewayInput = document.createElement('input');
-                                        gatewayInput.type = 'hidden';
-                                        gatewayInput.name = 'gateway';
-                                        gatewayInput.value = 'payproglobal';
-                                        form.appendChild(gatewayInput);
-
-                                        // Add order ID
-                                        const orderIdInput = document.createElement('input');
-                                        orderIdInput.type = 'hidden';
-                                        orderIdInput.name = 'order_id';
-                                        orderIdInput.value = orderId;
-                                        form.appendChild(orderIdInput);
-
-                                        // Add user ID
-                                        const userIdInput = document.createElement('input');
-                                        userIdInput.type = 'hidden';
-                                        userIdInput.name = 'user_id';
-                                        userIdInput.value = userId;
-                                        form.appendChild(userIdInput);
-
-                                        // Add package name
-                                        const packageInput = document.createElement('input');
-                                        packageInput.type = 'hidden';
-                                        packageInput.name = 'package';
-                                        packageInput.value = packageName;
-                                        form.appendChild(packageInput);
-
-                                        // Add popup flag
-                                        const popupInput = document.createElement('input');
-                                        popupInput.type = 'hidden';
-                                        popupInput.name = 'popup';
-                                        popupInput.value = 'true';
-                                        form.appendChild(popupInput);
-
-                                        document.body.appendChild(form);
-
-                                        console.log(
-                                            'Submitting PayProGlobal success form with data:', {
-                                                gateway: 'payproglobal',
-                                                order_id: orderId,
-                                                user_id: userId,
-                                                package: packageName,
-                                                popup: 'true'
-                                            });
-
-                                        form.submit();
-                                    })
-                                    .catch(error => {
-                                        console.error('Failed to fetch latest PayProGlobal order:',
-                                            error);
-                                        showError('Order Error', error.message ||
-                                            'Could not retrieve your order. Please contact support.'
-                                            );
-                                    });
-                            }
-                        });
+                        // Hide spinner when popup is opened
+                        hideSpinner();
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
+                        hideSpinner(); // Hide spinner on error
                         showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
                             error.message || 'An unexpected error occurred. Please try again.');
                     })
@@ -1602,6 +1705,9 @@
                     confirmButtonColor: '#ef4444'
                 }).then(result => {
                     if (result.isConfirmed) {
+                        // Show spinner for cancellation
+                        showSpinner('Cancelling subscription...', 'Please wait while we process your cancellation');
+
                         fetch('/payments/cancel-subscription', {
                                 method: 'POST',
                                 headers: {
@@ -1622,6 +1728,7 @@
                                 return response.json();
                             })
                             .then(data => {
+                                hideSpinner(); // Hide spinner on success
                                 if (data.success) {
                                     showSuccess('Subscription Cancelled',
                                         'Your subscription has been cancelled.').then(() => {
@@ -1633,6 +1740,7 @@
                             })
                             .catch(error => {
                                 console.error('Cancellation error:', error);
+                                hideSpinner(); // Hide spinner on error
                                 showError('Cancellation Failed', error.message);
                             });
                     }
@@ -1710,15 +1818,59 @@
                 });
             }
 
+            // Spinner functions
+            function showSpinner(text = 'Loading...', subtext = 'Please wait while we prepare your payment') {
+                console.log('Showing spinner:', { text, subtext });
+                const spinner = document.getElementById('loadingSpinner');
+                const spinnerText = document.getElementById('spinnerText');
+                const spinnerSubtext = document.getElementById('spinnerSubtext');
+
+                if (spinnerText) spinnerText.textContent = text;
+                if (spinnerSubtext) spinnerSubtext.textContent = subtext;
+                if (spinner) spinner.style.display = 'flex';
+            }
+
+            function hideSpinner() {
+                console.log('Hiding spinner');
+                const spinner = document.getElementById('loadingSpinner');
+                if (spinner) spinner.style.display = 'none';
+            }
+
+            function setButtonLoading(button, isLoading = true) {
+                if (!button) return;
+
+                if (isLoading) {
+                    button.classList.add('button-loading');
+                    button.disabled = true;
+                    // Store original text
+                    const originalText = button.innerHTML;
+                    button.setAttribute('data-original-text', originalText);
+                    button.innerHTML = '<span class="btn-text">' + originalText + '</span>';
+                } else {
+                    button.classList.remove('button-loading');
+                    button.disabled = false;
+                    // Restore original text
+                    const originalText = button.getAttribute('data-original-text');
+                    if (originalText) {
+                        button.innerHTML = originalText;
+                        button.removeAttribute('data-original-text');
+                    }
+                }
+            }
+
             // Make helper functions globally accessible
             window.showSuccess = showSuccess;
             window.showError = showError;
             window.showInfo = showInfo;
+            window.showSpinner = showSpinner;
+            window.hideSpinner = hideSpinner;
+            window.setButtonLoading = setButtonLoading;
 
             // Cleanup function to remove session storage when page is unloaded
             window.addEventListener('beforeunload', function() {
                 sessionStorage.removeItem('currentPaddleAction');
                 sessionStorage.removeItem('currentPaddleTransactionId');
+                sessionStorage.removeItem('autoPopupTriggered');
             });
         });
 
