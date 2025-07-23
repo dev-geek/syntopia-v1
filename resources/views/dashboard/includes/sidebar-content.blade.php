@@ -19,7 +19,6 @@
 </style>
 <div class="sidebar-content p-3">
     <div class="d-flex flex-column align-items-center mb-4">
-        <img src="{{ asset('dist/img/user2-160x160.jpg') }}" class="rounded-circle mb-2" alt="User Image" width="64" height="64">
         <div class="fw-bold text-center">{{ Auth::user()->name }}</div>
         <div class="text-muted small text-center">{{ Auth::user()->email }}</div>
     </div>

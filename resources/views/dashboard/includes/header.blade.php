@@ -214,15 +214,7 @@
             font-weight: bold;
             box-shadow: 0 1px 4px rgba(220,53,69,0.18);
         }
-        .header-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            object-fit: cover;
-            margin-right: 8px;
-            border: 2px solid #0d6efd;
-            box-shadow: 0 2px 8px rgba(13,110,253,0.10);
-        }
+
         .header-user-dropdown .dropdown-menu {
             background: #f8fafd;
             border-radius: 1.1rem;
@@ -714,7 +706,6 @@
                 <!-- User Dropdown -->
                 <li class="nav-item dropdown header-user-dropdown">
                     <a class="nav-link d-flex align-items-center" data-toggle="dropdown" href="#">
-                        <img src="{{ asset('dist/img/user2-160x160.jpg') }}" class="header-avatar" alt="User Avatar">
                         <span class="header-user-name">{{ Auth::user()->name }}</span>
                         <i class="fas fa-caret-down"></i>
                     </a>
