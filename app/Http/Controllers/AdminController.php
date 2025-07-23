@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Order;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Imports\UsersImport;
+use App\Services\PasswordBindingService;
 use Spatie\Permission\Models\Role;
 use Illuminate\Validation\ValidationException;
 
@@ -112,7 +113,7 @@ class AdminController extends Controller
         return view('admin.subadmin', compact('user'));
     }
 
-    public function manageProfileUpdate(Request $request, $id)
+    public function manageProfileUpdate(Request $request, $id, PasswordBindingService $passwordBindingService)
     {
         // Validate the incoming request data
         $validated = $request->validate([
@@ -140,9 +141,18 @@ class AdminController extends Controller
             $user->status = $request->status;
         }
 
-        // Update the password if it was provided
+        // Handle password update with API binding
         if ($request->has('password') && $request->password) {
-            $user->password = Hash::make($request->password); // Hash the password before saving
+            // Call password binding API before updating the database
+            $apiResponse = $passwordBindingService->bindPassword($user, $request->password);
+
+            if (!$apiResponse['success']) {
+                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+            }
+
+            // Only update password if API call was successful
+            $user->password = Hash::make($request->password);
+            $user->subscriber_password = $request->password;
         }
 
         // Save the updated user
@@ -151,7 +161,7 @@ class AdminController extends Controller
         // Return a success message
         return redirect()->route('admin.users')->with('success', 'User updated successfully!');
     }
-    public function manageAdminProfileUpdate(Request $request, $id)
+    public function manageAdminProfileUpdate(Request $request, $id, PasswordBindingService $passwordBindingService)
     {
         // Validate the incoming request data
         $validated = $request->validate([
@@ -179,9 +189,18 @@ class AdminController extends Controller
             $user->status = $request->status;
         }
 
-        // Update the password if it was provided
+        // Handle password update with API binding
         if ($request->has('password') && $request->password) {
-            $user->password = Hash::make($request->password); // Hash the password before saving
+            // Call password binding API before updating the database
+            $apiResponse = $passwordBindingService->bindPassword($user, $request->password);
+
+            if (!$apiResponse['success']) {
+                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+            }
+
+            // Only update password if API call was successful
+            $user->password = Hash::make($request->password);
+            $user->subscriber_password = $request->password;
         }
 
         // Save the updated user
@@ -227,7 +246,7 @@ class AdminController extends Controller
 
     public function createOrUpdateSubAdmin() {}
 
-    public function storeUser(Request $request)
+    public function storeUser(Request $request, PasswordBindingService $passwordBindingService)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -235,11 +254,22 @@ class AdminController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // Create the user
+        // Call password binding API before creating the user
+        $apiResponse = $passwordBindingService->bindPassword(
+            (new User())->forceFill(['email' => $validated['email']]),
+            $validated['password']
+        );
+
+        if (!$apiResponse['success']) {
+            return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+        }
+
+        // Create the user only if API call was successful
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
+            'subscriber_password' => $validated['password'],
             'status' => $request->input('status'),
         ]);
 

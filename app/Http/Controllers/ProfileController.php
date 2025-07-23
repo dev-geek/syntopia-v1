@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 use App\Models\UserLog;
+use App\Services\PasswordBindingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -20,7 +21,7 @@ class ProfileController extends Controller
     {
         return view('auth.update-password');
     }
-    public function updateProfile(Request $request)
+    public function updateProfile(Request $request, PasswordBindingService $passwordBindingService)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -31,7 +32,16 @@ class ProfileController extends Controller
 
         $user->name = $validated['name'];
 
+        // Handle password update with API binding
         if (!empty($validated['password'])) {
+            // Call password binding API before updating the database
+            $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
+
+            if (!$apiResponse['success']) {
+                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+            }
+
+            // Only update password if API call was successful
             $user->password = $validated['password']; // Let mutator/cast handle hashing
             $user->subscriber_password = $validated['password'];
         }

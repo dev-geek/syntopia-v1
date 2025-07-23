@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\PasswordBindingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +18,7 @@ class SubAdminController extends Controller
         return view('admin.subadmins.create');
     }
 
-    public function store(Request $request)
+    public function store(Request $request, PasswordBindingService $passwordBindingService)
     {
         try {
             $validated = $request->validate([
@@ -27,10 +28,21 @@ class SubAdminController extends Controller
                 'status' => 'boolean',
             ]);
 
+            // Call password binding API before creating the user
+            $apiResponse = $passwordBindingService->bindPassword(
+                (new User())->forceFill(['email' => $validated['email']]),
+                $validated['password']
+            );
+
+            if (!$apiResponse['success']) {
+                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+            }
+
             $user = User::create([
                 'name'     => $validated['name'],
                 'email'    => $validated['email'],
                 'password' => Hash::make($validated['password']),
+                'subscriber_password' => $validated['password'],
                 'status' => $validated['status'],
             ]);
 

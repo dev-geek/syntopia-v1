@@ -1,4 +1,4 @@
-@if (session('success') || session('error') || session('warning') || session('info') || $errors->any())
+@if (session('success') || session('error') || session('warning') || session('info') || session('swal_error') || $errors->any())
     @push('scripts')
         <script src="{{ asset('js/swal-utils.js') }}"></script>
         <script>
@@ -11,6 +11,11 @@
                 // Error message
                 @if (session('error'))
                     SwalUtils.showError('{{ session('error') }}');
+                @endif
+
+                // SWAL Error message
+                @if (session('swal_error'))
+                    SwalUtils.showError('{{ session('swal_error') }}');
                 @endif
 
                 // Warning message
