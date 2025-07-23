@@ -88,6 +88,8 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
 
     // Subscription routes
     Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
+    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgrade'])->name('subscription.upgrade');
+    Route::get('/subscription/downgrade', [SubscriptionController::class, 'downgrade'])->name('subscription.downgrade');
 
     // Orders
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');

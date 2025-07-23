@@ -3,122 +3,300 @@
 @section('content')
 <style>
     body {
-        background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background-image: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp');
         background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
         min-height: 100vh;
-        padding: 30px;
+        padding: 20px;
         margin: 0;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .heading-text {
-        font-size: 24px;
-        padding-bottom: 20px;
-        font-weight: 500;
-        color: #000;
+        font-size: 28px;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin-bottom: 8px;
+        letter-spacing: -0.5px;
+        text-align: center;
     }
 
     .container-box {
-        max-width: 100%;
-        width: 520px;
-        padding: 30px;
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        max-width: 480px;
+        width: 100%;
+        padding: 40px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         margin: 0 auto;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .container-box::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #3e57da, #667eea);
     }
 
     .email-text {
-        font-size: 13px;
-        margin-bottom: 20px;
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 32px;
+        line-height: 1.5;
+        text-align: center;
     }
 
     .logo-container {
         text-align: center;
-        margin: 20px 0 40px;
+        margin-bottom: 32px;
         display: flex;
         justify-content: center;
     }
 
     .logo-container img {
-        width: 160px;
+        width: 140px;
         height: auto;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
     }
 
     .form-control {
-        background: #E7E7E9;
-        font-size: 13px;
-        border: none !important;
-        padding: 12px 15px !important;
+        background: #f8fafc;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 14px;
+        padding: 14px 16px;
         height: auto;
+        transition: all 0.2s ease;
+        font-weight: 500;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .form-control:focus {
+        background: #ffffff;
+        border-color: #3e57da;
+        box-shadow: 0 0 0 3px rgba(62, 87, 218, 0.1);
+        outline: none;
+    }
+
+    .form-control::placeholder {
+        color: #9ca3af;
+        font-weight: 400;
     }
 
     .form-group {
-        margin-bottom: 1.5rem;
+        margin-bottom: 24px;
     }
 
     label {
-        font-weight: 500;
-        font-size: 13px;
-        text-align: left;
-        display: block;
+        font-weight: 600;
+        font-size: 14px;
+        color: #374151;
         margin-bottom: 8px;
+        display: block;
     }
 
     .btn-light {
-        background-color: #E7E7E9;
+        background-color: #f8fafc;
+        border: 2px solid #e2e8f0;
         font-size: 14px;
         font-weight: 500;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+
+    .btn-light:hover {
+        background-color: #f1f5f9;
+        border-color: #cbd5e1;
     }
 
     .footer-text {
         text-align: center;
-        margin-top: 30px;
-        color: #6c757d;
-        font-size: 11px;
+        margin-top: 40px;
+        color: #6b7280;
+        font-size: 12px;
+        line-height: 1.5;
     }
 
     .primary-button {
         width: 100%;
-        padding: 12px;
-        font-size: 13px;
-        font-weight: 500;
-        background: #3e57da;
+        padding: 14px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        background: linear-gradient(135deg, #3e57da 0%, #4f46e5 100%);
         color: white;
         border: none;
-        border-radius: 5px;
+        border-radius: 8px;
         cursor: pointer;
-        margin: 10px 0 20px;
-        transition: background-color 0.3s;
+        margin: 8px 0 24px;
+        transition: all 0.2s ease;
+        position: relative;
+        overflow: hidden;
     }
 
     .primary-button:hover {
-        background: #344ca8;
+        background: linear-gradient(135deg, #344ca8 0%, #4338ca 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(62, 87, 218, 0.3);
+    }
+
+    .primary-button:active {
+        transform: translateY(0);
     }
 
     .text-primary {
         color: #3e57da !important;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s ease;
     }
 
+    .text-primary:hover {
+        color: #344ca8 !important;
+        text-decoration: underline;
+    }
+
+    .btn-link {
+        color: #3e57da !important;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s ease;
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .btn-link:hover {
+        color: #344ca8 !important;
+        text-decoration: underline;
+    }
+
+    .btn-outline-primary {
+        color: #3e57da;
+        border: 2px solid #3e57da;
+        background: transparent;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 8px 16px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        width: 100%;
+    }
+
+    .btn-outline-primary:hover {
+        background: #3e57da;
+        color: white;
+        border-color: #3e57da;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(62, 87, 218, 0.2);
+    }
+
+    .btn-outline-primary:focus {
+        outline: 2px solid #3e57da;
+        outline-offset: 2px;
+    }
+
+    .invalid-feedback {
+        font-size: 12px;
+        color: #dc2626;
+        margin-top: 6px;
+        font-weight: 500;
+    }
+
+    .text-muted {
+        color: #6b7280 !important;
+        line-height: 1.5;
+    }
+
+    /* Animation for container */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .container-box {
+        animation: fadeInUp 0.6s ease-out;
+    }
+
+    /* Responsive design */
     @media (max-width: 768px) {
         body {
-            padding: 15px;
+            padding: 16px;
         }
 
         .container-box {
-            padding: 20px;
+            padding: 32px 24px;
+            margin: 0;
         }
+
+        .heading-text {
+            font-size: 24px;
+        }
+
+        .logo-container img {
+            width: 120px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .container-box {
+            padding: 24px 20px;
+        }
+
+        .heading-text {
+            font-size: 22px;
+        }
+
+        .email-text {
+            font-size: 13px;
+        }
+    }
+
+    /* Loading state for button */
+    .primary-button:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Focus styles for accessibility */
+    .primary-button:focus,
+    .form-control:focus,
+    .btn-link:focus {
+        outline: 2px solid #3e57da;
+        outline-offset: 2px;
     }
 </style>
 
 <div class="container">
 
 <body>
-    <div class="logo-container">
-        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
-    </div>
-
     <div class="d-flex justify-content-center align-items-center">
         <div class="container-box text-center">
+            <div class="logo-container">
+                <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
+            </div>
             <h1 class="heading-text">Check your Email</h1>
             <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>
 
@@ -141,11 +319,11 @@
             <div class="mb-3">
                 <p class="email-text">
                     Can't find the email?
-                    <form method="POST" action="{{ route('verification.resend') }}" style="display:inline;">
-                        @csrf
-                        <button type="submit" class="btn btn-link p-0 m-0 align-baseline text-secondary" style="font-size: inherit;">Resend code</button>
-                    </form>
                 </p>
+                <form method="POST" action="{{ route('verification.resend') }}">
+                    @csrf
+                    <button type="submit" class="btn btn-outline-primary">Resend code</button>
+                </form>
             </div>
 
 

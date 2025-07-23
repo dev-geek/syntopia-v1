@@ -45,6 +45,11 @@ class PaymentController extends Controller
         return PaymentGateways::where('name', $normalizedName)->value('id');
     }
 
+    private function processPackageName($package)
+    {
+        return str_replace('-plan', '', strtolower($package));
+    }
+
     private function makeLicense($user = null)
     {
         $cacheKey = 'license_summary_' . ($user ? $user->id : 'general');
@@ -105,9 +110,10 @@ class PaymentController extends Controller
                 'Accept' => 'application/json'
             ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add', $payload);
 
-            Log::info("Licenese reposne", $response->json());
+            $responseData = $response->json();
+            Log::info("License response", $responseData);
 
-            if ($response->successful() && $response->json()['code'] === 200) {
+            if ($response->successful() && $responseData['code'] === 200) {
                 $user->update([
                     'license_key' => $licenseKey
                 ]);
@@ -119,9 +125,27 @@ class PaymentController extends Controller
                 ]);
                 return true;
             } else {
+                // Handle specific error codes
+                $errorCode = $responseData['code'] ?? null;
+                $errorMessage = $responseData['message'] ?? 'Unknown error';
+
+                if ($errorCode === 710) {
+                    Log::error('License API resource insufficiency', [
+                        'user_id' => $user->id,
+                        'tenant_id' => $tenantId,
+                        'error_code' => $errorCode,
+                        'error_message' => $errorMessage,
+                        'trace_id' => $responseData['traceId'] ?? null
+                    ]);
+                    // For resource insufficiency, we might want to retry later or notify admin
+                    return false;
+                }
+
                 Log::error('Failed to add license via API', [
                     'user_id' => $user->id,
                     'tenant_id' => $tenantId,
+                    'error_code' => $errorCode,
+                    'error_message' => $errorMessage,
                     'response' => $response->body(),
                 ]);
                 return false;
@@ -140,8 +164,15 @@ class PaymentController extends Controller
         \Log::info('[paddleCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
         Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
+        // Log Paddle configuration for debugging
+        Log::info('Paddle configuration', [
+            'api_key_exists' => !empty(config('payment.gateways.Paddle.api_key')),
+            'environment' => config('payment.gateways.Paddle.environment', 'sandbox'),
+            'api_url' => config('payment.gateways.Paddle.api_url')
+        ]);
+
         try {
-            $processedPackage = str_replace('-plan', '', strtolower($package));
+            $processedPackage = $this->processPackageName($package);
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
                 return $validation;
@@ -157,8 +188,14 @@ class PaymentController extends Controller
                 : 'https://sandbox-api.paddle.com';
 
             if (empty($apiKey)) {
-                Log::error('Paddle API key missing');
-                return response()->json(['error' => 'Payment configuration error'], 500);
+                Log::error('Paddle API key missing', [
+                    'environment' => $environment,
+                    'api_key_length' => strlen($apiKey ?? '')
+                ]);
+                return response()->json([
+                    'error' => 'Payment configuration error',
+                    'details' => 'Paddle API key is not configured'
+                ], 500);
             }
 
             $headers = [
@@ -167,19 +204,132 @@ class PaymentController extends Controller
             ];
 
             if (!$user->paddle_customer_id) {
-                $customerResponse = Http::withHeaders($headers)->post("{$apiBaseUrl}/customers", [
+                Log::info('Checking for existing Paddle customer', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+
+                // First, try to find existing customer by email
+                $existingCustomerResponse = Http::withHeaders($headers)
+                    ->get("{$apiBaseUrl}/customers", ['email' => $user->email]);
+
+                if ($existingCustomerResponse->successful()) {
+                    $customers = $existingCustomerResponse->json()['data'] ?? [];
+                    if (!empty($customers)) {
+                        $existingCustomer = $customers[0]; // Take the first matching customer
+                        $user->paddle_customer_id = $existingCustomer['id'];
+                        $user->save();
+
+                        Log::info('Found existing Paddle customer', [
+                            'user_id' => $user->id,
+                            'paddle_customer_id' => $existingCustomer['id']
+                        ]);
+                    }
+                }
+
+                // If no existing customer found, create a new one
+                if (!$user->paddle_customer_id) {
+                    Log::info('Creating new Paddle customer', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'name' => $user->name
+                    ]);
+
+                    $customerData = [
                     'email' => $user->email,
-                    'name' => $user->name,
+                    'name' => $user->name ?: ($user->first_name && $user->last_name ? $user->first_name . ' ' . $user->last_name : 'User'),
                     'custom_data' => ['user_id' => (string) $user->id]
+                ];
+
+                // Ensure name is not empty
+                if (empty($customerData['name']) || trim($customerData['name']) === '') {
+                    $customerData['name'] = 'User';
+                }
+
+                Log::info('Paddle customer creation request', [
+                    'url' => "{$apiBaseUrl}/customers",
+                    'data' => $customerData
+                ]);
+
+                $customerResponse = Http::withHeaders($headers)->post("{$apiBaseUrl}/customers", $customerData);
+
+                Log::info('Paddle customer creation response', [
+                    'status' => $customerResponse->status(),
+                    'body' => $customerResponse->body()
                 ]);
 
                 if (!$customerResponse->successful()) {
-                    Log::error('Paddle customer creation failed', ['user_id' => $user->id]);
-                    return response()->json(['error' => 'Customer setup failed'], 500);
-                }
+                    $responseData = $customerResponse->json();
 
-                $user->paddle_customer_id = $customerResponse->json()['data']['id'];
-                $user->save();
+                    // Check if customer already exists
+                    if ($customerResponse->status() === 409 &&
+                        isset($responseData['error']['code']) &&
+                        $responseData['error']['code'] === 'customer_already_exists') {
+
+                        Log::info('Paddle customer already exists, extracting customer ID', [
+                            'user_id' => $user->id,
+                            'response' => $responseData
+                        ]);
+
+                        // Extract customer ID from the error message
+                        $customerId = null;
+                        if (isset($responseData['error']['detail'])) {
+                            // The detail contains: "customer email conflicts with customer of id ctm_01k0q9qrqyxr4g23cy6y0921wg"
+                            if (preg_match('/customer of id ([a-zA-Z0-9_]+)/', $responseData['error']['detail'], $matches)) {
+                                $customerId = $matches[1];
+                            }
+                        }
+
+                        if ($customerId) {
+                            // Save the existing customer ID
+                            $user->paddle_customer_id = $customerId;
+                            $user->save();
+
+                            Log::info('Paddle customer ID saved from existing customer', [
+                                'user_id' => $user->id,
+                                'paddle_customer_id' => $customerId
+                            ]);
+                        } else {
+                            Log::error('Could not extract customer ID from Paddle response', [
+                                'user_id' => $user->id,
+                                'response' => $responseData
+                            ]);
+                            return response()->json([
+                                'error' => 'Customer setup failed',
+                                'details' => 'Could not retrieve existing customer information'
+                            ], 500);
+                        }
+                    } else {
+                        Log::error('Paddle customer creation failed', [
+                            'user_id' => $user->id,
+                            'status' => $customerResponse->status(),
+                            'response' => $customerResponse->body(),
+                            'request_data' => $customerData
+                        ]);
+                        return response()->json([
+                            'error' => 'Customer setup failed',
+                            'details' => $customerResponse->body()
+                        ], 500);
+                    }
+                } else {
+                    // Customer was created successfully
+                    $customerData = $customerResponse->json();
+                    if (!isset($customerData['data']['id'])) {
+                        Log::error('Paddle customer creation response missing customer ID', [
+                            'response' => $customerData
+                        ]);
+                        return response()->json(['error' => 'Customer setup failed - invalid response'], 500);
+                    }
+
+                    $user->paddle_customer_id = $customerData['data']['id'];
+                    $user->save();
+
+                    Log::info('Paddle customer created successfully', [
+                        'user_id' => $user->id,
+                        'paddle_customer_id' => $user->paddle_customer_id
+                    ]);
+                }
+                }
             }
 
             $productsResponse = Http::withHeaders($headers)
@@ -191,11 +341,22 @@ class PaymentController extends Controller
             }
 
             $products = $productsResponse->json()['data'];
+            Log::info('Available Paddle products', [
+                'products' => collect($products)->pluck('name')->toArray(),
+                'searching_for' => $package
+            ]);
+
             $matchingProduct = collect($products)->firstWhere('name', $package);
 
             if (!$matchingProduct) {
-                Log::error('Paddle product not found', ['package' => $package]);
-                return response()->json(['error' => 'Unavailable package'], 400);
+                Log::error('Paddle product not found', [
+                    'package' => $package,
+                    'available_products' => collect($products)->pluck('name')->toArray()
+                ]);
+                return response()->json([
+                    'error' => 'Unavailable package',
+                    'details' => "Package '{$package}' not found in Paddle products"
+                ], 400);
             }
 
             $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
@@ -257,7 +418,7 @@ class PaymentController extends Controller
         Log::info('FastSpring checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
-            $processedPackage = str_replace('-plan', '', strtolower($package));
+            $processedPackage = $this->processPackageName($package);
             $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
                 return $validation;
@@ -348,7 +509,7 @@ class PaymentController extends Controller
         ]);
 
         try {
-            $processedPackage = strtolower($package);
+            $processedPackage = $this->processPackageName($package);
             $user = Auth::user();
 
             if (!$user) {
@@ -668,13 +829,13 @@ class PaymentController extends Controller
                         'package' => $packageName,
                         'params' => $request->all()
                     ]);
-                    return redirect()->route('pricing')->with('error', 'Invalid payment parameters');
+                    return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Invalid payment parameters');
                 }
 
                 $isVerified = $this->verifyPayProGlobalPayment($orderId, $orderId);
                 if (!$isVerified) {
                     Log::error('PayProGlobal payment verification failed', ['order_id' => $orderId]);
-                    return redirect()->route('pricing')->with('error', 'Payment verification failed');
+                    return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Payment verification failed');
                 }
 
                 return $this->processPayment([
@@ -687,7 +848,14 @@ class PaymentController extends Controller
             }
 
             Log::error('Invalid gateway in success callback', ['gateway' => $gateway]);
-            return redirect()->route('pricing')->with('error', 'Invalid gateway');
+
+            // Extract package name from request for redirect
+            $packageName = $request->input('package_name') ??
+                          $request->query('package_name') ??
+                          $request->input('package') ??
+                          $request->query('package');
+
+            return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Invalid gateway');
         } catch (\Exception $e) {
             Log::error('Payment success processing failed', [
                 'error' => $e->getMessage(),
@@ -704,7 +872,13 @@ class PaymentController extends Controller
                 return redirect()->route('payments.license-error')->with('error', 'license_api_failed');
             }
 
-            return redirect()->route('pricing')->with('error', 'Payment processing failed');
+            // Extract package name from request for redirect
+            $packageName = $request->input('package_name') ??
+                          $request->query('package_name') ??
+                          $request->input('package') ??
+                          $request->query('package');
+
+            return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Payment processing failed');
         }
     }
 
@@ -1767,7 +1941,8 @@ class PaymentController extends Controller
         Log::info('Package upgrade requested', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
-            $validation = $this->validatePackageAndGetUser($package);
+            $processedPackage = $this->processPackageName($package);
+            $validation = $this->validatePackageAndGetUser($processedPackage);
             if (!is_array($validation)) {
                 return $validation;
             }
@@ -1907,6 +2082,157 @@ class PaymentController extends Controller
     {
         // PayProGlobal upgrade logic would go here
         return response()->json(['error' => 'PayProGlobal upgrade not yet implemented'], 501);
+    }
+
+    public function downgradeSubscription(Request $request)
+    {
+        Log::info('Package downgrade requested', ['user_id' => Auth::id()]);
+
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            $newPackage = $request->input('package');
+            if (!$newPackage) {
+                return response()->json(['error' => 'Package name is required'], 400);
+            }
+
+            // Process package name to lowercase
+            $processedPackage = $this->processPackageName($newPackage);
+
+            // Validate the new package
+            $packageData = Package::where('name', ucfirst($processedPackage))->first();
+            if (!$packageData) {
+                return response()->json(['error' => 'Invalid package selected'], 400);
+            }
+
+            // Check if user has an active subscription
+            if (!$user->is_subscribed || !$user->subscription_id) {
+                return response()->json(['error' => 'No active subscription to downgrade'], 400);
+            }
+
+            // Check if user has a payment gateway
+            if (!$user->payment_gateway_id) {
+                return response()->json(['error' => 'No payment gateway associated with subscription'], 400);
+            }
+
+            $gateway = $user->paymentGateway;
+            if (!$gateway) {
+                return response()->json(['error' => 'Payment gateway not found'], 400);
+            }
+
+            // Handle downgrade based on gateway
+            if ($gateway->name === 'Paddle') {
+                return $this->handlePaddleDowngrade($user, $packageData);
+            } elseif ($gateway->name === 'FastSpring') {
+                return $this->handleFastSpringDowngrade($user, $packageData);
+            } elseif ($gateway->name === 'Pay Pro Global') {
+                return $this->handlePayProGlobalDowngrade($user, $packageData);
+            } else {
+                return response()->json(['error' => 'Unsupported payment gateway for downgrade'], 400);
+            }
+        } catch (\Exception $e) {
+            Log::error('Package downgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id()
+            ]);
+            return response()->json(['error' => 'Downgrade failed'], 500);
+        }
+    }
+
+    private function handlePaddleDowngrade($user, $packageData)
+    {
+        try {
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
+            if (empty($apiKey)) {
+                Log::error('Paddle API key missing for downgrade');
+                return response()->json(['error' => 'Payment configuration error'], 500);
+            }
+
+            // Get the new price ID for the package
+            $productsResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->get("{$apiBaseUrl}/products", ['include' => 'prices']);
+
+            if (!$productsResponse->successful()) {
+                Log::error('Paddle products fetch failed for downgrade', ['status' => $productsResponse->status()]);
+                return response()->json(['error' => 'Product fetch failed'], 500);
+            }
+
+            $products = $productsResponse->json()['data'];
+            $matchingProduct = collect($products)->firstWhere('name', $packageData->name);
+
+            if (!$matchingProduct) {
+                Log::error('Paddle product not found for downgrade', ['package' => $packageData->name]);
+                return response()->json(['error' => 'Unavailable package'], 400);
+            }
+
+            $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
+            if (!$price) {
+                Log::error('No active prices found for downgrade', ['product_id' => $matchingProduct['id']]);
+                return response()->json(['error' => 'No active price'], 400);
+            }
+
+            // Update the subscription
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->patch("{$apiBaseUrl}/subscriptions/{$user->subscription_id}", [
+                'items' => [
+                    [
+                        'price_id' => $price['id'],
+                        'quantity' => 1
+                    ]
+                ],
+                'proration_billing_mode' => 'prorated_immediately'
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('Paddle subscription downgrade failed', [
+                    'status' => $response->status(),
+                    'response' => $response->body()
+                ]);
+                return response()->json(['error' => 'Downgrade failed'], 500);
+            }
+
+            // Update user's package in database
+            $user->update([
+                'package_id' => $packageData->id
+            ]);
+
+            Log::info('Paddle subscription downgraded successfully', [
+                'user_id' => $user->id,
+                'new_package' => $packageData->name
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subscription downgraded successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Paddle downgrade error', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Downgrade failed'], 500);
+        }
+    }
+
+    private function handleFastSpringDowngrade($user, $packageData)
+    {
+        // FastSpring downgrade logic would go here
+        return response()->json(['error' => 'FastSpring downgrade not implemented yet'], 501);
+    }
+
+    private function handlePayProGlobalDowngrade($user, $packageData)
+    {
+        // PayProGlobal downgrade logic would go here
+        return response()->json(['error' => 'PayProGlobal downgrade not implemented yet'], 501);
     }
 
     public function verifyOrder(Request $request, string $transactionId)
@@ -2113,5 +2439,57 @@ class PaymentController extends Controller
     public function handleLicenseError(Request $request)
     {
         return view('payments.license-error');
+    }
+
+    public function testPaddleConfiguration(Request $request)
+    {
+        try {
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
+            $config = [
+                'api_key_exists' => !empty($apiKey),
+                'api_key_length' => strlen($apiKey ?? ''),
+                'environment' => $environment,
+                'api_base_url' => $apiBaseUrl,
+                'api_url_config' => config('payment.gateways.Paddle.api_url')
+            ];
+
+            if (empty($apiKey)) {
+                return response()->json([
+                    'error' => 'Paddle API key not configured',
+                    'config' => $config
+                ], 500);
+            }
+
+            // Test API connection
+            $headers = [
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ];
+
+            $response = Http::withHeaders($headers)->get("{$apiBaseUrl}/products");
+
+            return response()->json([
+                'success' => $response->successful(),
+                'status' => $response->status(),
+                'config' => $config,
+                'products_count' => $response->successful() ? count($response->json()['data'] ?? []) : 0,
+                'products' => $response->successful() ? collect($response->json()['data'] ?? [])->pluck('name')->toArray() : []
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Paddle configuration test failed',
+                'message' => $e->getMessage(),
+                'config' => [
+                    'api_key_exists' => !empty(config('payment.gateways.Paddle.api_key')),
+                    'environment' => config('payment.gateways.Paddle.environment', 'sandbox')
+                ]
+            ], 500);
+        }
     }
 }

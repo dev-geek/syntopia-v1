@@ -47,6 +47,94 @@ class SubscriptionController extends Controller
             $user->paymentGateway->is_active;
     }
 
+    /**
+     * Get packages that can be upgraded to from the current package
+     */
+    private function getUpgradeablePackages($currentPackage)
+    {
+        if (!$currentPackage) {
+            return Package::where('price', '>', 0)->get();
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+
+        // For upgrade, we want packages with higher prices
+        return Package::where('price', '>', $currentPrice)
+            ->where('name', '!=', $currentPackage->name)
+            ->orderBy('price', 'asc')
+            ->get();
+    }
+
+    /**
+     * Get packages that can be downgraded to from the current package
+     */
+    private function getDowngradeablePackages($currentPackage)
+    {
+        if (!$currentPackage) {
+            return collect();
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+
+        // For downgrade, we want packages with lower prices
+        return Package::where('price', '<', $currentPrice)
+            ->where('name', '!=', $currentPackage->name)
+            ->orderBy('price', 'desc')
+            ->get();
+    }
+
+    /**
+     * Check if a specific package can be upgraded to from current package
+     */
+    private function canUpgradeToPackage($currentPackage, $targetPackage)
+    {
+        if (!$currentPackage || !$targetPackage) {
+            return false;
+        }
+
+        // Can't upgrade to the same package
+        if ($currentPackage->name === $targetPackage->name) {
+            return false;
+        }
+
+        // Can't upgrade to Enterprise (it's custom pricing)
+        if (strtolower($targetPackage->name) === 'enterprise') {
+            return false;
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+        $targetPrice = $targetPackage->price ?? 0;
+
+        // Can upgrade to packages with higher prices
+        return $targetPrice > $currentPrice;
+    }
+
+    /**
+     * Check if a specific package can be downgraded to from current package
+     */
+    private function canDowngradeToPackage($currentPackage, $targetPackage)
+    {
+        if (!$currentPackage || !$targetPackage) {
+            return false;
+        }
+
+        // Can't downgrade to the same package
+        if ($currentPackage->name === $targetPackage->name) {
+            return false;
+        }
+
+        // Can't downgrade to Enterprise (it's custom pricing)
+        if (strtolower($targetPackage->name) === 'enterprise') {
+            return false;
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+        $targetPrice = $targetPackage->price ?? 0;
+
+        // Can downgrade to packages with lower prices
+        return $targetPrice < $currentPrice;
+    }
+
     public function handleSubscription()
     {
         $user = Auth::user();
@@ -99,23 +187,10 @@ class SubscriptionController extends Controller
 
     public function downgrade(Request $request)
     {
-        $user = auth()->user();
-        $newPackage = $request->input('package');
-
-        try {
-            $result = $this->subscriptionService->downgradeSubscription($user, $newPackage);
-            return response()->json([
-                'success' => true,
-                'message' => 'Subscription downgraded successfully'
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Downgrade failed for user {$user->id}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage()
-            ], 400);
-        }
+        return $this->showSubscriptionPage('downgrade');
     }
+
+
 
     public function cancel(Request $request)
     {
@@ -238,10 +313,30 @@ class SubscriptionController extends Controller
         $gateways = collect($targetGateway ? [$targetGateway] : []);
         $packages = Package::select('name', 'price', 'duration', 'features')->get();
 
+        // Get current user's package
+        $currentUserPackage = $user->package;
+
+        // Determine which packages are available for upgrade/downgrade
+        $upgradeablePackages = $type === 'upgrade' ? $this->getUpgradeablePackages($currentUserPackage) : collect();
+        $downgradeablePackages = $type === 'downgrade' ? $this->getDowngradeablePackages($currentUserPackage) : collect();
+
+        // Create a map of package names to their availability status
+        $packageAvailability = [];
+        foreach ($packages as $package) {
+            if ($type === 'upgrade') {
+                $packageAvailability[$package->name] = $this->canUpgradeToPackage($currentUserPackage, $package);
+            } elseif ($type === 'downgrade') {
+                $packageAvailability[$package->name] = $this->canDowngradeToPackage($currentUserPackage, $package);
+            } else {
+                // For new subscriptions, all packages are available
+                $packageAvailability[$package->name] = true;
+            }
+        }
+
         return view('subscription.index', [
             'payment_gateways' => $gateways,
-            'currentPackage' => $user->package ? $user->package->name : null,
-            'currentPackagePrice' => $user->package ? $user->package->price : 0,
+            'currentPackage' => $currentUserPackage ? $currentUserPackage->name : null,
+            'currentPackagePrice' => $currentUserPackage ? $currentUserPackage->price : 0,
             'activeGateway' => $targetGateway,
             'currentLoggedInUserPaymentGateway' => $targetGateway ? $targetGateway->name : null,
             'userOriginalGateway' => $type === 'upgrade' ? ($targetGateway ? $targetGateway->name : null) : null,
@@ -251,7 +346,10 @@ class SubscriptionController extends Controller
             'isUpgrade' => $type === 'upgrade',
             'upgradeEligible' => $type === 'upgrade' && $targetGateway && $targetGateway->is_active,
             'hasActiveSubscription' => $this->hasActiveSubscription($user),
-            'selectedPackage' => $selectedPackage
+            'selectedPackage' => $selectedPackage,
+            'packageAvailability' => $packageAvailability,
+            'upgradeablePackages' => $upgradeablePackages,
+            'downgradeablePackages' => $downgradeablePackages
         ]);
     }
 }

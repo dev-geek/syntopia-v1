@@ -40,6 +40,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'is_subscribed',
         'tenant_id',
         'subscription_id',
+        'paddle_customer_id',
     ];
 
     protected $hidden = [

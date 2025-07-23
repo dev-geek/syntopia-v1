@@ -708,6 +708,17 @@
             opacity: 0.8;
         }
 
+        .card.disabled-package {
+            opacity: 0.6;
+            filter: grayscale(30%);
+        }
+
+        .card.disabled-package .btn.disabled {
+            background: #9ca3af !important;
+            color: #d1d5db !important;
+            border: 1px solid #d1d5db !important;
+        }
+
         .btn.cancel {
             background: #ef4444 !important;
             color: white !important;
@@ -1150,22 +1161,50 @@
             </p>
             <div class="pricing-grid">
                 @foreach ($packages as $package)
-                    <div class="card {{ $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light' }}">
+                    @php
+                        $isCurrentPackage = $currentPackage == $package->name;
+                        $isAvailable = isset($packageAvailability[$package->name]) ? $packageAvailability[$package->name] : true;
+                        $isDisabled = $isCurrentPackage || !$isAvailable;
+                        $cardClass = $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light';
+                        if ($isDisabled && !$isCurrentPackage) {
+                            $cardClass .= ' disabled-package';
+                        }
+                    @endphp
+                    <div class="card {{ $cardClass }}">
                         <h3>{{ $package->name }}</h3>
                         <p class="price">${{ number_format($package->price, 0) }} <span
                                 class="per-month">/{{ $package->duration }}</span></p>
 
-                        <button class="btn {{ $currentPackage == $package->name ? 'active' : 'dark' }} checkout-button"
+                        @php
+                            $isCurrentPackage = $currentPackage == $package->name;
+                            $isAvailable = isset($packageAvailability[$package->name]) ? $packageAvailability[$package->name] : true;
+                            $isDisabled = $isCurrentPackage || !$isAvailable;
+
+                            $buttonClass = $isCurrentPackage ? 'active' : ($isDisabled ? 'disabled' : 'dark');
+                            $buttonAction = $isCurrentPackage ? 'current' :
+                                (isset($isUpgrade) && $isUpgrade ? 'upgrade' :
+                                (isset($pageType) && $pageType === 'downgrade' ? 'downgrade' : 'new'));
+                        @endphp
+
+                        <button class="btn {{ $buttonClass }} checkout-button"
                             data-package="{{ $package->name }}"
-                            data-action="{{ $currentPackage == $package->name ? 'current' : (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice ? 'upgrade' : (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice ? 'downgrade' : 'new')) }}"
-                            {{ $currentPackage == $package->name || (isset($isUpgrade) && $isUpgrade && $package->price <= $currentPackagePrice && $package->name !== 'Enterprise') || (isset($pageType) && $pageType === 'downgrade' && $package->price >= $currentPackagePrice && $package->name !== 'Enterprise') ? 'disabled' : '' }}>
+                            data-action="{{ $buttonAction }}"
+                            {{ $isDisabled ? 'disabled' : '' }}>
                             @if ($package->name == 'Enterprise')
                                 Get in Touch
-                            @elseif ($currentPackage == $package->name)
+                            @elseif ($isCurrentPackage)
                                 ✓ Current Plan
-                            @elseif (isset($isUpgrade) && $isUpgrade && $package->price > $currentPackagePrice)
+                            @elseif (!$isAvailable)
+                                @if (isset($isUpgrade) && $isUpgrade)
+                                    Not Available for Upgrade
+                                @elseif (isset($pageType) && $pageType === 'downgrade')
+                                    Not Available for Downgrade
+                                @else
+                                    Not Available
+                                @endif
+                            @elseif (isset($isUpgrade) && $isUpgrade)
                                 Upgrade to {{ $package->name }}
-                            @elseif (isset($pageType) && $pageType === 'downgrade' && $package->price < $currentPackagePrice)
+                            @elseif (isset($pageType) && $pageType === 'downgrade')
                                 Downgrade to {{ $package->name }}
                             @else
                                 Get Started
@@ -1257,6 +1296,14 @@
                     return;
                 }
 
+                // Check if the package is available for the current action
+                const targetButton = document.querySelector(`[data-package="${normalizedPackageName}"]`);
+                if (!targetButton || targetButton.disabled || targetButton.classList.contains('disabled')) {
+                    console.error('Package not available for current action:', normalizedPackageName);
+                    showError('Package Not Available', `Package "${normalizedPackageName}" is not available for ${isUpgrade === 'true' ? 'upgrade' : pageType === 'downgrade' ? 'downgrade' : 'subscription'}.`);
+                    return;
+                }
+
                 // Prevent multiple auto-popups
                 if (sessionStorage.getItem('autoPopupTriggered') === 'true') {
                     console.log('Auto-popup already triggered, skipping');
@@ -1314,10 +1361,13 @@
                 button.addEventListener('click', function() {
                     const packageName = this.getAttribute('data-package');
                     const action = this.getAttribute('data-action');
-                    if (this.disabled || this.classList.contains('active')) {
-                        console.warn('Button click ignored - button is disabled or active', {
+                    if (this.disabled || this.classList.contains('active') || this.classList.contains('disabled')) {
+                        console.warn('Button click ignored - button is disabled, active, or not available', {
                             packageName,
-                            action
+                            action,
+                            disabled: this.disabled,
+                            hasActiveClass: this.classList.contains('active'),
+                            hasDisabledClass: this.classList.contains('disabled')
                         });
                         return;
                     }
@@ -1752,29 +1802,19 @@
                     const packageElement = button.closest('.card');
                     const packageName = button.getAttribute('data-package');
                     const action = button.getAttribute('data-action');
-                    const priceElement = packageElement.querySelector('.price');
-                    const priceText = priceElement.firstChild.nodeValue;
-                    const packagePrice = parseFloat(priceText.replace(/[^0-9.]/g, ''));
 
                     if (action === 'current') {
                         button.classList.add('active');
                         button.disabled = true;
                         button.innerHTML = '<span class="current-package-text">Current Plan</span>';
-                    } else if ((isUpgrade === 'true' && packagePrice <= currentPackagePrice &&
-                            packageName !== 'Enterprise') ||
-                        (pageType === 'downgrade' && packagePrice >= currentPackagePrice && packageName !==
-                            'Enterprise')) {
+                    } else if (button.disabled) {
                         button.classList.add('disabled');
-                        button.disabled = true;
-                        button.innerHTML = '<span class="not-upgrade-text">Not an ' + (isUpgrade ===
-                            'true' ? 'Upgrade' : 'Downgrade') + '</span>';
-                        packageElement.style.opacity = '0.6';
+                        packageElement.classList.add('disabled-package');
+                        // Keep the existing text from the server-side rendering
                     } else if (action === 'upgrade') {
-                        button.innerHTML = '<span class="upgrade-text">Upgrade to ' + packageName +
-                            '</span>';
+                        button.innerHTML = '<span class="upgrade-text">Upgrade to ' + packageName + '</span>';
                     } else if (action === 'downgrade') {
-                        button.innerHTML = '<span class="downgrade-text">Downgrade to ' + packageName +
-                            '</span>';
+                        button.innerHTML = '<span class="downgrade-text">Downgrade to ' + packageName + '</span>';
                     }
                 });
             }

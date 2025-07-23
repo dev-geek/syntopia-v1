@@ -11,7 +11,7 @@
             Swal.fire({
                 icon: 'error',
                 title: 'System Error',
-                text: 'There was a problem in the system while processing your payment. Please try again in a while.',
+                text: 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.',
                 confirmButtonText: 'Go to Dashboard',
                 allowOutsideClick: false,
                 allowEscapeKey: false
@@ -25,7 +25,7 @@
     <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif;">
         <div style="text-align: center;">
             <h1>Payment Processing Error</h1>
-            <p>There was a problem in the system while processing your payment. Please try again in a while.</p>
+            <p>There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.</p>
             <p>You will be redirected to your dashboard shortly.</p>
         </div>
     </div>

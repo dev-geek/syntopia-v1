@@ -55,6 +55,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             ->name('upgrade.package')
             ->middleware('throttle:10,1');
 
+        Route::post('/downgrade', [PaymentController::class, 'downgradeSubscription'])
+            ->name('downgrade')
+            ->middleware('throttle:10,1');
+
         Route::post('/cancel', [PaymentController::class, 'cancelSubscription'])
             ->name('cancel-subscription')
             ->middleware('throttle:10,1');
@@ -63,6 +67,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/verify-order/{transactionId}', [PaymentController::class, 'verifyOrder'])->name('verify-order');
         Route::get('/payproglobal/latest-order', [PaymentController::class, 'getLatestPayProGlobalOrder'])
             ->name('payproglobal.latest-order');
+
+        // Test endpoint for debugging
+        Route::get('/test-paddle-config', [PaymentController::class, 'testPaddleConfiguration'])
+            ->name('test.paddle-config');
     });
 
     // Orders
