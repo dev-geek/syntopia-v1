@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Traits\BusinessEmailValidation;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -19,7 +18,6 @@ use Illuminate\Support\Facades\DB;
 
 class RegisterController extends Controller
 {
-    use BusinessEmailValidation;
 
     /*
     |--------------------------------------------------------------------------
@@ -88,16 +86,6 @@ class RegisterController extends Controller
                 'email',
                 'max:255',
                 'unique:users',
-                function ($attribute, $value, $fail) {
-                    $isBusiness = $this->isBusinessEmail($value);
-                    Log::info('Email validation check', [
-                        'email' => $value,
-                        'is_business' => $isBusiness
-                    ]);
-                    if (!$isBusiness) {
-                        $fail('Please use your business email to register.');
-                    }
-                }
             ],
             'password' => [
                 'required',
@@ -159,11 +147,6 @@ class RegisterController extends Controller
                 'required',
                 'email',
                 'unique:users',
-                function ($attribute, $value, $fail) {
-                    if (!$this->isBusinessEmail($value)) {
-                        $fail('Please use your business email to register.');
-                    }
-                }
             ],
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
