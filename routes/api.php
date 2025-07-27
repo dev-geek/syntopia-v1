@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\PaymentController;
+use App\Http\Controllers\API\TokenDecryptionController;
 use App\Http\Controllers\SubscriptionController;
 use Illuminate\Http\Request;
 
@@ -23,6 +24,12 @@ Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebho
 
 // Test endpoint
 Route::post('/payproglobal/test', [PaymentController::class, 'testPayProGlobalWebhook'])->name('payproglobal.test');
+
+// Token decryption routes (for software auto-login)
+Route::prefix('token')->name('token.')->group(function () {
+    Route::match(['POST', 'OPTIONS'], '/decrypt', [TokenDecryptionController::class, 'decryptToken'])->name('decrypt');
+    Route::match(['POST', 'OPTIONS'], '/validate', [TokenDecryptionController::class, 'validateToken'])->name('validate');
+});
 
 // Authenticated API routes
 Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {

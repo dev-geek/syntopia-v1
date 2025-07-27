@@ -672,7 +672,7 @@
             <ul class="navbar-nav ml-auto">
                 @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item">
-                        <a href="https://live.syntopia.ai/login" class="btn btn-primary header-software-btn" target="_blank">
+                        <a href="{{ route('software.access') }}" class="btn btn-primary header-software-btn" target="_blank">
                             <i class="bi bi-box-arrow-up-right"></i>
                             <span class="d-none d-md-inline">ACCESS THE SOFTWARE</span>
                         </a>

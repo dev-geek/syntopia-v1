@@ -13,6 +13,7 @@ use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Auth\AdminForgotPasswordController;
 use App\Http\Controllers\Auth\AdminResetPasswordController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\SoftwareAccessController;
 use App\Models\Package;
 use Illuminate\Support\Facades\Auth;
 
@@ -93,7 +94,42 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
 
     // Orders
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+
+    // Software access routes
+    Route::get('/software/access', [SoftwareAccessController::class, 'redirectToSoftware'])->name('software.access');
+    Route::post('/software/token', [SoftwareAccessController::class, 'generateAccessToken'])->name('software.token');
 });
 
 // Laravel Auth Routes (customized)
 Auth::routes(['verify' => false]);
+
+// Test endpoint
+Route::post('/payproglobal/test', [PaymentController::class, 'testPayProGlobalWebhook'])->name('payproglobal.test');
+
+// Demo route for software login testing
+Route::get('/software-login-demo', function() {
+    return view('software-login-demo');
+})->name('software.login.demo');
+
+// Test token decryption route
+Route::get('/test-token/{token}', function($token) {
+    try {
+        $decryptedData = \Illuminate\Support\Facades\Crypt::decryptString($token);
+        $tokenData = json_decode($decryptedData, true);
+
+        return response()->json([
+            'success' => true,
+            'token_data' => [
+                'user_id' => $tokenData['user_id'] ?? 'N/A',
+                'email' => $tokenData['email'] ?? 'N/A',
+                'expires_at' => $tokenData['expires_at'] ?? 'N/A',
+                'is_expired' => \Carbon\Carbon::now()->timestamp > ($tokenData['expires_at'] ?? 0)
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+})->name('test.token');
