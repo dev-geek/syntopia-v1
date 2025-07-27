@@ -8,6 +8,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
+use App\Services\PasswordBindingService;
+use Illuminate\Support\Facades\Log;
 
 
 class SocialController extends Controller
@@ -16,11 +18,12 @@ class SocialController extends Controller
     {
         return Socialite::driver('google')->redirect();
     }
-    public function googleAuthentication()
+
+    public function googleAuthentication(PasswordBindingService $passwordBindingService)
     {
         try {
             // Get the user information from Google
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            $googleUser = Socialite::driver('google')->user();
 
             // Check if a user with the Google ID already exists
             $user = User::where('google_id', $googleUser->id)->first();
@@ -48,67 +51,149 @@ class SocialController extends Controller
                 $existingUser = User::where('email', $googleUser->email)->first();
 
                 if ($existingUser) {
-                    // Associate the Google ID with the existing user
-                    $existingUser->update([
-                        'google_id' => $googleUser->id,
-                        'email_verified_at' => Carbon::now(),
-                        'status' => 1 // Ensure user is activated
-                    ]);
-                    Auth::login($existingUser);
-                    if ($existingUser->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                        return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
-                    }
+                    // Try to link Google account with existing user
+                    try {
+                        // Generate a compliant password for the existing user
+                        $compliantPassword = $this->generateCompliantPassword();
 
-                    // For regular users, check subscription status
-                    if ($existingUser->hasRole('User')) {
-                        // Check for intended URL first
-                        if (session()->has('url.intended')) {
-                            $intendedUrl = session('url.intended');
-                            session()->forget('url.intended');
-                            return redirect()->to($intendedUrl)->with('login_success', 'Account linked with Google successfully');
+                        // Call password binding API for the existing user
+                        $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+
+                        if (!$apiResponse['success']) {
+                            Log::warning('Failed to bind password for existing user during Google link, proceeding with fallback', [
+                                'user_id' => $existingUser->id,
+                                'error' => $apiResponse['error_message']
+                            ]);
+
+                            // Fallback: Link account without updating password
+                            $existingUser->update([
+                                'google_id' => $googleUser->id,
+                                'email_verified_at' => Carbon::now(),
+                                'status' => 1
+                            ]);
+
+                            Auth::login($existingUser);
+
+                            return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Note: You may need to update your password later for full functionality.');
                         }
 
-                        if ($this->hasActiveSubscription($existingUser)) {
-                            return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Google successfully');
-                        } else {
-                            return redirect()->route('home')->with('login_success', 'Account linked with Google successfully');
-                        }
-                    }
+                        // Success: Update password and link account
+                        $existingUser->update([
+                            'google_id' => $googleUser->id,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1,
+                            'password' => Hash::make($compliantPassword),
+                            'subscriber_password' => $compliantPassword
+                        ]);
 
-                    return redirect()->route('user.profile')->with('login_success', 'Account linked with Google successfully');
+                        Auth::login($existingUser);
+                        return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Google successfully!');
+
+                    } catch (\Exception $e) {
+                        Log::error('Error during Google account linking', [
+                            'user_id' => $existingUser->id,
+                            'error' => $e->getMessage()
+                        ]);
+
+                        // Fallback: Link account without password update
+                        $existingUser->update([
+                            'google_id' => $googleUser->id,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1
+                        ]);
+
+                        Auth::login($existingUser);
+                        return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Please update your password in your profile for full functionality.');
+                    }
                 } else {
-                    // Create a new user
-                    $userData = User::create([
-                        'name' => $googleUser->name,
-                        'email' => $googleUser->email,
-                        'google_id' => $googleUser->id,
-                        'password' => Hash::make('12345678'), // Default password for the new user
-                        'email_verified_at' => Carbon::now(),
-                        'status' => 1,
-                        'verification_code' => null
-                    ]);
+                    // Create new user
+                    try {
+                        // Generate a compliant password for the new user
+                        $compliantPassword = $this->generateCompliantPassword();
 
-                    $userData->assignRole('User');
+                        // Call password binding API for the new user
+                        $apiResponse = $passwordBindingService->bindPassword(
+                            (new User())->forceFill(['email' => $googleUser->email]),
+                            $compliantPassword
+                        );
 
-                    if ($userData) {
+                        if (!$apiResponse['success']) {
+                            Log::warning('Failed to bind password for new Google user, proceeding with fallback', [
+                                'email' => $googleUser->email,
+                                'error' => $apiResponse['error_message']
+                            ]);
+
+                            // Fallback: Create user with temporary password
+                            $tempPassword = $this->generateCompliantPassword();
+                            $userData = User::create([
+                                'name' => $googleUser->name,
+                                'email' => $googleUser->email,
+                                'google_id' => $googleUser->id,
+                                'password' => Hash::make($tempPassword),
+                                'subscriber_password' => $tempPassword,
+                                'email_verified_at' => Carbon::now(),
+                                'status' => 1,
+                                'verification_code' => null
+                            ]);
+
+                            $userData->assignRole('User');
+                            Auth::login($userData);
+
+                            return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google. Please update your password in your profile for full functionality.');
+                        }
+
+                        // Success: Create user with proper password
+                        $userData = User::create([
+                            'name' => $googleUser->name,
+                            'email' => $googleUser->email,
+                            'google_id' => $googleUser->id,
+                            'password' => Hash::make($compliantPassword),
+                            'subscriber_password' => $compliantPassword,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1,
+                            'verification_code' => null
+                        ]);
+
+                        $userData->assignRole('User');
                         Auth::login($userData);
 
-                        // Check for intended URL first
-                        if (session()->has('url.intended')) {
-                            $intendedUrl = session('url.intended');
-                            session()->forget('url.intended');
-                            return redirect()->to($intendedUrl)->with('login_success', 'Welcome! Account created successfully with Google');
-                        }
+                        return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
 
-                        // New users should go to home since they don't have a subscription yet
-                        return redirect()->route('home')->with('login_success', 'Welcome! Account created successfully with Google');
+                    } catch (\Exception $e) {
+                        Log::error('Error creating new Google user', [
+                            'email' => $googleUser->email,
+                            'error' => $e->getMessage()
+                        ]);
+
+                        // Final fallback: Create user with basic info
+                        $tempPassword = $this->generateCompliantPassword();
+                        $userData = User::create([
+                            'name' => $googleUser->name,
+                            'email' => $googleUser->email,
+                            'google_id' => $googleUser->id,
+                            'password' => Hash::make($tempPassword),
+                            'subscriber_password' => $tempPassword,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1,
+                            'verification_code' => null
+                        ]);
+
+                        $userData->assignRole('User');
+                        Auth::login($userData);
+
+                        return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google. Please update your password in your profile for full functionality.');
                     }
                 }
             }
         } catch (\Exception $e) {
-            // Log the error and redirect to login with an error message
-            logger()->error('Google Authentication Error: ' . $e->getMessage());
-            return redirect()->route('login')->withErrors('Failed to authenticate with Google. Please try again.');
+            Log::error('Google Authentication Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return redirect()->route('login')
+                ->with('error', 'We encountered an issue connecting to Google. Please try again or use email login instead.')
+                ->withInput();
         }
     }
 
@@ -117,7 +202,7 @@ class SocialController extends Controller
         return Socialite::driver('facebook')->redirect();
     }
 
-    public function handleFacebookCallback()
+    public function handleFacebookCallback(PasswordBindingService $passwordBindingService)
     {
         try {
             $facebookUser = Socialite::driver('facebook')->user();
@@ -127,97 +212,208 @@ class SocialController extends Controller
 
             if ($user) {
                 Auth::login($user);
-
-                // Redirect based on role
-                if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                    return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
-                }
-
-                // For regular users, check subscription status
-                if ($user->hasRole('User')) {
-                    // Check for intended URL first
-                    if (session()->has('url.intended')) {
-                        $intendedUrl = session('url.intended');
-                        session()->forget('url.intended');
-                        return redirect()->to($intendedUrl)->with('login_success', 'User Login Successfully');
-                    }
-
-                    if ($this->hasActiveSubscription($user)) {
-                        return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
-                    } else {
-                        return redirect()->route('home')->with('login_success', 'User Login Successfully');
-                    }
-                }
-
-                return redirect()->route('user.profile')->with('login_success', 'User Login Successfully');
+                return $this->redirectBasedOnUserRole($user, 'User Login Successfully');
             } else {
                 // Check if user with same email exists
                 $existingUser = User::where('email', $facebookUser->email)->first();
 
                 if ($existingUser) {
-                    // Link Facebook account to existing user
-                    $existingUser->update([
-                        'facebook_id' => $facebookUser->id,
-                        'email_verified_at' => Carbon::now(),
-                        'status' => 1
-                    ]);
+                    // Try to link Facebook account with existing user
+                    try {
+                        // Generate a compliant password for the existing user
+                        $compliantPassword = $this->generateCompliantPassword();
 
-                    Auth::login($existingUser);
+                        // Call password binding API for the existing user
+                        $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
 
-                    // Redirect based on role
-                    if ($existingUser->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-                        return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
-                    }
+                        if (!$apiResponse['success']) {
+                            Log::warning('Failed to bind password for existing user during Facebook link, proceeding with fallback', [
+                                'user_id' => $existingUser->id,
+                                'error' => $apiResponse['error_message']
+                            ]);
 
-                    // For regular users, check subscription status
-                    if ($existingUser->hasRole('User')) {
-                        // Check for intended URL first
-                        if (session()->has('url.intended')) {
-                            $intendedUrl = session('url.intended');
-                            session()->forget('url.intended');
-                            return redirect()->to($intendedUrl)->with('login_success', 'Account linked with Facebook successfully');
+                            // Fallback: Link account without updating password
+                            $existingUser->update([
+                                'facebook_id' => $facebookUser->id,
+                                'email_verified_at' => Carbon::now(),
+                                'status' => 1
+                            ]);
+
+                            Auth::login($existingUser);
+                            return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Note: You may need to update your password later for full functionality.');
                         }
 
-                        if ($this->hasActiveSubscription($existingUser)) {
-                            return redirect()->route('user.dashboard')->with('login_success', 'Account linked with Facebook successfully');
-                        } else {
-                            return redirect()->route('home')->with('login_success', 'Account linked with Facebook successfully');
-                        }
-                    }
+                        // Success: Update password and link account
+                        $existingUser->update([
+                            'facebook_id' => $facebookUser->id,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1,
+                            'password' => Hash::make($compliantPassword),
+                            'subscriber_password' => $compliantPassword
+                        ]);
 
-                    return redirect()->route('user.profile')->with('login_success', 'Account linked with Facebook successfully');
+                        Auth::login($existingUser);
+                        return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Facebook successfully!');
+
+                    } catch (\Exception $e) {
+                        Log::error('Error during Facebook account linking', [
+                            'user_id' => $existingUser->id,
+                            'error' => $e->getMessage()
+                        ]);
+
+                        // Fallback: Link account without password update
+                        $existingUser->update([
+                            'facebook_id' => $facebookUser->id,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1
+                        ]);
+
+                        Auth::login($existingUser);
+                        return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Please update your password in your profile for full functionality.');
+                    }
                 } else {
                     // Create new user
-                    $newUser = User::create([
-                        'name' => $facebookUser->name,
-                        'email' => $facebookUser->email,
-                        'facebook_id' => $facebookUser->id,
-                        'password' => Hash::make('12345678'),
-                        'email_verified_at' => Carbon::now(),
-                        'status' => 1,
-                        'verification_code' => null
-                    ]);
+                    try {
+                        // Generate a compliant password for the new user
+                        $compliantPassword = $this->generateCompliantPassword();
 
-                    // Assign default role
-                    $newUser->assignRole('User');
+                        // Call password binding API for the new user
+                        $apiResponse = $passwordBindingService->bindPassword(
+                            (new User())->forceFill(['email' => $facebookUser->email]),
+                            $compliantPassword
+                        );
 
-                    Auth::login($newUser);
+                        if (!$apiResponse['success']) {
+                            Log::warning('Failed to bind password for new Facebook user, proceeding with fallback', [
+                                'email' => $facebookUser->email,
+                                'error' => $apiResponse['error_message']
+                            ]);
 
-                    // Check for intended URL first
-                    if (session()->has('url.intended')) {
-                        $intendedUrl = session('url.intended');
-                        session()->forget('url.intended');
-                        return redirect()->to($intendedUrl)->with('login_success', 'Welcome! Account created successfully with Facebook');
+                            // Fallback: Create user with temporary password
+                            $tempPassword = $this->generateCompliantPassword();
+                            $newUser = User::create([
+                                'name' => $facebookUser->name,
+                                'email' => $facebookUser->email,
+                                'facebook_id' => $facebookUser->id,
+                                'password' => Hash::make($tempPassword),
+                                'subscriber_password' => $tempPassword,
+                                'email_verified_at' => Carbon::now(),
+                                'status' => 1,
+                                'verification_code' => null
+                            ]);
+
+                            $newUser->assignRole('User');
+                            Auth::login($newUser);
+
+                            return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook. Please update your password in your profile for full functionality.');
+                        }
+
+                        // Success: Create user with proper password
+                        $newUser = User::create([
+                            'name' => $facebookUser->name,
+                            'email' => $facebookUser->email,
+                            'facebook_id' => $facebookUser->id,
+                            'password' => Hash::make($compliantPassword),
+                            'subscriber_password' => $compliantPassword,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1,
+                            'verification_code' => null
+                        ]);
+
+                        $newUser->assignRole('User');
+                        Auth::login($newUser);
+
+                        return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook');
+
+                    } catch (\Exception $e) {
+                        Log::error('Error creating new Facebook user', [
+                            'email' => $facebookUser->email,
+                            'error' => $e->getMessage()
+                        ]);
+
+                        // Final fallback: Create user with basic info
+                        $tempPassword = $this->generateCompliantPassword();
+                        $newUser = User::create([
+                            'name' => $facebookUser->name,
+                            'email' => $facebookUser->email,
+                            'facebook_id' => $facebookUser->id,
+                            'password' => Hash::make($tempPassword),
+                            'subscriber_password' => $tempPassword,
+                            'email_verified_at' => Carbon::now(),
+                            'status' => 1,
+                            'verification_code' => null
+                        ]);
+
+                        $newUser->assignRole('User');
+                        Auth::login($newUser);
+
+                        return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook. Please update your password in your profile for full functionality.');
                     }
-
-                    return redirect()->route('profile')->with('login_success', 'Welcome! Account created successfully with Facebook');
                 }
             }
         } catch (\Exception $e) {
-            // dd($e->getMessage());
-            return redirect()->route('login')->withErrors('Failed to authenticate with Facebook. Please try again.');
+            Log::error('Facebook Authentication Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return redirect()->route('login')
+                ->with('error', 'We encountered an issue connecting to Facebook. Please try again or use email login instead.')
+                ->withInput();
+        }
+    }
+
+    /**
+     * Generate a password that meets Xiaoice API requirements
+     */
+    private function generateCompliantPassword(): string
+    {
+        $uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $lowercase = 'abcdefghijklmnopqrstuvwxyz';
+        $numbers = '0123456789';
+        $special = ',.<>{}~!@#$%^&_';
+
+        // Ensure at least one character from each required category
+        $password = $uppercase[random_int(0, strlen($uppercase) - 1)]; // One uppercase
+        $password .= $lowercase[random_int(0, strlen($lowercase) - 1)]; // One lowercase
+        $password .= $numbers[random_int(0, strlen($numbers) - 1)]; // One number
+        $password .= $special[random_int(0, strlen($special) - 1)]; // One special
+
+        // Fill the rest with random characters from all categories
+        $allChars = $uppercase . $lowercase . $numbers . $special;
+        for ($i = 4; $i < 12; $i++) { // Total length 12 characters
+            $password .= $allChars[random_int(0, strlen($allChars) - 1)];
         }
 
+        // Shuffle the password to make it more random
+        return str_shuffle($password);
+    }
+
+    /**
+     * Redirect user based on their role and subscription status
+     */
+    private function redirectBasedOnUserRole($user, $message)
+    {
+        // Check for intended URL first
+        if (session()->has('url.intended')) {
+            $intendedUrl = session('url.intended');
+            session()->forget('url.intended');
+            return redirect()->to($intendedUrl)->with('login_success', $message);
+        }
+
+        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            return redirect()->route('admin.dashboard')->with('login_success', $message);
+        }
+
+        if ($user->hasRole('User')) {
+            if ($this->hasActiveSubscription($user)) {
+                return redirect()->route('user.dashboard')->with('login_success', $message);
+            } else {
+                return redirect()->route('home')->with('login_success', $message);
+            }
+        }
+
+        return redirect()->route('user.profile')->with('login_success', $message);
     }
 
     /**
