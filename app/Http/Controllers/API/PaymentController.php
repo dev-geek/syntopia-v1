@@ -50,6 +50,46 @@ class PaymentController extends Controller
         return str_replace('-plan', '', strtolower($package));
     }
 
+    private function checkLicenseAvailability()
+    {
+        $cacheKey = 'license_availability_check';
+        $summaryData = Cache::remember($cacheKey, 300, function () {
+            $summary = Http::withHeaders([
+                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/channel/inventory/subscription/summary/search', [
+                'pageIndex' => 1,
+                'pageSize' => 100,
+                'appIds' => [1],
+                'subscriptionType' => 'license',
+            ]);
+
+            if (!$summary->successful() || $summary->json()['code'] !== 200) {
+                Log::error('Failed to fetch subscription summary in checkLicenseAvailability', [
+                    'response' => $summary->body(),
+                ]);
+                return null;
+            }
+
+            return $summary->json()['data']['data'] ?? [];
+        });
+
+        if (empty($summaryData)) {
+            Log::error('No subscription data found in license availability check');
+            return false;
+        }
+
+        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        if (!$licenseKey) {
+            Log::error('No license codes available in license availability check');
+            return false;
+        }
+
+        Log::info('License availability check passed', ['available' => true]);
+        return true;
+    }
+
     private function makeLicense($user = null)
     {
         $cacheKey = 'license_summary_' . ($user ? $user->id : 'general');
@@ -180,6 +220,33 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            // Check license availability for paid packages before proceeding with checkout
+            if (!$packageData->isFree()) {
+                Log::info('Checking license availability for paid package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name,
+                    'package_price' => $packageData->price
+                ]);
+
+                if (!$this->checkLicenseAvailability()) {
+                    Log::error('License not available for paid package - blocking checkout', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name
+                    ]);
+                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                }
+
+                Log::info('License availability confirmed for paid package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            } else {
+                Log::info('Skipping license availability check for free package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            }
 
             $apiKey = config('payment.gateways.Paddle.api_key');
             $environment = config('payment.gateways.Paddle.environment', 'sandbox');
@@ -428,6 +495,33 @@ class PaymentController extends Controller
             $packageData = $validation['packageData'];
             $isUpgrade = $request->input('is_upgrade', false);
 
+            // Check license availability for paid packages before proceeding with checkout
+            if (!$packageData->isFree()) {
+                Log::info('Checking license availability for paid package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name,
+                    'package_price' => $packageData->price
+                ]);
+
+                if (!$this->checkLicenseAvailability()) {
+                    Log::error('License not available for paid package - blocking checkout', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name
+                    ]);
+                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                }
+
+                Log::info('License availability confirmed for paid package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            } else {
+                Log::info('Skipping license availability check for free package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            }
+
             $storefront = config('payment.gateways.FastSpring.storefront');
             if (!$storefront) {
                 Log::error('FastSpring storefront not configured');
@@ -521,6 +615,33 @@ class PaymentController extends Controller
             if (!$packageData) {
                 Log::error('Package not found', ['package' => $processedPackage]);
                 return response()->json(['error' => 'Invalid package selected'], 400);
+            }
+
+            // Check license availability for paid packages before proceeding with checkout
+            if (!$packageData->isFree()) {
+                Log::info('Checking license availability for paid package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name,
+                    'package_price' => $packageData->price
+                ]);
+
+                if (!$this->checkLicenseAvailability()) {
+                    Log::error('License not available for paid package - blocking checkout', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name
+                    ]);
+                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                }
+
+                Log::info('License availability confirmed for paid package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            } else {
+                Log::info('Skipping license availability check for free package', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
             }
 
             $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
@@ -1991,6 +2112,33 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            // Check license availability for paid packages before proceeding with upgrade
+            if (!$packageData->isFree()) {
+                Log::info('Checking license availability for paid package upgrade', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name,
+                    'package_price' => $packageData->price
+                ]);
+
+                if (!$this->checkLicenseAvailability()) {
+                    Log::error('License not available for paid package upgrade - blocking upgrade', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name
+                    ]);
+                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                }
+
+                Log::info('License availability confirmed for paid package upgrade', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            } else {
+                Log::info('Skipping license availability check for free package upgrade', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+            }
 
             // Check if user has an active subscription
             if (!$user->is_subscribed || !$user->subscription_id) {

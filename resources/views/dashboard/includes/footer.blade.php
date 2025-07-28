@@ -13,7 +13,7 @@
 
                 <div class="footer-center">
                     <div class="footer-links">
-                        <a href="https://syntopia.ai" target="_blank" class="footer-link">
+                        <a href="https://live.syntopia.ai/login" target="_blank" class="footer-link">
                             <i class="fas fa-globe"></i> Website
                         </a>
                         <a href="mailto:info@syntopia.ai" class="footer-link">
