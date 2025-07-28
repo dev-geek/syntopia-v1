@@ -335,12 +335,12 @@
                 <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Logo"
                     class="logo">
                 <h2>Welcome to Syntopia</h2>
-                <p>Use your <strong>email</strong> for a better experience</p>
+                <p>Use your <strong>work email</strong> for a better experience</p>
                 <form method="POST" action="{{ route('login') }}" id="loginForm">
                     @csrf
                     <div class="input-field">
-                        <label for="email">Email</label>
-                        <input type="email" placeholder="Type your email..." name="email" value="{{ old('email') }}" required autocomplete="email" autofocus id="email" class="form-control @error('email') is-invalid @enderror@">
+                        <label for="work-email">Work email</label>
+                        <input type="email" placeholder="Type your work email..." name="email" value="{{ old('email') }}" required autocomplete="email" autofocus id="email" class="form-control @error('email') is-invalid @enderror@">
                         @error('email')
                             <span class="invalid-feedback" role="alert" style="text-align: left;padding-bottom: 10px;">
                                 <strong>{{ $message }}</strong>
