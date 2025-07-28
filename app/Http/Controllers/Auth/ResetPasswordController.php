@@ -29,7 +29,7 @@ class ResetPasswordController extends Controller
      *
      * @var string
      */
-    protected $redirectTo = '/pricing';
+    protected $redirectTo = '/user/dashboard';
 
     /**
      * Reset the given user's password.

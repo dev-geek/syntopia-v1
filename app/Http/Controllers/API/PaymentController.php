@@ -90,10 +90,14 @@ class PaymentController extends Controller
         return true;
     }
 
-    private function makeLicense($user = null)
+    private function makeLicense($user = null, $bypassCache = false)
     {
-        $cacheKey = 'license_summary_' . ($user ? $user->id : 'general');
-        $summaryData = Cache::remember($cacheKey, 300, function () {
+        if ($bypassCache) {
+            // Make fresh API call without using cache
+            Log::info('Making fresh license API call (bypassing cache)', [
+                'user_id' => $user ? $user->id : null
+            ]);
+
             $summary = Http::withHeaders([
                 'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
                 'Content-Type' => 'application/json',
@@ -106,27 +110,58 @@ class PaymentController extends Controller
             ]);
 
             if (!$summary->successful() || $summary->json()['code'] !== 200) {
-                Log::error('Failed to fetch subscription summary in makeLicense', [
+                Log::error('Failed to fetch subscription summary in makeLicense (fresh call)', [
                     'response' => $summary->body(),
                 ]);
                 return null;
             }
 
-            return $summary->json()['data']['data'] ?? [];
-        });
+            $summaryData = $summary->json()['data']['data'] ?? [];
+        } else {
+            // Use cache for other scenarios
+            $cacheKey = 'license_summary_' . ($user ? $user->id : 'general');
+            $summaryData = Cache::remember($cacheKey, 300, function () {
+                $summary = Http::withHeaders([
+                    'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/channel/inventory/subscription/summary/search', [
+                    'pageIndex' => 1,
+                    'pageSize' => 100,
+                    'appIds' => [1],
+                    'subscriptionType' => 'license',
+                ]);
+
+                if (!$summary->successful() || $summary->json()['code'] !== 200) {
+                    Log::error('Failed to fetch subscription summary in makeLicense', [
+                        'response' => $summary->body(),
+                    ]);
+                    return null;
+                }
+
+                return $summary->json()['data']['data'] ?? [];
+            });
+        }
 
         if (empty($summaryData)) {
-            Log::error('No subscription data found in cached summary response');
+            Log::error('No subscription data found in summary response', [
+                'bypass_cache' => $bypassCache
+            ]);
             return null;
         }
 
         $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
         if (!$licenseKey) {
-            Log::error('Subscription code not found in cached summary response');
+            Log::error('Subscription code not found in summary response', [
+                'bypass_cache' => $bypassCache
+            ]);
             return null;
         }
 
-        Log::info('License key retrieved from cache or API', ['license_key' => $licenseKey]);
+        Log::info('License key retrieved', [
+            'license_key' => $licenseKey,
+            'bypass_cache' => $bypassCache
+        ]);
         return $licenseKey;
     }
 
@@ -220,29 +255,50 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+            $isUpgrade = $request->input('is_upgrade', false);
+            $isDowngrade = $request->input('is_downgrade', false);
 
-            // Check license availability for paid packages before proceeding with checkout
+            // For paid packages, check license availability from API and update user's license
             if (!$packageData->isFree()) {
-                Log::info('Checking license availability for paid package', [
+                Log::info('Checking license availability from API for paid package', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'package_price' => $packageData->price
+                    'package_price' => $packageData->price,
+                    'is_upgrade' => $isUpgrade,
+                    'is_downgrade' => $isDowngrade
                 ]);
 
-                if (!$this->checkLicenseAvailability()) {
-                    Log::error('License not available for paid package - blocking checkout', [
+                // Get license from API (bypass cache for fresh license)
+                $licenseKey = $this->makeLicense($user, true);
+                if (!$licenseKey) {
+                    Log::error('License not available from API - blocking checkout', [
                         'user_id' => $user->id,
                         'package_name' => $packageData->name
                     ]);
-                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
                 }
 
-                Log::info('License availability confirmed for paid package', [
+                // Try to add license to external API first
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license to external API - blocking checkout', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name,
+                        'license_key' => $licenseKey
+                    ]);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
+                }
+
+                // Only update user's license in database after successful external API call
+                $user->update(['license_key' => $licenseKey]);
+
+                Log::info('License successfully added to external API and updated in user table', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name
+                    'package_name' => $packageData->name,
+                    'license_key' => $licenseKey
                 ]);
             } else {
-                Log::info('Skipping license availability check for free package', [
+                Log::info('Skipping license check for free package', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -494,29 +550,49 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
             $isUpgrade = $request->input('is_upgrade', false);
+            $isDowngrade = $request->input('is_downgrade', false);
 
-            // Check license availability for paid packages before proceeding with checkout
+            // For paid packages, check license availability from API and update user's license
             if (!$packageData->isFree()) {
-                Log::info('Checking license availability for paid package', [
+                Log::info('Checking license availability from API for paid package', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'package_price' => $packageData->price
+                    'package_price' => $packageData->price,
+                    'is_upgrade' => $isUpgrade,
+                    'is_downgrade' => $isDowngrade
                 ]);
 
-                if (!$this->checkLicenseAvailability()) {
-                    Log::error('License not available for paid package - blocking checkout', [
+                // Get license from API (bypass cache for fresh license)
+                $licenseKey = $this->makeLicense($user, true);
+                if (!$licenseKey) {
+                    Log::error('License not available from API - blocking checkout', [
                         'user_id' => $user->id,
                         'package_name' => $packageData->name
                     ]);
-                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
                 }
 
-                Log::info('License availability confirmed for paid package', [
+                // Try to add license to external API first
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license to external API - blocking checkout', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name,
+                        'license_key' => $licenseKey
+                    ]);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
+                }
+
+                // Only update user's license in database after successful external API call
+                $user->update(['license_key' => $licenseKey]);
+
+                Log::info('License successfully added to external API and updated in user table', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name
+                    'package_name' => $packageData->name,
+                    'license_key' => $licenseKey
                 ]);
             } else {
-                Log::info('Skipping license availability check for free package', [
+                Log::info('Skipping license check for free package', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -617,28 +693,47 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Invalid package selected'], 400);
             }
 
-            // Check license availability for paid packages before proceeding with checkout
+            // For paid packages, check license availability from API and update user's license
             if (!$packageData->isFree()) {
-                Log::info('Checking license availability for paid package', [
+                Log::info('Checking license availability from API for paid package', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'package_price' => $packageData->price
+                    'package_price' => $packageData->price,
+                    'is_upgrade' => $request->input('is_upgrade', false),
+                    'is_downgrade' => $request->input('is_downgrade', false)
                 ]);
 
-                if (!$this->checkLicenseAvailability()) {
-                    Log::error('License not available for paid package - blocking checkout', [
+                // Get license from API (bypass cache for fresh license)
+                $licenseKey = $this->makeLicense($user, true);
+                if (!$licenseKey) {
+                    Log::error('License not available from API - blocking checkout', [
                         'user_id' => $user->id,
                         'package_name' => $packageData->name
                     ]);
-                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
                 }
 
-                Log::info('License availability confirmed for paid package', [
+                // Try to add license to external API first
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license to external API - blocking checkout', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name,
+                        'license_key' => $licenseKey
+                    ]);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
+                }
+
+                // Only update user's license in database after successful external API call
+                $user->update(['license_key' => $licenseKey]);
+
+                Log::info('License successfully added to external API and updated in user table', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name
+                    'package_name' => $packageData->name,
+                    'license_key' => $licenseKey
                 ]);
             } else {
-                Log::info('Skipping license availability check for free package', [
+                Log::info('Skipping license check for free package', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -1080,112 +1175,14 @@ class PaymentController extends Controller
                 'order_amount' => $order->amount
             ]);
 
-            if (!$user->license_key || $action === 'upgrade') {
-                // Skip license creation for free packages
-                if ($package->isFree()) {
-                    Log::info('Skipping license generation for free package', [
-                        'user_id' => $user->id,
-                        'package_name' => $package->name,
-                        'package_price' => $package->price
-                    ]);
+            // Always check license availability from API for paid packages, regardless of existing license
+            if ($package->isFree()) {
+                Log::info('Skipping license generation for free package', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'package_price' => $package->price
+                ]);
 
-                    $userUpdateData = [
-                        'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
-                        'package_id' => $package->id,
-                        'subscription_starts_at' => now(),
-                        'is_subscribed' => true,
-                        'subscription_id' => $subscriptionId
-                    ];
-
-                    Log::info('Updating user for free package without license', [
-                        'user_id' => $user->id,
-                        'update_data' => $userUpdateData
-                    ]);
-
-                    $user->update($userUpdateData);
-
-                    Log::info('User updated successfully for free package', [
-                        'user_id' => $user->id,
-                        'is_subscribed' => $user->is_subscribed,
-                        'package_id' => $user->package_id,
-                        'subscription_id' => $user->subscription_id
-                    ]);
-
-                    // Mark order as completed
-                    $order->update(['status' => 'completed']);
-                } else {
-                    Log::info('Generating license key', [
-                        'user_id' => $user->id,
-                        'has_existing_license' => !empty($user->license_key),
-                        'action' => $action
-                    ]);
-
-                    $licenseKey = $this->makeLicense($user);
-                    if (!$licenseKey) {
-                        Log::error('Failed to generate license key', ['user_id' => $user->id]);
-                        // Do not mark as completed/subscribed, return error
-                        throw new \Exception('License generation failed');
-                    }
-
-                    Log::info('License key generated', [
-                        'user_id' => $user->id,
-                        'license_key' => $licenseKey
-                    ]);
-
-                    $userUpdateData = [
-                        'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
-                        'package_id' => $package->id,
-                        'subscription_starts_at' => now(),
-                        'license_key' => $licenseKey,
-                        'is_subscribed' => true,
-                        'subscription_id' => $subscriptionId
-                    ];
-
-                    Log::info('Updating user with license', [
-                        'user_id' => $user->id,
-                        'update_data' => $userUpdateData
-                    ]);
-
-                    $user->update($userUpdateData);
-
-                    Log::info('User updated successfully with license', [
-                        'user_id' => $user->id,
-                        'is_subscribed' => $user->is_subscribed,
-                        'package_id' => $user->package_id,
-                        'subscription_id' => $user->subscription_id,
-                        'license_key' => $user->license_key
-                    ]);
-
-                    // Try to add license to external API - if this fails, we need to rollback
-                    $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
-                    if (!$licenseApiSuccess) {
-                        Log::error('Failed to add license via API - rolling back payment process', [
-                            'user_id' => $user->id,
-                            'license_key' => $licenseKey,
-                            'transaction_id' => $transactionId
-                        ]);
-
-                        // Rollback user changes
-                        $user->update([
-                            'payment_gateway_id' => null,
-                            'package_id' => null,
-                            'subscription_starts_at' => null,
-                            'license_key' => null,
-                            'is_subscribed' => false,
-                            'subscription_id' => null
-                        ]);
-
-                        // Mark order as failed
-                        $order->update(['status' => 'failed']);
-
-                        // Throw exception to trigger rollback and show error
-                        throw new \Exception('license_api_failed');
-                    }
-
-                    // Now mark order as completed
-                    $order->update(['status' => 'completed']);
-                }
-            } else {
                 $userUpdateData = [
                     'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
                     'package_id' => $package->id,
@@ -1194,19 +1191,89 @@ class PaymentController extends Controller
                     'subscription_id' => $subscriptionId
                 ];
 
-                Log::info('Updating user without license (existing license)', [
+                Log::info('Updating user for free package without license', [
                     'user_id' => $user->id,
                     'update_data' => $userUpdateData
                 ]);
 
                 $user->update($userUpdateData);
 
-                Log::info('User updated successfully without license', [
+                Log::info('User updated successfully for free package', [
                     'user_id' => $user->id,
                     'is_subscribed' => $user->is_subscribed,
                     'package_id' => $user->package_id,
                     'subscription_id' => $user->subscription_id
                 ]);
+
+                // Mark order as completed
+                $order->update(['status' => 'completed']);
+            } else {
+                Log::info('Generating license key', [
+                    'user_id' => $user->id,
+                    'action' => $action
+                ]);
+
+                $licenseKey = $this->makeLicense($user, true);
+                if (!$licenseKey) {
+                    Log::error('Failed to generate license key', ['user_id' => $user->id]);
+                    // Do not mark as completed/subscribed, return error
+                    throw new \Exception('License generation failed');
+                }
+
+                Log::info('License key generated', [
+                    'user_id' => $user->id,
+                    'license_key' => $licenseKey
+                ]);
+
+                $userUpdateData = [
+                    'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
+                    'package_id' => $package->id,
+                    'subscription_starts_at' => now(),
+                    'license_key' => $licenseKey,
+                    'is_subscribed' => true,
+                    'subscription_id' => $subscriptionId
+                ];
+
+                Log::info('Updating user with license', [
+                    'user_id' => $user->id,
+                    'update_data' => $userUpdateData
+                ]);
+
+                $user->update($userUpdateData);
+
+                Log::info('User updated successfully with license', [
+                    'user_id' => $user->id,
+                    'is_subscribed' => $user->is_subscribed,
+                    'package_id' => $user->package_id,
+                    'subscription_id' => $user->subscription_id,
+                    'license_key' => $user->license_key
+                ]);
+
+                // Try to add license to external API - if this fails, we need to rollback
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license via API - rolling back payment process', [
+                        'user_id' => $user->id,
+                        'license_key' => $licenseKey,
+                        'transaction_id' => $transactionId
+                    ]);
+
+                    // Rollback user changes
+                    $user->update([
+                        'payment_gateway_id' => null,
+                        'package_id' => null,
+                        'subscription_starts_at' => null,
+                        'license_key' => null,
+                        'is_subscribed' => false,
+                        'subscription_id' => null
+                    ]);
+
+                    // Mark order as failed
+                    $order->update(['status' => 'failed']);
+
+                    // Throw exception to trigger rollback and show error
+                    throw new \Exception('license_api_failed');
+                }
 
                 // Now mark order as completed
                 $order->update(['status' => 'completed']);
@@ -1994,62 +2061,54 @@ class PaymentController extends Controller
                 'order_package_id' => $order->package_id
             ]);
 
-            // Generate license if needed (skip for free packages)
-            if (!$user->license_key) {
-                if ($package->isFree()) {
-                    Log::info('Skipping license generation for free package from webhook', [
+            // Always check license availability from API for paid packages, regardless of existing license
+            if ($package->isFree()) {
+                Log::info('Skipping license generation for free package from webhook', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'package_price' => $package->price
+                ]);
+            } else {
+                Log::info('Generating license key from webhook', [
+                    'user_id' => $user->id
+                ]);
+
+                $licenseKey = $this->makeLicense($user, true);
+                if ($licenseKey) {
+                    Log::info('License key generated from webhook', [
                         'user_id' => $user->id,
-                        'package_name' => $package->name,
-                        'package_price' => $package->price
-                    ]);
-                } else {
-                    Log::info('Generating license key from webhook', [
-                        'user_id' => $user->id,
-                        'has_existing_license' => !empty($user->license_key)
+                        'license_key' => $licenseKey
                     ]);
 
-                    $licenseKey = $this->makeLicense($user);
-                    if ($licenseKey) {
-                        Log::info('License key generated from webhook', [
+                    // Try to add license to external API - if this fails, we need to rollback
+                    $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                    if (!$licenseApiSuccess) {
+                        Log::error('Failed to add license via API from webhook - rolling back payment process', [
                             'user_id' => $user->id,
-                            'license_key' => $licenseKey
+                            'license_key' => $licenseKey,
+                            'transaction_id' => $transactionId
                         ]);
 
-                        // Try to add license to external API - if this fails, we need to rollback
-                        $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                        if (!$licenseApiSuccess) {
-                            Log::error('Failed to add license via API from webhook - rolling back payment process', [
-                                'user_id' => $user->id,
-                                'license_key' => $licenseKey,
-                                'transaction_id' => $transactionId
-                            ]);
+                        // Rollback user changes
+                        $user->update([
+                            'payment_gateway_id' => null,
+                            'package_id' => null,
+                            'subscription_starts_at' => null,
+                            'license_key' => null,
+                            'is_subscribed' => false,
+                            'subscription_id' => null
+                        ]);
 
-                            // Rollback user changes
-                            $user->update([
-                                'payment_gateway_id' => null,
-                                'package_id' => null,
-                                'subscription_starts_at' => null,
-                                'license_key' => null,
-                                'is_subscribed' => false,
-                                'subscription_id' => null
-                            ]);
+                        // Mark order as failed
+                        $order->update(['status' => 'failed']);
 
-                            // Mark order as failed
-                            $order->update(['status' => 'failed']);
-
-                            // Throw exception to trigger rollback and show error
-                            throw new \Exception('license_api_failed');
-                        }
-                    } else {
-                        Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
-                        throw new \Exception('License generation failed');
+                        // Throw exception to trigger rollback and show error
+                        throw new \Exception('license_api_failed');
                     }
+                } else {
+                    Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
+                    throw new \Exception('License generation failed');
                 }
-            } else {
-                Log::info('User already has license key, skipping generation', [
-                    'user_id' => $user->id,
-                    'existing_license' => $user->license_key
-                ]);
             }
 
             $userUpdateData = [
@@ -2113,28 +2172,45 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Check license availability for paid packages before proceeding with upgrade
+            // For paid packages, check license availability from API and update user's license
             if (!$packageData->isFree()) {
-                Log::info('Checking license availability for paid package upgrade', [
+                Log::info('Checking license availability from API for paid package upgrade', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
                     'package_price' => $packageData->price
                 ]);
 
-                if (!$this->checkLicenseAvailability()) {
-                    Log::error('License not available for paid package upgrade - blocking upgrade', [
+                // Get license from API (bypass cache for fresh license)
+                $licenseKey = $this->makeLicense($user, true);
+                if (!$licenseKey) {
+                    Log::error('License not available from API - blocking upgrade', [
                         'user_id' => $user->id,
                         'package_name' => $packageData->name
                     ]);
-                    return response()->json(['error' => 'There was a problem in the system while processing your payment, so your payment has been credited back to your account. Please try again in a while.'], 503);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
                 }
 
-                Log::info('License availability confirmed for paid package upgrade', [
+                // Try to add license to external API first
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license to external API - blocking upgrade', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name,
+                        'license_key' => $licenseKey
+                    ]);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
+                }
+
+                // Only update user's license in database after successful external API call
+                $user->update(['license_key' => $licenseKey]);
+
+                Log::info('License successfully added to external API and updated in user table for upgrade', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name
+                    'package_name' => $packageData->name,
+                    'license_key' => $licenseKey
                 ]);
             } else {
-                Log::info('Skipping license availability check for free package upgrade', [
+                Log::info('Skipping license check for free package upgrade', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -2296,6 +2372,50 @@ class PaymentController extends Controller
             $packageData = Package::where('name', ucfirst($processedPackage))->first();
             if (!$packageData) {
                 return response()->json(['error' => 'Invalid package selected'], 400);
+            }
+
+            // For paid packages, check license availability from API and update user's license
+            if (!$packageData->isFree()) {
+                Log::info('Checking license availability from API for paid package downgrade', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name,
+                    'package_price' => $packageData->price
+                ]);
+
+                // Get license from API (bypass cache for fresh license)
+                $licenseKey = $this->makeLicense($user, true);
+                if (!$licenseKey) {
+                    Log::error('License not available from API - blocking downgrade', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name
+                    ]);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
+                }
+
+                // Try to add license to external API first
+                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                if (!$licenseApiSuccess) {
+                    Log::error('Failed to add license to external API - blocking downgrade', [
+                        'user_id' => $user->id,
+                        'package_name' => $packageData->name,
+                        'license_key' => $licenseKey
+                    ]);
+                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
+                }
+
+                // Only update user's license in database after successful external API call
+                $user->update(['license_key' => $licenseKey]);
+
+                Log::info('License successfully added to external API and updated in user table for downgrade', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name,
+                    'license_key' => $licenseKey
+                ]);
+            } else {
+                Log::info('Skipping license check for free package downgrade', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
             }
 
             // Check if user has an active subscription

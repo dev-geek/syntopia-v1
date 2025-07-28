@@ -17,7 +17,7 @@ class VerificationController extends Controller
 {
     use VerifiesEmails;
 
-    protected $redirectTo = '/pricing';
+    protected $redirectTo = '/user/dashboard';
 
     public function __construct()
     {

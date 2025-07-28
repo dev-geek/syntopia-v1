@@ -4,10 +4,6 @@
                     <div class="footer-brand">
                         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp"
                             alt="Syntopia" class="footer-logo">
-                        <div class="footer-brand-text">
-                            <strong>Syntopia</strong>
-                            <span class="footer-tagline">AI-Powered Solutions</span>
-                        </div>
                     </div>
                 </div>
 

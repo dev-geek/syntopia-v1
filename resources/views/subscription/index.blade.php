@@ -231,7 +231,7 @@
                     if (!packageName || packageName.trim() === '') {
                         console.error('Final package name is invalid:', packageName);
                         showAlert('error', 'Package Error', 'Could not determine package name.', () => {
-                            window.location.href = '/pricing?error=package';
+                            window.location.href = '/user/dashboard?error=package';
                         });
                         return;
                     }
@@ -239,7 +239,7 @@
                     if (!orderData || (!orderData.id)) {
                         console.log('No order data or cancelled payment');
                         showAlert('info', 'Payment Cancelled', 'Your payment was cancelled.', () => {
-                            window.location.href = '/pricing';
+                            window.location.href = '/user/dashboard';
                         });
                         sessionStorage.removeItem('currentProductPath');
                         currentProductPath = '';
@@ -294,7 +294,7 @@
                 } catch (err) {
                     console.error('Error in onFSPopupClosed:', err);
                     showAlert('error', 'Processing Error', 'There was an error processing your payment.', () => {
-                        window.location.href = '/pricing?error=processing';
+                        window.location.href = '/user/dashboard?error=processing';
                     });
                     sessionStorage.removeItem('currentProductPath');
                     currentProductPath = '';
