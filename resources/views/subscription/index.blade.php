@@ -115,8 +115,7 @@
     <!-- FastSpring Integration -->
     @if ($activeGateway && $activeGateway->name === 'FastSpring')
         <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"
-            data-debug="true"></script>
+            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"></script>
         <script>
             let currentProductPath = '';
 
@@ -305,7 +304,6 @@
 
     <!-- Paddle Integration -->
     @if ($activeGateway && $activeGateway->name === 'Paddle')
-        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
         <script>
             // Global function to handle Paddle events
             window.handlePaddleEvent = function(eventData, action) {
