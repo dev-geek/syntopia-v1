@@ -960,76 +960,110 @@ class PaymentController extends Controller
             ]);
 
             if (!$user->license_key || $action === 'upgrade') {
-                Log::info('Generating license key', [
-                    'user_id' => $user->id,
-                    'has_existing_license' => !empty($user->license_key),
-                    'action' => $action
-                ]);
-
-                $licenseKey = $this->makeLicense($user);
-                if (!$licenseKey) {
-                    Log::error('Failed to generate license key', ['user_id' => $user->id]);
-                    // Do not mark as completed/subscribed, return error
-                    throw new \Exception('License generation failed');
-                }
-
-                Log::info('License key generated', [
-                    'user_id' => $user->id,
-                    'license_key' => $licenseKey
-                ]);
-
-                $userUpdateData = [
-                    'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
-                    'package_id' => $package->id,
-                    'subscription_starts_at' => now(),
-                    'license_key' => $licenseKey,
-                    'is_subscribed' => true,
-                    'subscription_id' => $subscriptionId
-                ];
-
-                Log::info('Updating user with license', [
-                    'user_id' => $user->id,
-                    'update_data' => $userUpdateData
-                ]);
-
-                $user->update($userUpdateData);
-
-                Log::info('User updated successfully with license', [
-                    'user_id' => $user->id,
-                    'is_subscribed' => $user->is_subscribed,
-                    'package_id' => $user->package_id,
-                    'subscription_id' => $user->subscription_id,
-                    'license_key' => $user->license_key
-                ]);
-
-                // Try to add license to external API - if this fails, we need to rollback
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license via API - rolling back payment process', [
+                // Skip license creation for free packages
+                if ($package->isFree()) {
+                    Log::info('Skipping license generation for free package', [
                         'user_id' => $user->id,
+                        'package_name' => $package->name,
+                        'package_price' => $package->price
+                    ]);
+
+                    $userUpdateData = [
+                        'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
+                        'package_id' => $package->id,
+                        'subscription_starts_at' => now(),
+                        'is_subscribed' => true,
+                        'subscription_id' => $subscriptionId
+                    ];
+
+                    Log::info('Updating user for free package without license', [
+                        'user_id' => $user->id,
+                        'update_data' => $userUpdateData
+                    ]);
+
+                    $user->update($userUpdateData);
+
+                    Log::info('User updated successfully for free package', [
+                        'user_id' => $user->id,
+                        'is_subscribed' => $user->is_subscribed,
+                        'package_id' => $user->package_id,
+                        'subscription_id' => $user->subscription_id
+                    ]);
+
+                    // Mark order as completed
+                    $order->update(['status' => 'completed']);
+                } else {
+                    Log::info('Generating license key', [
+                        'user_id' => $user->id,
+                        'has_existing_license' => !empty($user->license_key),
+                        'action' => $action
+                    ]);
+
+                    $licenseKey = $this->makeLicense($user);
+                    if (!$licenseKey) {
+                        Log::error('Failed to generate license key', ['user_id' => $user->id]);
+                        // Do not mark as completed/subscribed, return error
+                        throw new \Exception('License generation failed');
+                    }
+
+                    Log::info('License key generated', [
+                        'user_id' => $user->id,
+                        'license_key' => $licenseKey
+                    ]);
+
+                    $userUpdateData = [
+                        'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
+                        'package_id' => $package->id,
+                        'subscription_starts_at' => now(),
                         'license_key' => $licenseKey,
-                        'transaction_id' => $transactionId
+                        'is_subscribed' => true,
+                        'subscription_id' => $subscriptionId
+                    ];
+
+                    Log::info('Updating user with license', [
+                        'user_id' => $user->id,
+                        'update_data' => $userUpdateData
                     ]);
 
-                    // Rollback user changes
-                    $user->update([
-                        'payment_gateway_id' => null,
-                        'package_id' => null,
-                        'subscription_starts_at' => null,
-                        'license_key' => null,
-                        'is_subscribed' => false,
-                        'subscription_id' => null
+                    $user->update($userUpdateData);
+
+                    Log::info('User updated successfully with license', [
+                        'user_id' => $user->id,
+                        'is_subscribed' => $user->is_subscribed,
+                        'package_id' => $user->package_id,
+                        'subscription_id' => $user->subscription_id,
+                        'license_key' => $user->license_key
                     ]);
 
-                    // Mark order as failed
-                    $order->update(['status' => 'failed']);
+                    // Try to add license to external API - if this fails, we need to rollback
+                    $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
+                    if (!$licenseApiSuccess) {
+                        Log::error('Failed to add license via API - rolling back payment process', [
+                            'user_id' => $user->id,
+                            'license_key' => $licenseKey,
+                            'transaction_id' => $transactionId
+                        ]);
 
-                    // Throw exception to trigger rollback and show error
-                    throw new \Exception('license_api_failed');
+                        // Rollback user changes
+                        $user->update([
+                            'payment_gateway_id' => null,
+                            'package_id' => null,
+                            'subscription_starts_at' => null,
+                            'license_key' => null,
+                            'is_subscribed' => false,
+                            'subscription_id' => null
+                        ]);
+
+                        // Mark order as failed
+                        $order->update(['status' => 'failed']);
+
+                        // Throw exception to trigger rollback and show error
+                        throw new \Exception('license_api_failed');
+                    }
+
+                    // Now mark order as completed
+                    $order->update(['status' => 'completed']);
                 }
-
-                // Now mark order as completed
-                $order->update(['status' => 'completed']);
             } else {
                 $userUpdateData = [
                     'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
@@ -1839,48 +1873,56 @@ class PaymentController extends Controller
                 'order_package_id' => $order->package_id
             ]);
 
-            // Generate license if needed
+            // Generate license if needed (skip for free packages)
             if (!$user->license_key) {
-                Log::info('Generating license key from webhook', [
-                    'user_id' => $user->id,
-                    'has_existing_license' => !empty($user->license_key)
-                ]);
-
-                $licenseKey = $this->makeLicense($user);
-                if ($licenseKey) {
-                    Log::info('License key generated from webhook', [
+                if ($package->isFree()) {
+                    Log::info('Skipping license generation for free package from webhook', [
                         'user_id' => $user->id,
-                        'license_key' => $licenseKey
+                        'package_name' => $package->name,
+                        'package_price' => $package->price
+                    ]);
+                } else {
+                    Log::info('Generating license key from webhook', [
+                        'user_id' => $user->id,
+                        'has_existing_license' => !empty($user->license_key)
                     ]);
 
-                    // Try to add license to external API - if this fails, we need to rollback
-                    $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                    if (!$licenseApiSuccess) {
-                        Log::error('Failed to add license via API from webhook - rolling back payment process', [
+                    $licenseKey = $this->makeLicense($user);
+                    if ($licenseKey) {
+                        Log::info('License key generated from webhook', [
                             'user_id' => $user->id,
-                            'license_key' => $licenseKey,
-                            'transaction_id' => $transactionId
+                            'license_key' => $licenseKey
                         ]);
 
-                        // Rollback user changes
-                        $user->update([
-                            'payment_gateway_id' => null,
-                            'package_id' => null,
-                            'subscription_starts_at' => null,
-                            'license_key' => null,
-                            'is_subscribed' => false,
-                            'subscription_id' => null
-                        ]);
+                        // Try to add license to external API - if this fails, we need to rollback
+                        $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
+                        if (!$licenseApiSuccess) {
+                            Log::error('Failed to add license via API from webhook - rolling back payment process', [
+                                'user_id' => $user->id,
+                                'license_key' => $licenseKey,
+                                'transaction_id' => $transactionId
+                            ]);
 
-                        // Mark order as failed
-                        $order->update(['status' => 'failed']);
+                            // Rollback user changes
+                            $user->update([
+                                'payment_gateway_id' => null,
+                                'package_id' => null,
+                                'subscription_starts_at' => null,
+                                'license_key' => null,
+                                'is_subscribed' => false,
+                                'subscription_id' => null
+                            ]);
 
-                        // Throw exception to trigger rollback and show error
-                        throw new \Exception('license_api_failed');
+                            // Mark order as failed
+                            $order->update(['status' => 'failed']);
+
+                            // Throw exception to trigger rollback and show error
+                            throw new \Exception('license_api_failed');
+                        }
+                    } else {
+                        Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
+                        throw new \Exception('License generation failed');
                     }
-                } else {
-                    Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
-                    throw new \Exception('License generation failed');
                 }
             } else {
                 Log::info('User already has license key, skipping generation', [
