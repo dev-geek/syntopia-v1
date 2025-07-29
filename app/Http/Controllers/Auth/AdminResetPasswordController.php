@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AdminResetPasswordRequest;
 use App\Services\PasswordBindingService;
 use Illuminate\Foundation\Auth\ResetsPasswords;
 use Illuminate\Http\Request;
@@ -36,29 +37,27 @@ class AdminResetPasswordController extends Controller
             'email' => $request->email
         ]);
     }
-        public function reset(Request $request, PasswordBindingService $passwordBindingService)
+        public function reset(AdminResetPasswordRequest $request, PasswordBindingService $passwordBindingService)
 {
-    $request->validate([
-        'email' => 'required|email',
-        'password' => 'required|string|min:8|confirmed',
-    ]);
+    // Get validated data
+    $validated = $request->validated();
 
     // Find the user by email
-    $user = User::where('email', $request->email)->first();
+    $user = User::where('email', $validated['email'])->first();
     if (!$user) {
         return back()->withErrors(['email' => 'User not found.']);
     }
 
     // Call password binding API before updating the database
-    $apiResponse = $passwordBindingService->bindPassword($user, $request->password);
+    $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
 
     if (!$apiResponse['success']) {
         return back()->with('swal_error', $apiResponse['error_message'])->withInput();
     }
 
     // Only update password if API call was successful
-    $user->password = Hash::make($request->password);
-    $user->subscriber_password = $request->password;
+    $user->password = Hash::make($validated['password']);
+    $user->subscriber_password = $validated['password'];
     $user->save();
 
     // Auto-login after password reset

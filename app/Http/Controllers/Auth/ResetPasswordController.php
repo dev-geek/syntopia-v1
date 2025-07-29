@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ResetPasswordRequest;
 use App\Services\PasswordBindingService;
 use Illuminate\Foundation\Auth\ResetsPasswords;
 use Illuminate\Http\Request;
@@ -51,40 +52,21 @@ class ResetPasswordController extends Controller
     /**
      * Reset the given user's password.
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Http\Requests\ResetPasswordRequest  $request
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function reset(Request $request, PasswordBindingService $passwordBindingService)
+    public function reset(ResetPasswordRequest $request, PasswordBindingService $passwordBindingService)
     {
         try {
-            // Validate the request
-            $request->validate([
-                'token' => 'required|string',
-                'email' => 'required|email',
-                'password' => [
-                    'required',
-                    'string',
-                    'min:8',
-                    'max:30',
-                    'confirmed',
-                    'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
-                ],
-            ], [
-                'token.required' => 'Reset token is required.',
-                'email.required' => 'Email address is required.',
-                'email.email' => 'Please enter a valid email address.',
-                'password.required' => 'Password is required.',
-                'password.min' => 'Password must be at least 8 characters long.',
-                'password.max' => 'Password cannot exceed 30 characters.',
-                'password.confirmed' => 'Password confirmation does not match.',
-                'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (,.<>{}~!@#$%^&_).'
-            ]);
+
+            // Get validated data
+            $validated = $request->validated();
 
             // Find the user by email
-            $user = User::where('email', $request->email)->first();
+            $user = User::where('email', $validated['email'])->first();
             if (!$user) {
                 Log::warning('Password reset attempted for non-existent email', [
-                    'email' => $request->email,
+                    'email' => $validated['email'],
                     'ip' => $request->ip()
                 ]);
                 return back()->withErrors(['email' => 'No account found with this email address.'])->withInput();
@@ -92,12 +74,12 @@ class ResetPasswordController extends Controller
 
             // Verify the password reset token
             $tokenData = DB::table('password_reset_tokens')
-                ->where('email', $request->email)
+                ->where('email', $validated['email'])
                 ->first();
 
-            if (!$tokenData || !Hash::check($request->token, $tokenData->token)) {
+            if (!$tokenData || !Hash::check($validated['token'], $tokenData->token)) {
                 Log::warning('Invalid password reset token used', [
-                    'email' => $request->email,
+                    'email' => $validated['email'],
                     'ip' => $request->ip()
                 ]);
                 return back()->withErrors(['email' => 'Invalid or expired reset token. Please request a new password reset.'])->withInput();
@@ -106,14 +88,14 @@ class ResetPasswordController extends Controller
             // Check if token is expired (24 hours)
             if (now()->diffInHours($tokenData->created_at) > 24) {
                 Log::warning('Expired password reset token used', [
-                    'email' => $request->email,
+                    'email' => $validated['email'],
                     'ip' => $request->ip()
                 ]);
                 return back()->withErrors(['email' => 'Reset token has expired. Please request a new password reset.'])->withInput();
             }
 
             // Call password binding API before updating the database
-            $apiResponse = $passwordBindingService->bindPassword($user, $request->password);
+            $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
 
             if (!$apiResponse['success']) {
                 Log::error('Password binding API failed during reset', [
@@ -127,13 +109,13 @@ class ResetPasswordController extends Controller
             // Update password in database within a transaction
             DB::beginTransaction();
             try {
-                $user->password = Hash::make($request->password);
-                $user->subscriber_password = $request->password;
+                $user->password = Hash::make($validated['password']);
+                $user->subscriber_password = $validated['password'];
                 $user->save();
 
                 // Delete the used reset token
                 DB::table('password_reset_tokens')
-                    ->where('email', $request->email)
+                    ->where('email', $validated['email'])
                     ->delete();
 
                 DB::commit();

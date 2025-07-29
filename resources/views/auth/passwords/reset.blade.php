@@ -135,14 +135,59 @@
         }
 
         @keyframes eyeWink {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(0.8); }
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(0.8);
+            }
         }
 
         /* Focus state for accessibility */
         .password-field-wrapper:focus-within .password-toggle-btn {
             border-color: #0d6efd;
             box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+        }
+
+        /* Validation styles */
+        .form-control.is-valid {
+            border-color: #198754;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3e%3cpath fill='%23198754' d='m2.3 6.73.94-.94 3.03-3.03-1.06-1.06-3.03 3.03-.94.94z'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right calc(0.375em + 0.1875rem) center;
+            background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+        }
+
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 4.6 1.4 1.4m0-1.4-1.4 1.4'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right calc(0.375em + 0.1875rem) center;
+            background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+        }
+
+        .invalid-feedback {
+            display: block;
+            width: 100%;
+            margin-top: 0.25rem;
+            font-size: 0.875em;
+            color: #dc3545;
+        }
+
+        .valid-feedback {
+            display: block;
+            width: 100%;
+            margin-top: 0.25rem;
+            font-size: 0.875em;
+            color: #198754;
+        }
+
+        .primary-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -162,6 +207,12 @@
             </div>
         @endif
 
+        @if (session('status'))
+            <div class="alert alert-success" style="text-align: left; margin-bottom: 20px;">
+                {{ session('status') }}
+            </div>
+        @endif
+
         <div class="alert alert-info" style="text-align: left; margin-bottom: 20px;">
             <strong>Password Requirements:</strong><br>
             • At least 8 characters long<br>
@@ -173,41 +224,155 @@
             @csrf
             <input type="hidden" name="token" value="{{ $token }}">
 
-            <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ $email ?? old('email') }}" required autocomplete="email" autofocus>
+            <input readonly id="email" type="email" class="form-control @error('email') is-invalid @enderror"
+                name="email" value="{{ $email ?? old('email') }}" required autocomplete="email" autofocus>
 
-@error('email')
-    <span class="invalid-feedback" role="alert">
-        <strong>{{ $message }}</strong>
-    </span>
-@enderror
-        <div class="password-field-wrapper">
-            <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="new-password" placeholder="Enter new password">
-            <button type="button" class="password-toggle-btn" aria-label="Show password" title="Toggle password visibility">
-                <i class="fas fa-eye"></i>
-            </button>
-        </div>
+            @error('email')
+                <span class="invalid-feedback" role="alert">
+                    <strong>{{ $message }}</strong>
+                </span>
+            @enderror
+            <div class="password-field-wrapper">
+                <input id="password" type="password" class="form-control @error('password') is-invalid @enderror"
+                    name="password" required autocomplete="new-password" placeholder="Enter new password">
+                <button type="button" class="password-toggle-btn" aria-label="Show password"
+                    title="Toggle password visibility">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
 
-@error('password')
-    <span class="invalid-feedback" role="alert">
-        <strong>{{ $message }}</strong>
-    </span>
-@enderror
+            @error('password')
+                <span class="invalid-feedback" role="alert">
+                    <strong>{{ $message }}</strong>
+                </span>
+            @enderror
 
-        <div class="password-field-wrapper">
-            <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password" placeholder="Confirm new password">
-            <button type="button" class="password-toggle-btn" aria-label="Show password" title="Toggle password visibility">
-                <i class="fas fa-eye"></i>
-            </button>
-        </div>
+            <div class="password-field-wrapper">
+                <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required
+                    autocomplete="new-password" placeholder="Confirm new password">
+                <button type="button" class="password-toggle-btn" aria-label="Show password"
+                    title="Toggle password visibility">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
 
             <button type="submit" class="primary-button">Reset Password</button>
-            </form>
+        </form>
 
 
     </div>
 
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <!-- Client-side Validation Script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form');
+            const passwordInput = document.getElementById('password');
+            const passwordConfirmInput = document.getElementById('password-confirm');
+            const submitButton = document.querySelector('.primary-button');
+
+            // Password validation regex
+            const passwordRegex = /^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/;
+
+            // Real-time password validation
+            function validatePassword(password) {
+                const errors = [];
+
+                if (password.length < 8) {
+                    errors.push('Password must be at least 8 characters long');
+                }
+                if (password.length > 30) {
+                    errors.push('Password cannot exceed 30 characters');
+                }
+                if (!/[0-9]/.test(password)) {
+                    errors.push('Password must contain at least one number');
+                }
+                if (!/[A-Z]/.test(password)) {
+                    errors.push('Password must contain at least one uppercase letter');
+                }
+                if (!/[a-z]/.test(password)) {
+                    errors.push('Password must contain at least one lowercase letter');
+                }
+                if (!/[,.<>{}~!@#$%^&_]/.test(password)) {
+                    errors.push('Password must contain at least one special character (,.<>{}~!@#$%^&_)');
+                }
+
+                return errors;
+            }
+
+            // Update password field styling based on validation
+            function updatePasswordField(password) {
+                const errors = validatePassword(password);
+                const isValid = errors.length === 0;
+
+                passwordInput.classList.remove('is-valid', 'is-invalid');
+                passwordInput.classList.add(isValid ? 'is-valid' : 'is-invalid');
+
+                // Remove existing error messages
+                const existingError = passwordInput.parentNode.querySelector('.password-error');
+                if (existingError) {
+                    existingError.remove();
+                }
+
+                // Add error messages if any
+                if (errors.length > 0) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'invalid-feedback password-error';
+                    errorDiv.innerHTML = '<strong>' + errors.join('<br>') + '</strong>';
+                    passwordInput.parentNode.appendChild(errorDiv);
+                }
+            }
+
+            // Update password confirmation field
+            function updatePasswordConfirmField() {
+                const password = passwordInput.value;
+                const confirmPassword = passwordConfirmInput.value;
+
+                passwordConfirmInput.classList.remove('is-valid', 'is-invalid');
+
+                if (confirmPassword.length > 0) {
+                    if (password === confirmPassword) {
+                        passwordConfirmInput.classList.add('is-valid');
+                    } else {
+                        passwordConfirmInput.classList.add('is-invalid');
+                    }
+                }
+            }
+
+            // Event listeners
+            passwordInput.addEventListener('input', function() {
+                updatePasswordField(this.value);
+                updatePasswordConfirmField();
+            });
+
+            passwordConfirmInput.addEventListener('input', updatePasswordConfirmField);
+
+            // Form submission validation
+            form.addEventListener('submit', function(e) {
+                const password = passwordInput.value;
+                const confirmPassword = passwordConfirmInput.value;
+                const passwordErrors = validatePassword(password);
+
+                if (passwordErrors.length > 0) {
+                    e.preventDefault();
+                    alert('Please fix the password validation errors before submitting.');
+                    return false;
+                }
+
+                if (password !== confirmPassword) {
+                    e.preventDefault();
+                    alert('Password confirmation does not match.');
+                    return false;
+                }
+
+                // Disable submit button to prevent double submission
+                submitButton.disabled = true;
+                submitButton.textContent = 'Resetting Password...';
+            });
+        });
+    </script>
 </body>
 
 </html>
