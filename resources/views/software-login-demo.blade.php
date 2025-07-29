@@ -6,6 +6,7 @@
     <title>Syntopia Software - Login Demo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <style>
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -228,6 +229,8 @@
 
     <!-- Auto-login script -->
     <script src="{{ asset('js/software-auto-login.js') }}"></script>
+    <!-- Password Toggle Script -->
+    <script src="{{ asset('js/password-toggle.js') }}"></script>
 
     <script>
         // Password toggle functionality

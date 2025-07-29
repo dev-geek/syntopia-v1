@@ -27,6 +27,8 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <!-- Theme style -->
     <link rel="stylesheet" href="{{ asset('dist/css/adminlte.min.css') }}">
+    <!-- Password Toggle CSS -->
+    <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="{{ asset('js/swal-utils.js') }}"></script>
     <style>
@@ -411,71 +413,19 @@
             }
         }
 
-        /* Password Toggle Styles */
-        .password-field-wrapper {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-        }
+            /* Password Toggle Styles - Imported from dedicated file */
+    /* Note: password-toggle.css is included separately in layouts */
 
-        .password-toggle-btn {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #6c757d;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-            z-index: 10;
-        }
-
-        .password-toggle-btn:hover {
-            background-color: #f8f9fa;
-            color: #0d6efd;
-        }
-
-        .password-toggle-btn:focus {
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
-        }
-
-        .password-toggle-btn i {
-            font-size: 16px;
-            line-height: 1;
-        }
-
-        /* Ensure password input has right padding to accommodate the toggle button */
-        .password-field-wrapper input[type="password"],
-        .password-field-wrapper input[type="text"] {
-            padding-right: 45px !important;
-        }
-
-        /* Responsive adjustments for password toggle */
-        @media (max-width: 768px) {
-            .password-toggle-btn {
-                padding: 6px;
-            }
-
-            .password-toggle-btn i {
-                font-size: 14px;
-            }
-
-            .password-field-wrapper input[type="password"],
-            .password-field-wrapper input[type="text"] {
-                padding-right: 40px !important;
-            }
-        }
-
-        /* Footer Styles */
+        /* Footer Styles - Override AdminLTE positioning */
         .main-footer {
             background: linear-gradient(135deg, #f8fafd 0%, #e9f3ff 100%);
             border-top: 1px solid #e3eafc;
             padding: 1.5rem 0;
-            margin-top: auto;
+            position: relative !important;
+            bottom: auto !important;
+            left: auto !important;
+            right: auto !important;
+            z-index: auto !important;
         }
 
         .footer-content {
@@ -638,7 +588,7 @@
 
 </head>
 
-<body class="hold-transition sidebar-mini layout-fixed layout-navbar-fixed layout-footer-fixed">
+<body class="hold-transition sidebar-mini layout-fixed layout-navbar-fixed">
     <div class="wrapper">
         <!-- Navbar -->
         <nav class="main-header navbar navbar-expand navbar-white navbar-light">

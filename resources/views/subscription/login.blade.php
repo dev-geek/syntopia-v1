@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <title>Login Page</title>
     <style>
         body {
@@ -206,7 +207,7 @@
                 <a href="{{ route('password.request') }}">Forgot password?</a>
                 <br>
                 <br>
-                <a href="{{ route('register') }}">Register Here!</a>        
+                <a href="{{ route('register') }}">Register Here!</a>
                 <div class="divider">or</div>
                 <a href="{{ route('auth.google') }}"><button  class="secondary-button google"><img src="https://syntopia.ai/wp-content/uploads/2025/02/google-icon.png" alt="Google Logo"> Continue with Google</button></a>
                 <a href="{{ route('login.facebook') }}"><button class="secondary-button sso"><img src="https://syntopia.ai/wp-content/uploads/2025/02/facebook-icon.png" alt="facebook Logo"> Continue with Facebook</button></a>
@@ -220,5 +221,8 @@
         </div>
 
     </div>
+
+    <!-- Password Toggle Script -->
+    <script src="{{ asset('js/password-toggle.js') }}"></script>
 </body>
 </html>

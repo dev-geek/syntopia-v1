@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="{{ asset('plugins/icheck-bootstrap/icheck-bootstrap.min.css') }}">
   <!-- Theme style -->
   <link rel="stylesheet" href="{{ asset('dist/css/adminlte.min.css') }}">
+  <!-- Password Toggle CSS -->
+  <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
 </head>
 <body class="hold-transition login-page">
 <div class="login-box">
@@ -81,5 +83,7 @@
 <script src="{{ asset('plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <!-- AdminLTE App -->
 <script src="{{ asset('dist/js/adminlte.min.js') }}"></script>
+<!-- Password Toggle Script -->
+<script src="{{ asset('js/password-toggle.js') }}"></script>
 </body>
 </html>

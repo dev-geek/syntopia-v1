@@ -26,8 +26,9 @@
     <!-- Bootstrap CSS (CDN) -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- Custom CSS (Optional: If you want to add your own custom CSS later) -->
-    <!-- <link href="{{ asset('css/app.css') }}" rel="stylesheet"> -->
+    <!-- Custom CSS -->
+    <link href="{{ asset('css/app.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/password-toggle.css') }}" rel="stylesheet">
 
     <!-- Scripts -->
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
@@ -48,6 +49,9 @@
     <!-- Bootstrap JS and Popper.js (for Bootstrap components) -->
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <!-- Password Toggle Script -->
+    <script src="{{ asset('js/password-toggle.js') }}"></script>
 
     <!-- Stack for scripts from components -->
     @stack('scripts')

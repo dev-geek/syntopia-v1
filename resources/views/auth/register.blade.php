@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('plugins/fontawesome-free/css/all.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <style>
          body {
             background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
@@ -100,66 +101,8 @@
             font-size: 11px;
         }
 
-        /* Password Toggle Styles */
-        .password-field-wrapper {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-        }
-
-        .password-toggle-btn {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #6c757d;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-            z-index: 10;
-        }
-
-        .password-toggle-btn:hover {
-            background-color: #f8f9fa;
-            color: #0d6efd;
-        }
-
-        .password-toggle-btn:focus {
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
-        }
-
-        .password-toggle-btn i {
-            font-size: 16px;
-            line-height: 1;
-        }
-
-        /* Ensure password input has right padding to accommodate the toggle button */
-        .password-field-wrapper input[type="password"],
-        .password-field-wrapper input[type="text"] {
-            padding-right: 45px !important;
-        }
-
-        /* Responsive adjustments for password toggle */
-        @media (max-width: 768px) {
-            .password-toggle-btn {
-                padding: 6px;
-            }
-
-            .password-toggle-btn i {
-                font-size: 14px;
-            }
-
-            .password-field-wrapper input[type="password"],
-            .password-field-wrapper input[type="text"] {
-                padding-right: 40px !important;
-            }
-        }
-            color: #6c757d !important;
-        }
+        /* Password Toggle Styles - Imported from dedicated file */
+        /* Note: password-toggle.css is included separately in layouts */
         @media (max-width: 768px){
 
         .d-flex{
@@ -256,48 +199,7 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Password Toggle Functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            const passwordFields = document.querySelectorAll('input[type="password"]');
-
-            passwordFields.forEach(function(passwordField) {
-                // Create wrapper div if it doesn't exist
-                let wrapper = passwordField.parentElement;
-                if (!wrapper.classList.contains('password-field-wrapper')) {
-                    wrapper = document.createElement('div');
-                    wrapper.className = 'password-field-wrapper position-relative';
-                    passwordField.parentNode.insertBefore(wrapper, passwordField);
-                    wrapper.appendChild(passwordField);
-                }
-
-                // Create toggle button
-                const toggleBtn = document.createElement('button');
-                toggleBtn.type = 'button';
-                toggleBtn.className = 'password-toggle-btn';
-                toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
-                toggleBtn.setAttribute('aria-label', 'Toggle password visibility');
-
-                // Add toggle button to wrapper
-                wrapper.appendChild(toggleBtn);
-
-                // Add click event
-                toggleBtn.addEventListener('click', function() {
-                    const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
-                    passwordField.setAttribute('type', type);
-
-                    // Update icon
-                    const icon = toggleBtn.querySelector('i');
-                    if (type === 'text') {
-                        icon.className = 'fas fa-eye-slash';
-                        toggleBtn.setAttribute('aria-label', 'Hide password');
-                    } else {
-                        icon.className = 'fas fa-eye';
-                        toggleBtn.setAttribute('aria-label', 'Show password');
-                    }
-                });
-            });
-        });
-    </script>
+    <!-- Password Toggle Script -->
+    <script src="{{ asset('js/password-toggle.js') }}"></script>
 </body>
 </html>
