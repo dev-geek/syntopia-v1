@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
     body {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -223,6 +224,65 @@
         line-height: 1.5;
     }
 
+    /* Validation Error Styles */
+    .alert {
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        line-height: 1.5;
+        border: 1px solid transparent;
+    }
+
+    .alert-danger {
+        background-color: #fef2f2;
+        border-color: #fecaca;
+        color: #dc2626;
+    }
+
+    .alert-warning {
+        background-color: #fff3cd;
+        border-color: #ffeaa7;
+        color: #856404;
+    }
+
+    .alert-info {
+        background-color: #d1ecf1;
+        border-color: #bee5eb;
+        color: #0c5460;
+    }
+
+    .alert-success {
+        background-color: #d1f2eb;
+        border-color: #a8e6cf;
+        color: #0f5132;
+    }
+
+    .form-control.is-invalid {
+        border-color: #dc2626;
+        background-color: #fef2f2;
+    }
+
+    .form-control.is-invalid:focus {
+        border-color: #dc2626;
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+
+    .validation-errors {
+        margin-bottom: 20px;
+    }
+
+    .validation-errors ul {
+        margin: 0;
+        padding-left: 20px;
+        list-style-type: disc;
+    }
+
+    .validation-errors li {
+        margin-bottom: 4px;
+        font-size: 13px;
+    }
+
     /* Animation for container */
     @keyframes fadeInUp {
         from {
@@ -287,6 +347,87 @@
         outline: 2px solid #3e57da;
         outline-offset: 2px;
     }
+
+    /* Verification Code Clear Button Styles */
+    .verification-code-field-wrapper {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+    }
+
+    .verification-code-clear-btn {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        z-index: 10;
+        color: #6c757d;
+    }
+
+    .verification-code-clear-btn:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+        color: #495057;
+        transform: translateY(-50%) scale(1.05);
+    }
+
+    .verification-code-clear-btn:active {
+        transform: translateY(-50%) scale(0.95);
+    }
+
+    .verification-code-clear-btn:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
+        border-color: #0d6efd;
+    }
+
+    .verification-code-clear-btn i {
+        font-size: 14px;
+        line-height: 1;
+        transition: all 0.2s ease;
+    }
+
+    .verification-code-clear-btn:hover i {
+        transform: scale(1.1);
+    }
+
+    /* Ensure verification code input has right padding to accommodate the clear button */
+    .verification-code-field-wrapper input[type="text"] {
+        padding-right: 50px !important;
+    }
+
+    /* Focus state for accessibility */
+    .verification-code-field-wrapper:focus-within .verification-code-clear-btn {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+
+    /* Responsive adjustments for verification code clear button */
+    @media (max-width: 768px) {
+        .verification-code-clear-btn {
+            right: 8px;
+            width: 28px;
+            height: 28px;
+        }
+
+        .verification-code-clear-btn i {
+            font-size: 12px;
+        }
+
+        .verification-code-field-wrapper input[type="text"] {
+            padding-right: 44px !important;
+        }
+    }
 </style>
 
 <div class="container">
@@ -300,12 +441,62 @@
             <h1 class="heading-text">Check your Email</h1>
             <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>
 
+            {{-- Display specific field errors --}}
+            @if ($errors->has('email'))
+                <div class="alert alert-danger">
+                    <strong>Email Error:</strong> {{ $errors->first('email') }}
+                </div>
+            @endif
+
+            @if ($errors->has('server_error'))
+                <div class="alert alert-danger">
+                    <strong>Server Error:</strong> {{ $errors->first('server_error') }}
+                </div>
+            @endif
+
+            @if (session('mail_error'))
+                <div class="alert alert-warning">
+                    <strong>Email Service Notice:</strong> {{ session('mail_error') }}
+                    <br><small>You can still proceed with verification if you received the email.</small>
+                </div>
+            @endif
+
+            @if (session('verification_code'))
+                <div class="alert alert-info">
+                    <strong>Verification Code:</strong> {{ session('verification_code') }}
+                    <br><small>Use this code to verify your email address.</small>
+                </div>
+            @endif
+
+            @if (session('success'))
+                <div class="alert alert-success">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if (session('error'))
+                <div class="alert alert-danger">
+                    {{ session('error') }}
+                </div>
+            @endif
+
             <form method="POST" action="{{ url('/verify-code') }}">
                 @csrf
                 <input type="hidden" name="email" value="{{ $email ?? Auth::user()->email }}">
                 <div class="mb-3">
                     <label for="verification-code">Verification code</label>
-                    <input type="text" name="verification_code" id="verification-code" class="form-control @error('verification_code') is-invalid @enderror" placeholder="Paste verification code" required>
+                    <div class="verification-code-field-wrapper position-relative">
+                        <input type="text"
+                               name="verification_code"
+                               id="verification-code"
+                               class="form-control @error('verification_code') is-invalid @enderror"
+                               placeholder="Paste verification code"
+                               value="{{ old('verification_code') }}"
+                               required>
+                        <button type="button" class="verification-code-clear-btn" id="verificationCodeClearBtn" style="display: none;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                     @error('verification_code')
                     <div class="invalid-feedback d-block text-start">
                         {{ $message }}
@@ -314,7 +505,6 @@
                 </div>
                 <button type="submit" class="primary-button">Verify Code</button>
             </form>
-
 
             <div class="mb-3">
                 <p class="email-text">
@@ -325,8 +515,6 @@
                     <button type="submit" class="btn btn-outline-primary">Resend code</button>
                 </form>
             </div>
-
-
 
             <p class="text-muted mt-3" style="font-size: 11px;">
                 By joining the workspace, you agree to our
@@ -362,5 +550,35 @@
     @endif
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    // Verification code clear button functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const verificationCodeInput = document.getElementById('verification-code');
+        const verificationCodeClearBtn = document.getElementById('verificationCodeClearBtn');
+
+        // Show/hide clear button based on input value
+        function toggleClearButton() {
+            if (verificationCodeInput.value.trim() !== '') {
+                verificationCodeClearBtn.style.display = 'flex';
+            } else {
+                verificationCodeClearBtn.style.display = 'none';
+            }
+        }
+
+        // Clear verification code input
+        verificationCodeClearBtn.addEventListener('click', function() {
+            verificationCodeInput.value = '';
+            verificationCodeInput.focus();
+            toggleClearButton();
+        });
+
+        // Listen for input changes
+        verificationCodeInput.addEventListener('input', toggleClearButton);
+
+        // Initial check
+        toggleClearButton();
+    });
+    </script>
 </div>
 @endsection

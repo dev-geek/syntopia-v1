@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use App\Services\MailService;
 
 class RegisterController extends Controller
 {
@@ -132,16 +133,55 @@ class RegisterController extends Controller
 
     public function showRegistrationForm(Request $request)
     {
+        // Ensure email parameter is present in URL
+        if (!$request->has('email') || empty($request->get('email'))) {
+            Log::warning('Registration page accessed without email parameter', [
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent()
+            ]);
+
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Please enter your email address on the login page first.']);
+        }
+
+        // Validate email format
+        if (!filter_var($request->get('email'), FILTER_VALIDATE_EMAIL)) {
+            Log::warning('Invalid email format in registration URL', [
+                'email' => $request->get('email'),
+                'ip' => $request->ip()
+            ]);
+
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Invalid email format. Please enter a valid email address.']);
+        }
+
         // Preserve the intended URL if it exists
         if (session()->has('url.intended')) {
             // Keep the intended URL in session for after registration
             session(['registration_intended_url' => session('url.intended')]);
         }
+
         return view('auth.register');
     }
 
     public function register(Request $request)
     {
+        // Validate that the email from URL parameter matches the submitted email
+        $urlEmail = $request->get('email');
+        $submittedEmail = $request->input('email');
+
+        if ($urlEmail !== $submittedEmail) {
+            Log::warning('Email mismatch during registration', [
+                'url_email' => $urlEmail,
+                'submitted_email' => $submittedEmail,
+                'ip' => $request->ip()
+            ]);
+
+            return redirect()->back()
+                ->withErrors(['email' => 'Email address cannot be modified. Please use the email from the login page.'])
+                ->withInput();
+        }
+
         $validator = Validator::make($request->all(), [
             'email' => [
                 'required',
@@ -198,13 +238,24 @@ class RegisterController extends Controller
 
             DB::commit();
 
-            try {
-                Mail::to($user->email)->send(new VerifyEmail($user));
+            // Send verification email with proper error handling
+            $mailResult = MailService::send($user->email, new VerifyEmail($user));
+
+            if ($mailResult['success']) {
                 Log::info('Verification email sent successfully', [
                     'user_id' => $user->id,
                     'email' => $user->email
                 ]);
-            } catch (\Exception $e) {
+            } else {
+                Log::warning('Failed to send verification email during registration', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $mailResult['error'] ?? 'Unknown error'
+                ]);
+
+                // Store the mail error and verification code in session
+                session(['mail_error' => $mailResult['message']]);
+                session(['verification_code' => $verification_code]);
             }
 
             auth()->login($user);

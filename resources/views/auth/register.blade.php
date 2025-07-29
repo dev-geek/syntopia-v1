@@ -156,7 +156,9 @@
                 <div class="mb-3">
                     <label for="email">Email Address</label>
                     <input type="email" id="email" name="email" class="form-control @error('email') is-invalid @enderror"
-                        placeholder="Enter an email address" required>
+                        value="{{ request()->get('email') }}" readonly required
+                        style="background-color: #f8f9fa; cursor: not-allowed;"
+                        autocomplete="off" data-lpignore="true">
                     @error('email')
                         <span class="invalid-feedback" role="alert">
                             <strong>{{ $message }}</strong>
@@ -201,5 +203,57 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <script>
+    // Ensure email field is completely locked and cannot be modified
+    document.addEventListener('DOMContentLoaded', function() {
+        const emailInput = document.getElementById('email');
+        const originalEmail = emailInput.value;
+
+        // Prevent any modifications to the email field
+        emailInput.addEventListener('input', function(e) {
+            if (this.value !== originalEmail) {
+                this.value = originalEmail;
+            }
+        });
+
+        emailInput.addEventListener('paste', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        emailInput.addEventListener('keydown', function(e) {
+            // Allow only navigation keys (arrow keys, home, end, etc.)
+            const allowedKeys = [8, 9, 13, 16, 17, 18, 19, 20, 27, 33, 34, 35, 36, 37, 38, 39, 40, 45, 46];
+            if (!allowedKeys.includes(e.keyCode) && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Prevent context menu on email field
+        emailInput.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // Ensure the value is always the original email
+        emailInput.addEventListener('blur', function() {
+            if (this.value !== originalEmail) {
+                this.value = originalEmail;
+            }
+        });
+
+        // Prevent form submission if email was somehow changed
+        document.querySelector('form').addEventListener('submit', function(e) {
+            if (emailInput.value !== originalEmail) {
+                e.preventDefault();
+                alert('Email address cannot be modified. Please use the email from the login page.');
+                emailInput.value = originalEmail;
+                return false;
+            }
+        });
+    });
+    </script>
 </body>
 </html>

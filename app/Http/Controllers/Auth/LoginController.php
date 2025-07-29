@@ -128,6 +128,14 @@ class LoginController extends Controller
         $this->middleware('auth')->only('logout');
     }
 
+    /**
+     * Show the application's login form.
+     */
+    public function showLoginForm()
+    {
+        return view('auth.login');
+    }
+
     public function logout(Request $request)
     {
         $user = Auth::user();

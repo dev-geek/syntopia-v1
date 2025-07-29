@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Password;
 use App\Models\User;
+use App\Services\MailService;
 
 class ForgotPasswordController extends Controller
 {
@@ -74,6 +75,12 @@ class ForgotPasswordController extends Controller
                     'ip' => $request->ip(),
                     'response' => $response
                 ]);
+
+                // Check if it's a mail service error
+                if (str_contains($response, 'mail') || str_contains($response, 'connection')) {
+                    return back()->withErrors(['email' => 'Email service is temporarily unavailable. Please try again later or contact support.'])->withInput();
+                }
+
                 return back()->withErrors(['email' => 'Unable to send password reset link. Please try again later.'])->withInput();
             }
 

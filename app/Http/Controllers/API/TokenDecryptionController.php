@@ -18,7 +18,7 @@ class TokenDecryptionController extends Controller
         header('Access-Control-Allow-Headers: Content-Type, X-CSRF-TOKEN');
 
         // Handle preflight OPTIONS request
-        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        if (request()->isMethod('OPTIONS')) {
             http_response_code(200);
             exit();
         }

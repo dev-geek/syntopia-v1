@@ -187,7 +187,7 @@
                 <img src="https://syntopia.ai/wp-content/uploads/2025/02/Syntopiaa-logo.webp" alt="Logo" class="logo">
                 <h2>Welcome to Syntopia</h2>
                 <br>
-                <form method="POST" action="{{ route('login.user') }}">
+                <form method="POST" action="{{ route('login.post') }}">
                 @csrf
                 <div class="input-field">
                     <label for="work-email">Email</label>

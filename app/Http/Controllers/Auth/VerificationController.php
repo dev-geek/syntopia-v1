@@ -12,6 +12,7 @@ use Illuminate\Foundation\Auth\VerifiesEmails;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\MailService;
 
 class VerificationController extends Controller
 {
@@ -189,10 +190,29 @@ class VerificationController extends Controller
             $user->verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             $user->save();
 
-            Mail::to($user->email)->send(new VerifyEmail($user));
+            // Send verification email with proper error handling
+            $mailResult = MailService::send($user->email, new VerifyEmail($user));
+
+            if ($mailResult['success']) {
+                Log::info('Verification email resent successfully', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+                return back()->with('message', 'Verification code has been resent');
+            } else {
+                Log::error('Failed to resend verification email', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $mailResult['error'] ?? 'Unknown error'
+                ]);
+
+                // Store the verification code in session as fallback
+                session(['verification_code' => $user->verification_code]);
+                return back()->withErrors(['mail_error' => $mailResult['message']]);
+            }
         }
 
-        return back()->with('message', 'Verification code has been resent');
+        return back()->withErrors(['mail_error' => 'User not found. Please try logging in again.']);
     }
 
     /**

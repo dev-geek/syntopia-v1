@@ -175,7 +175,7 @@
     .password-toggle-btn {
         position: absolute;
         right: 12px;
-        top: 50%;
+        top: 43%;
         transform: translateY(-50%);
         background: rgba(255, 255, 255, 0.9);
         border: 1px solid #e0e0e0;
@@ -254,6 +254,68 @@
         box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
     }
 
+    /* Email Clear Button Styles */
+    .email-field-wrapper {
+        position: relative;
+    }
+
+    .email-clear-btn {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        z-index: 10;
+        color: #6c757d;
+    }
+
+    .email-clear-btn:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+        color: #495057;
+        transform: translateY(-50%) scale(1.05);
+    }
+
+    .email-clear-btn:active {
+        transform: translateY(-50%) scale(0.95);
+    }
+
+    .email-clear-btn:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
+        border-color: #0d6efd;
+    }
+
+    .email-clear-btn i {
+        font-size: 14px;
+        line-height: 1;
+        transition: all 0.2s ease;
+    }
+
+    .email-clear-btn:hover i {
+        transform: scale(1.1);
+    }
+
+    /* Ensure email input has right padding to accommodate the clear button */
+    .email-field-wrapper input[type="email"] {
+        padding-right: 50px !important;
+    }
+
+    /* Focus state for accessibility */
+    .email-field-wrapper:focus-within .email-clear-btn {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+
     /* Responsive adjustments for password toggle */
     @media (max-width: 768px) {
         .password-toggle-btn {
@@ -269,6 +331,20 @@
 
         .password-field-wrapper input[type="password"],
         .password-field-wrapper input[type="text"] {
+            padding-right: 44px !important;
+        }
+
+        .email-clear-btn {
+            right: 8px;
+            width: 28px;
+            height: 28px;
+        }
+
+        .email-clear-btn i {
+            font-size: 12px;
+        }
+
+        .email-field-wrapper input[type="email"] {
             padding-right: 44px !important;
         }
     }
@@ -348,6 +424,25 @@
         font-size: 13px;
     }
 
+    /* Validation error styling */
+    .invalid-feedback {
+        display: block !important;
+        color: #dc3545;
+        font-size: 12px;
+        margin-top: -15px;
+        margin-bottom: 10px;
+    }
+
+    .is-invalid {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+    }
+
+    .is-invalid:focus {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+    }
+
     @media (max-width: 768px) {
         .left-section {
             display: none;
@@ -395,11 +490,16 @@
                 <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Logo"
                     class="logo">
                 <h2>Welcome to Syntopia</h2>
-                <form method="POST" action="{{ route('login') }}" id="loginForm">
+                <form method="POST" action="{{ route('login.post') }}" id="loginForm">
                     @csrf
                     <div class="input-field">
                         <label for="email">Email</label>
-                        <input type="email" placeholder="Type your email..." name="email" value="{{ old('email') }}" required autocomplete="email" autofocus id="email" class="form-control @error('email') is-invalid @enderror@">
+                        <div class="email-field-wrapper position-relative">
+                            <input type="email" placeholder="Type your email..." name="email" value="{{ old('email') }}" required autocomplete="email" autofocus id="email" class="form-control @error('email') is-invalid @enderror">
+                            <button type="button" class="email-clear-btn" id="emailClearBtn" style="display: none;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                         @error('email')
                             <span class="invalid-feedback" role="alert" style="text-align: left;padding-bottom: 10px;">
                                 <strong>{{ $message }}</strong>
@@ -407,9 +507,11 @@
                         @enderror
                     </div>
 
-                    <div class="input-field" id="password-field" style="display: none;">
+                    <div class="input-field" id="password-field" style="display: {{ $errors->has('password') || $errors->has('email') ? 'block' : 'none' }};">
                         <label for="password">Password</label>
-                        <input id="password" type="password" placeholder="Enter your password..." class="@error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
+                        <div class="password-field-wrapper position-relative">
+                            <input id="password" type="password" placeholder="Enter your password..." class="@error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
+                        </div>
                         @error('password')
                             <span class="invalid-feedback" role="alert" style="text-align: left;padding-bottom: 10px;">
                                 <strong>{{ $message }}</strong>
@@ -417,7 +519,9 @@
                         @enderror
                     </div>
 
-                    <button type="button" class="primary-button" id="continueBtn" onclick="checkEmail()">Continue with email</button>
+                    <button type="button" class="primary-button" id="continueBtn" onclick="{{ $errors->has('password') || $errors->has('email') ? 'loginForm.submit()' : 'checkEmail()' }}">
+                        {{ $errors->has('password') || $errors->has('email') ? 'Login' : 'Continue with email' }}
+                    </button>
                 </form>
                 <a href="{{ route('password.request') }}">Forgot password?</a>
                 <div class="divider">or</div>
@@ -440,6 +544,59 @@
     </div>
 
     <script>
+    // Email clear button functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const emailInput = document.getElementById('email');
+        const emailClearBtn = document.getElementById('emailClearBtn');
+        const passwordField = document.getElementById('password-field');
+        const continueBtn = document.getElementById('continueBtn');
+        const loginForm = document.getElementById('loginForm');
+
+        // Initialize password toggle if password field is visible (due to validation errors)
+        if (passwordField.style.display === 'block') {
+            const passwordInput = document.getElementById('password');
+            if (passwordInput && window.PasswordToggle) {
+                PasswordToggle.addToField(passwordInput);
+            }
+        }
+
+        // Show/hide clear button based on input value
+        function toggleClearButton() {
+            if (emailInput.value.trim() !== '') {
+                emailClearBtn.style.display = 'flex';
+            } else {
+                emailClearBtn.style.display = 'none';
+            }
+        }
+
+        // Clear email input
+        emailClearBtn.addEventListener('click', function() {
+            emailInput.value = '';
+            emailInput.focus();
+            toggleClearButton();
+
+            // Reset form state if password field is visible
+            if (passwordField.style.display === 'block') {
+                passwordField.style.display = 'none';
+                continueBtn.textContent = 'Continue with email';
+                continueBtn.onclick = checkEmail;
+
+                // Clear any validation error styling
+                emailInput.classList.remove('is-invalid');
+                const passwordInput = document.getElementById('password');
+                if (passwordInput) {
+                    passwordInput.classList.remove('is-invalid');
+                }
+            }
+        });
+
+        // Listen for input changes
+        emailInput.addEventListener('input', toggleClearButton);
+
+        // Initial check
+        toggleClearButton();
+    });
+
     async function checkEmail() {
         const email = document.getElementById('email').value;
         const passwordField = document.getElementById('password-field');

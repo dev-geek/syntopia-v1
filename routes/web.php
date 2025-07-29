@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Auth;
 // Guest routes (no authentication required)
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
-    Route::post('/login', [LoginController::class, 'customLogin'])->name('login.user');
+    Route::post('/login/custom', [LoginController::class, 'customLogin'])->name('login.post');
     Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
     Route::post('/register', [RegisterController::class, 'register'])->name('register.user');
     Route::get('/admin-login', [AdminController::class, 'login'])->name('admin-login');
