@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Traits\BusinessEmailValidation;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -12,20 +11,13 @@ use App\Models\User;
 
 class LoginController extends Controller
 {
-    use AuthenticatesUsers, BusinessEmailValidation;
+    use AuthenticatesUsers;
 
     /**
      * Redirect users after login based on role using Spatie roles.
      */
     protected function authenticated(Request $request, $user)
     {
-        // Check if user with 'User' role is using a business email
-        if ($user->hasRole('User') && !$this->isBusinessEmail($user->email)) {
-            Auth::logout();
-            return redirect()->route('login')
-                ->withErrors(['email' => 'Please use your business email to login.']);
-        }
-
         // Check verification status for all users
         if (!$this->isUserVerified($user)) {
             Auth::logout();
