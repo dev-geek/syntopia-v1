@@ -391,13 +391,13 @@
         border-color: #0d6efd;
     }
 
-    .verification-code-clear-btn i {
-        font-size: 14px;
-        line-height: 1;
+    .verification-code-clear-btn svg {
+        width: 14px;
+        height: 14px;
         transition: all 0.2s ease;
     }
 
-    .verification-code-clear-btn:hover i {
+    .verification-code-clear-btn:hover svg {
         transform: scale(1.1);
     }
 
@@ -420,8 +420,9 @@
             height: 28px;
         }
 
-        .verification-code-clear-btn i {
-            font-size: 12px;
+        .verification-code-clear-btn svg {
+            width: 12px;
+            height: 12px;
         }
 
         .verification-code-field-wrapper input[type="text"] {
@@ -494,7 +495,9 @@
                                value="{{ old('verification_code') }}"
                                required>
                         <button type="button" class="verification-code-clear-btn" id="verificationCodeClearBtn" style="display: none;">
-                            <i class="fas fa-times"></i>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
                         </button>
                     </div>
                     @error('verification_code')
@@ -529,7 +532,7 @@
         <a href="mailto:info@syntopia.ai" class="text-primary">info@syntopia.ai</a>.
     </div>
 
-    @if (session('swal_error'))
+    @if (session('verification_swal_error'))
         <form id="swal-delete-user-form" method="POST" action="{{ route('verification.deleteUserAndRedirect') }}" style="display:none;">
             @csrf
             <input type="hidden" name="email" value="{{ $email ?? Auth::user()->email }}">
@@ -540,7 +543,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Verification Error',
-                    text: @json(session('swal_error')),
+                    text: @json(session('verification_swal_error')),
                     confirmButtonText: 'OK'
                 }).then(() => {
                     document.getElementById('swal-delete-user-form').submit();

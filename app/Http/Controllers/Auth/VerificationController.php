@@ -107,7 +107,7 @@ class VerificationController extends Controller
             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                 DB::rollBack();
                 Log::error('[verifyCode] API returned swal error', ['user_id' => $user->id, 'error' => $apiResponse['error_message']]);
-                return back()->with('swal_error', $apiResponse['error_message']);
+                return back()->with('verification_swal_error', $apiResponse['error_message']);
             }
 
             if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
@@ -369,7 +369,7 @@ class VerificationController extends Controller
 
             return [
                 'success' => true,
-                'data' => $createResponse->json()['data'] ?? null,
+                'data' => ['tenantId' => $tenantId],
                 'error_message' => null
             ];
 
@@ -425,6 +425,31 @@ class VerificationController extends Controller
         };
 
         Log::error('Failed to bind password', [
+            'user_id' => $user->id,
+            'status' => $status,
+            'response' => $response->body()
+        ]);
+
+        return [
+            'success' => false,
+            'data' => null,
+            'error_message' => $errorMessage
+        ];
+    }
+
+    private function handleFailedAddLicense(\Illuminate\Http\Client\Response $response, User $user): array
+    {
+        $status = $response->status();
+        $errorMessage = "[$status] " . match ($status) {
+            400 => 'Bad Request - Missing required parameters.',
+            401 => 'Unauthorized - Invalid or expired subscription key.',
+            404 => 'Not Found - The requested resource does not exist.',
+            429 => 'Too Many Requests - Rate limit exceeded.',
+            500 => 'Internal Server Error - API server issue.',
+            default => 'Unexpected error occurred.'
+        };
+
+        Log::error('Failed to add license', [
             'user_id' => $user->id,
             'status' => $status,
             'response' => $response->body()

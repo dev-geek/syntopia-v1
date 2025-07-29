@@ -102,7 +102,7 @@ class PaymentController extends Controller
                 'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/channel/inventory/subscription/summary/search', [
+            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/search', [
                 'pageIndex' => 1,
                 'pageSize' => 100,
                 'appIds' => [1],

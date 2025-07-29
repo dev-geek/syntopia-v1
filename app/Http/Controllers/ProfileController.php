@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 use App\Models\UserLog;
 use App\Services\PasswordBindingService;
+use App\Http\Requests\UpdateProfileRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -21,12 +22,9 @@ class ProfileController extends Controller
     {
         return view('auth.update-password');
     }
-    public function updateProfile(Request $request, PasswordBindingService $passwordBindingService)
+    public function updateProfile(UpdateProfileRequest $request, PasswordBindingService $passwordBindingService)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'password' => 'nullable|string|min:8|confirmed',
-        ]);
+        $validated = $request->validated();
 
         $user = Auth::user();
 
@@ -68,8 +66,8 @@ class ProfileController extends Controller
             UserLog::create([
                 'user_id' => $user->id,
                 'activity' => $activityMessage,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->header('User-Agent'),
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->header('User-Agent'),
             ]);
         }
 

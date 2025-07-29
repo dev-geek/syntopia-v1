@@ -71,7 +71,20 @@ class PasswordToggle {
         return toggleBtn;
     }
 
+    isRegisterPage() {
+        // Check if we're on the register page by looking for specific elements or URL
+        return window.location.pathname.includes('/register') ||
+               document.querySelector('form[action*="register"]') ||
+               document.querySelector('input[name="first_name"]') ||
+               document.querySelector('input[name="last_name"]');
+    }
+
     getIconElement(type) {
+        // Check if we're on the register page and use SVG icons
+        if (this.isRegisterPage()) {
+            return this.createSVGIcon(type);
+        }
+
         // Check if FontAwesome is available
         if (typeof FontAwesome !== 'undefined' || document.querySelector('.fa, .fas, .far')) {
             const icon = document.createElement('i');
@@ -86,6 +99,35 @@ class PasswordToggle {
         span.style.fontWeight = 'bold';
         span.style.color = '#6c757d';
         return span;
+    }
+
+    createSVGIcon(type) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.transition = 'all 0.2s ease';
+
+        if (type === 'eye') {
+            // Eye icon
+            svg.innerHTML = `
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+            `;
+        } else {
+            // Eye-slash icon
+            svg.innerHTML = `
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+            `;
+        }
+
+        return svg;
     }
 
     addEventListeners(toggleBtn, passwordField) {
@@ -121,16 +163,23 @@ class PasswordToggle {
         passwordField.setAttribute('type', newType);
 
         // Update icon
-        const icon = toggleBtn.querySelector('i, span');
+        const icon = toggleBtn.querySelector('i, span, svg');
         if (icon) {
-            if (newType === 'text') {
-                icon.className = 'fas fa-eye-slash';
-                toggleBtn.setAttribute('aria-label', 'Hide password');
-                toggleBtn.setAttribute('title', 'Hide password');
+            if (this.isRegisterPage()) {
+                // Update SVG icon
+                const newSvg = this.createSVGIcon(newType === 'text' ? 'eye-slash' : 'eye');
+                icon.replaceWith(newSvg);
             } else {
-                icon.className = 'fas fa-eye';
-                toggleBtn.setAttribute('aria-label', 'Show password');
-                toggleBtn.setAttribute('title', 'Show password');
+                // Update FontAwesome icon
+                if (newType === 'text') {
+                    icon.className = 'fas fa-eye-slash';
+                    toggleBtn.setAttribute('aria-label', 'Hide password');
+                    toggleBtn.setAttribute('title', 'Hide password');
+                } else {
+                    icon.className = 'fas fa-eye';
+                    toggleBtn.setAttribute('aria-label', 'Show password');
+                    toggleBtn.setAttribute('title', 'Show password');
+                }
             }
         }
 
