@@ -69,15 +69,7 @@
                             <!-- Password -->
                             <div class="form-group">
                                 <label for="password">Password</label>
-                                <div class="input-group">
-                                    <input id="password" type="password"
-                                        class="form-control @error('password') is-invalid @enderror" name="password">
-                                    <div class="input-group-append">
-                                        <span class="input-group-text" onclick="togglePassword('password', this)">
-                                            <i class="fas fa-eye"></i>
-                                        </span>
-                                    </div>
-                                </div>
+                                <x-password-toggle id="password" name="password" class="@error('password') is-invalid @enderror" />
                                 @error('password')
                                     <small class="text-danger">{{ $message }}</small>
                                 @enderror
@@ -86,17 +78,7 @@
                             <!-- Confirm Password -->
                             <div class="form-group">
                                 <label for="password_confirmation">Confirm Password</label>
-                                <div class="input-group">
-                                    <input id="password_confirmation" type="password"
-                                        class="form-control @error('password_confirmation') is-invalid @enderror"
-                                        name="password_confirmation">
-                                    <div class="input-group-append">
-                                        <span class="input-group-text"
-                                            onclick="togglePassword('password_confirmation', this)">
-                                            <i class="fas fa-eye"></i>
-                                        </span>
-                                    </div>
-                                </div>
+                                <x-password-toggle id="password_confirmation" name="password_confirmation" class="@error('password_confirmation') is-invalid @enderror" />
                                 @error('password_confirmation')
                                     <small class="text-danger">{{ $message }}</small>
                                 @enderror
@@ -172,20 +154,7 @@
         });
     });
 
-    // Toggle Password
-    function togglePassword(fieldId, iconSpan) {
-        const input = document.getElementById(fieldId);
-        const icon = iconSpan.querySelector('i');
-        if (input.type === "password") {
-            input.type = "text";
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-        } else {
-            input.type = "password";
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-        }
-    }
+    // Password toggle functionality is now handled by the dedicated password-toggle.js script
 </script>
 </body>
 

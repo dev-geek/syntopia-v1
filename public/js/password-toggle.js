@@ -81,8 +81,10 @@ class PasswordToggle {
 
         // Fallback to text
         const span = document.createElement('span');
-        span.textContent = type === 'eye' ? '👁️' : '🙈';
-        span.style.fontSize = '14px';
+        span.textContent = type === 'eye' ? 'Show' : 'Hide';
+        span.style.fontSize = '12px';
+        span.style.fontWeight = 'bold';
+        span.style.color = '#6c757d';
         return span;
     }
 

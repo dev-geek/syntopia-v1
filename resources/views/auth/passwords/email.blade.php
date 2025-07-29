@@ -58,7 +58,22 @@
     <div class="login-container">
         <img src="https://syntopia.ai/wp-content/uploads/2025/02/Syntopiaa-logo.webp" alt="Logo" class="logo">
         <h2>Reset Your Password</h2>
-        <p>Forgot Your Password? Please enter your email and we"ll send you a code.</p>
+        <p>Forgot Your Password? Please enter your email and we'll send you a reset link.</p>
+
+        @if (session('status'))
+            <div class="alert alert-success" style="text-align: left; margin-bottom: 20px;">
+                {{ session('status') }}
+            </div>
+        @endif
+
+        @if ($errors->any())
+            <div class="alert alert-danger" style="text-align: left; margin-bottom: 20px;">
+                <strong>Please fix the following errors:</strong><br>
+                @foreach ($errors->all() as $error)
+                    • {{ $error }}<br>
+                @endforeach
+            </div>
+        @endif
         <form method="POST" action="{{ route('password.email') }}">
         @csrf
         <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" placeholder="Enter Your email..." autofocus>

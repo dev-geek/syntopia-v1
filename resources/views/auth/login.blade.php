@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <title>Login Page</title>
     <style>
@@ -16,9 +17,6 @@
         padding: 0;
         overflow: hidden;
     }
-
-    /* Password Toggle Styles - Imported from dedicated file */
-    /* Note: password-toggle.css is included separately in layouts */
 
     body {
         display: flex;
@@ -165,6 +163,132 @@
         border: 1px solid #ccc;
         border-radius: 5px;
         background: #E7E7E9;
+    }
+
+    /* Password toggle styles - identical to main CSS */
+    .password-field-wrapper {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+    }
+
+    .password-toggle-btn {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid #e0e0e0;
+        color: #6c757d;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 6px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+        font-size: 14px;
+        height: 32px;
+        width: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(4px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .password-toggle-btn:hover {
+        background: rgba(255, 255, 255, 1);
+        color: #0d6efd;
+        border-color: #0d6efd;
+        box-shadow: 0 4px 8px rgba(13, 110, 253, 0.15);
+        transform: translateY(-50%) scale(1.05);
+    }
+
+    .password-toggle-btn:active {
+        transform: translateY(-50%) scale(0.95);
+    }
+
+    .password-toggle-btn:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
+        border-color: #0d6efd;
+    }
+
+    .password-toggle-btn i {
+        font-size: 16px;
+        line-height: 1;
+        transition: all 0.2s ease;
+    }
+
+    .password-toggle-btn:hover i {
+        transform: scale(1.1);
+    }
+
+    /* Ensure password input has right padding to accommodate the toggle button */
+    .password-field-wrapper input[type="password"],
+    .password-field-wrapper input[type="text"] {
+        padding-right: 50px !important;
+    }
+
+    /* Animation for icon change */
+    .password-toggle-btn i.fa-eye,
+    .password-toggle-btn i.fa-eye-slash {
+        transition: all 0.3s ease;
+    }
+
+    .password-toggle-btn:hover i.fa-eye {
+        animation: eyeWink 0.6s ease;
+    }
+
+    .password-toggle-btn:hover i.fa-eye-slash {
+        animation: eyeWink 0.6s ease;
+    }
+
+    @keyframes eyeWink {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(0.8); }
+    }
+
+    /* Focus state for accessibility */
+    .password-field-wrapper:focus-within .password-toggle-btn {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+    }
+
+    /* Responsive adjustments for password toggle */
+    @media (max-width: 768px) {
+        .password-toggle-btn {
+            padding: 6px;
+            right: 8px;
+            height: 28px;
+            width: 28px;
+        }
+
+        .password-toggle-btn i {
+            font-size: 14px;
+        }
+
+        .password-field-wrapper input[type="password"],
+        .password-field-wrapper input[type="text"] {
+            padding-right: 44px !important;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .password-toggle-btn {
+            padding: 5px;
+            right: 6px;
+            height: 26px;
+            width: 26px;
+        }
+
+        .password-toggle-btn i {
+            font-size: 13px;
+        }
+
+        .password-field-wrapper input[type="password"],
+        .password-field-wrapper input[type="text"] {
+            padding-right: 40px !important;
+        }
     }
 
     .primary-button,
@@ -341,7 +465,10 @@
                 continueBtn.onclick = () => loginForm.submit();
 
                 // Initialize password toggle for the newly shown password field
-                initializePasswordToggle();
+                const passwordInput = document.getElementById('password');
+                if (passwordInput && window.PasswordToggle) {
+                    PasswordToggle.addToField(passwordInput);
+                }
             } else {
                 // Redirect to register page if user doesn't exist
                 window.location.href = '/register?email=' + encodeURIComponent(email);
@@ -351,8 +478,6 @@
         }
     }
 
-    // Password Toggle Functionality - Now handled by dedicated script
-    // The password-toggle.js file automatically handles all password fields
     </script>
 
     <!-- Password Toggle Script -->
