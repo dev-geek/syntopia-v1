@@ -21,6 +21,9 @@
 
             {{-- Show to role User --}}
             @role('User')
+                @if (Auth::user()->password == null || Auth::user()->password == '')
+                    @include('dashboard.includes.password-notification')
+                @endif
                 <h2 class="overview-title">Basic Overview</h2>
                 <div class="overview-grid">
                     <div class="overview-card">
