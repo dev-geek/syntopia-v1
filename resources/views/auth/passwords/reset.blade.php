@@ -18,45 +18,100 @@
             align-items: center;
             height: 100vh;
             margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
         .login-container {
             width: 100%;
-            max-width: 400px;
+            max-width: 450px;
             text-align: center;
             background: white;
-            border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 40px 30px;
         }
 
         .logo {
             width: 150px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
 
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        p {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
 
         input {
-            max-width: 100%;
             width: 100%;
-            padding: 10px;
-            margin: 10px 0 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            background: #E7E7E9;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            background: #f8f9fa;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #5B0DD5;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(91, 13, 213, 0.1);
+        }
+
+        input[readonly] {
+            background: #f1f3f4;
+            color: #666;
+            cursor: not-allowed;
         }
 
         .primary-button {
             width: 100%;
-            padding: 10px;
-            background: #5B0DD5;
+            padding: 12px;
+            background: linear-gradient(135deg, #5B0DD5 0%, #7C3AED 100%);
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-top: 10px;
         }
 
-        /* Password toggle styles - identical to main CSS */
+        .primary-button:hover {
+            background: linear-gradient(135deg, #4C0BB8 0%, #6B21A8 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(91, 13, 213, 0.3);
+        }
+
+        .primary-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Password toggle styles */
         .password-field-wrapper {
             position: relative;
             display: inline-block;
@@ -74,7 +129,7 @@
             cursor: pointer;
             padding: 8px;
             border-radius: 6px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.3s ease;
             z-index: 10;
             font-size: 14px;
             height: 32px;
@@ -88,178 +143,190 @@
 
         .password-toggle-btn:hover {
             background: rgba(255, 255, 255, 1);
-            color: #0d6efd;
-            border-color: #0d6efd;
-            box-shadow: 0 4px 8px rgba(13, 110, 253, 0.15);
+            color: #5B0DD5;
+            border-color: #5B0DD5;
+            box-shadow: 0 4px 8px rgba(91, 13, 213, 0.15);
             transform: translateY(-50%) scale(1.05);
         }
 
-        .password-toggle-btn:active {
-            transform: translateY(-50%) scale(0.95);
+        .password-field-wrapper input[type="password"],
+        .password-field-wrapper input[type="text"] {
+            padding-right: 50px !important;
         }
 
-        .password-toggle-btn:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
-            border-color: #0d6efd;
+        /* Alert styles */
+        .alert {
+            border-radius: 8px;
+            border: none;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
         }
 
+        .alert-danger {
+            background: #fef2f2;
+            color: #dc2626;
+            border-left: 4px solid #dc2626;
+        }
+
+        .alert-success {
+            background: #f0fdf4;
+            color: #16a34a;
+            border-left: 4px solid #16a34a;
+        }
+
+        .alert-info {
+            background: #eff6ff;
+            color: #2563eb;
+            border-left: 4px solid #2563eb;
+        }
+
+        /* Validation styles */
+        .form-control.is-valid {
+            border-color: #16a34a;
+            background-color: #f0fdf4;
+        }
+
+        .form-control.is-invalid {
+            border-color: #dc2626;
+            background-color: #fef2f2;
+        }
+
+        .invalid-feedback {
+            display: block;
+            width: 100%;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #dc2626;
+            font-weight: 500;
+        }
+
+        .valid-feedback {
+            display: block;
+            width: 100%;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #16a34a;
+            font-weight: 500;
+        }
+
+        /* Password requirements list */
+        .password-requirements {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .password-requirements strong {
+            color: #374151;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .password-requirements ul {
+            margin: 0;
+            padding-left: 20px;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        .password-requirements li {
+            margin-bottom: 4px;
+        }
+
+        /* Animation for icon change */
         .password-toggle-btn i {
-            font-size: 16px;
-            line-height: 1;
-            transition: all 0.2s ease;
+            transition: all 0.3s ease;
         }
 
         .password-toggle-btn:hover i {
             transform: scale(1.1);
         }
 
-        /* Ensure password input has right padding to accommodate the toggle button */
-        .password-field-wrapper input[type="password"],
-        .password-field-wrapper input[type="text"] {
-            padding-right: 50px !important;
+        @keyframes eyeWink {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(0.8); }
         }
 
-        /* Animation for icon change */
-        .password-toggle-btn i.fa-eye,
-        .password-toggle-btn i.fa-eye-slash {
-            transition: all 0.3s ease;
-        }
-
-        .password-toggle-btn:hover i.fa-eye {
-            animation: eyeWink 0.6s ease;
-        }
-
+        .password-toggle-btn:hover i.fa-eye,
         .password-toggle-btn:hover i.fa-eye-slash {
             animation: eyeWink 0.6s ease;
-        }
-
-        @keyframes eyeWink {
-
-            0%,
-            100% {
-                transform: scale(1);
-            }
-
-            50% {
-                transform: scale(0.8);
-            }
-        }
-
-        /* Focus state for accessibility */
-        .password-field-wrapper:focus-within .password-toggle-btn {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
-        }
-
-        /* Validation styles */
-        .form-control.is-valid {
-            border-color: #198754;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3e%3cpath fill='%23198754' d='m2.3 6.73.94-.94 3.03-3.03-1.06-1.06-3.03 3.03-.94.94z'/%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right calc(0.375em + 0.1875rem) center;
-            background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
-        }
-
-        .form-control.is-invalid {
-            border-color: #dc3545;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 4.6 1.4 1.4m0-1.4-1.4 1.4'/%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right calc(0.375em + 0.1875rem) center;
-            background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
-        }
-
-        .invalid-feedback {
-            display: block;
-            width: 100%;
-            margin-top: 0.25rem;
-            font-size: 0.875em;
-            color: #dc3545;
-        }
-
-        .valid-feedback {
-            display: block;
-            width: 100%;
-            margin-top: 0.25rem;
-            font-size: 0.875em;
-            color: #198754;
-        }
-
-        .primary-button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
         }
     </style>
 </head>
 
 <body>
-
     <div class="login-container">
         <img src="https://syntopia.ai/wp-content/uploads/2025/02/Syntopiaa-logo.webp" alt="Logo" class="logo">
         <h2>Create New Password</h2>
         <p>Your new password must be different from previous used passwords.</p>
-        @if ($errors->any())
-            <div class="alert alert-danger" style="text-align: left; margin-bottom: 20px;">
-                <strong>Please fix the following errors:</strong><br>
-                @foreach ($errors->all() as $error)
-                    • {{ $error }}<br>
-                @endforeach
-            </div>
-        @endif
 
         @if (session('status'))
-            <div class="alert alert-success" style="text-align: left; margin-bottom: 20px;">
+            <div class="alert alert-success">
                 {{ session('status') }}
             </div>
         @endif
 
-        <div class="alert alert-info" style="text-align: left; margin-bottom: 20px;">
-            <strong>Password Requirements:</strong><br>
-            • At least 8 characters long<br>
-            • Must contain uppercase and lowercase letters<br>
-            • Must contain at least one number<br>
-            • Must contain at least one special character (,.<>{}~!@#$%^&_)
+        <div class="password-requirements">
+            <strong>Password Requirements:</strong>
+            <ul>
+                <li>At least 8 characters long</li>
+                <li>Must contain uppercase and lowercase letters</li>
+                <li>Must contain at least one number</li>
+                <li>Must contain at least one special character (,.<>{}~!@#$%^&_)</li>
+            </ul>
         </div>
+
         <form method="POST" action="{{ route('password.update') }}">
             @csrf
             <input type="hidden" name="token" value="{{ $token }}">
 
-            <input readonly id="email" type="email" class="form-control @error('email') is-invalid @enderror"
-                name="email" value="{{ $email ?? old('email') }}" required autocomplete="email" autofocus>
-
-            @error('email')
-                <span class="invalid-feedback" role="alert">
-                    <strong>{{ $message }}</strong>
-                </span>
-            @enderror
-            <div class="password-field-wrapper">
-                <input id="password" type="password" class="form-control @error('password') is-invalid @enderror"
-                    name="password" required autocomplete="new-password" placeholder="Enter new password">
-                <button type="button" class="password-toggle-btn" aria-label="Show password"
-                    title="Toggle password visibility">
-                    <i class="fas fa-eye"></i>
-                </button>
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input readonly id="email" type="email" class="form-control @error('email') is-invalid @enderror"
+                    name="email" value="{{ $email ?? old('email') }}" required autocomplete="email">
+                @error('email')
+                    <span class="invalid-feedback" role="alert">
+                        <strong>{{ $message }}</strong>
+                    </span>
+                @enderror
             </div>
 
-            @error('password')
-                <span class="invalid-feedback" role="alert">
-                    <strong>{{ $message }}</strong>
-                </span>
-            @enderror
+            <div class="form-group">
+                <label for="password">New Password</label>
+                <div class="password-field-wrapper">
+                    <input id="password" type="password" class="form-control @error('password') is-invalid @enderror"
+                        name="password" required autocomplete="new-password" placeholder="Enter new password">
+                    <button type="button" class="password-toggle-btn" aria-label="Show password"
+                        title="Toggle password visibility">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+                @error('password')
+                    <span class="invalid-feedback" role="alert">
+                        <strong>{{ $message }}</strong>
+                    </span>
+                @enderror
+            </div>
 
-            <div class="password-field-wrapper">
-                <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required
-                    autocomplete="new-password" placeholder="Confirm new password">
-                <button type="button" class="password-toggle-btn" aria-label="Show password"
-                    title="Toggle password visibility">
-                    <i class="fas fa-eye"></i>
-                </button>
+            <div class="form-group">
+                <label for="password-confirm">Confirm Password</label>
+                <div class="password-field-wrapper">
+                    <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required
+                        autocomplete="new-password" placeholder="Confirm new password">
+                    <button type="button" class="password-toggle-btn" aria-label="Show password"
+                        title="Toggle password visibility">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
             </div>
 
             <button type="submit" class="primary-button">Reset Password</button>
         </form>
-
-
     </div>
 
     <!-- Password Toggle Script -->
@@ -374,5 +441,4 @@
         });
     </script>
 </body>
-
 </html>
