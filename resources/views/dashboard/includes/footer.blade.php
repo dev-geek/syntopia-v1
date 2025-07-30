@@ -35,6 +35,29 @@
         </div>
         <!-- ./wrapper -->
 
+        @if (Auth::user()->password == NULL || Auth::user()->password == '')
+            {{-- Show an undismissable popup to set/change password --}}
+            <div class="modal fade password-modal" id="passwordModal" tabindex="-1" aria-labelledby="passwordModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="passwordModalLabel">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                Set/Change Password
+                            </h5>
+                        </div>
+                        <div class="modal-body">
+                            <p>You haven't set a password yet. Please set a password to continue.</p>
+                            <a href="{{ route('password.request') }}" class="btn-set-password">
+                                <i class="fas fa-key"></i>
+                                Set Password
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <!-- REQUIRED SCRIPTS -->
         <!-- jQuery -->
         <script src="{{ asset('plugins/jquery/jquery.min.js') }}"></script>
@@ -84,3 +107,70 @@
 
         <!-- Copy to Clipboard Utility -->
         <script src="{{ asset('js/copy-to-clipboard.js') }}"></script>
+
+        <!-- Password Modal Script -->
+        @if (Auth::user()->password == NULL || Auth::user()->password == '')
+        <script>
+            console.log('Password modal script loaded');
+
+            function initPasswordModal() {
+                console.log('Initializing password modal...');
+
+                const modalElement = document.getElementById('passwordModal');
+                if (!modalElement) {
+                    console.error('Password modal element not found');
+                    return;
+                }
+
+                try {
+                    // Try Bootstrap 5
+                    if (typeof bootstrap !== 'undefined') {
+                        console.log('Using Bootstrap 5');
+                        const passwordModal = new bootstrap.Modal(modalElement, {
+                            backdrop: 'static',
+                            keyboard: false
+                        });
+                        passwordModal.show();
+
+                        // Prevent modal from being closed
+                        modalElement.addEventListener('hide.bs.modal', function (event) {
+                            console.log('Modal hide event prevented');
+                            event.preventDefault();
+                            return false;
+                        });
+                    } else {
+                        // Fallback to jQuery/bootstrap 4
+                        console.log('Using jQuery/Bootstrap 4');
+                        $(modalElement).modal({
+                            backdrop: 'static',
+                            keyboard: false,
+                            show: true
+                        });
+
+                        // Prevent modal from being closed
+                        $(modalElement).on('hide.bs.modal', function (event) {
+                            console.log('Modal hide event prevented (jQuery)');
+                            event.preventDefault();
+                            return false;
+                        });
+                    }
+
+                    console.log('Password modal shown successfully');
+                } catch (error) {
+                    console.error('Error showing password modal:', error);
+                    // Final fallback
+                    $(modalElement).modal('show');
+                }
+            }
+
+            // Try to show modal when page is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initPasswordModal);
+            } else {
+                initPasswordModal();
+            }
+
+            // Also try after a delay to ensure all scripts are loaded
+            setTimeout(initPasswordModal, 500);
+        </script>
+        @endif

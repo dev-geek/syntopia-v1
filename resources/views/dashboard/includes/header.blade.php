@@ -585,6 +585,110 @@
                 justify-content: center;
             }
         }
+
+        /* Password Modal Styles - Matching Project Theme */
+        .password-modal .modal-content {
+            background: linear-gradient(135deg, #f8fafd 0%, #e9f3ff 100%);
+            border: 1px solid #e3eafc;
+            border-radius: 1.1rem;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.13);
+            overflow: hidden;
+        }
+
+        .password-modal .modal-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            color: #fff;
+            border-bottom: 1px solid #e3eafc;
+            padding: 1.5rem 2rem 1rem 2rem;
+            position: relative;
+        }
+
+        .password-modal .modal-title {
+            font-weight: 700;
+            font-size: 1.3rem;
+            margin: 0;
+        }
+
+        .password-modal .btn-close {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            opacity: 0.8;
+        }
+
+        .password-modal .btn-close:hover {
+            background: rgba(255,255,255,0.3);
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        .password-modal .btn-close::before {
+            content: "×";
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .password-modal .modal-body {
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .password-modal .modal-body p {
+            color: #6c757d;
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .password-modal .btn-set-password {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #fff;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(13,110,253,0.15);
+        }
+
+        .password-modal .btn-set-password:hover {
+            background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(13,110,253,0.25);
+            text-decoration: none;
+        }
+
+        .password-modal .btn-set-password:focus {
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+        }
+
+        .password-modal .btn-set-password i {
+            font-size: 1.1rem;
+        }
+
+        /* Prevent modal backdrop click */
+        .password-modal .modal-backdrop {
+            pointer-events: none;
+        }
+
+        .password-modal .modal {
+            pointer-events: auto;
+        }
     </style>
 
 </head>
@@ -621,7 +725,8 @@
 
             <!-- Right navbar links -->
             <ul class="navbar-nav ml-auto">
-                @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
+                @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin')
+                    && (!Auth::user()->password == NULL || !Auth::user()->password == ''))
                     <li class="nav-item">
                         <a href="{{ route('software.access') }}" class="btn btn-primary header-software-btn" target="_blank">
                             <i class="bi bi-box-arrow-up-right"></i>
@@ -629,6 +734,7 @@
                         </a>
                     </li>
                 @endif
+
                 @if (!Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item dropdown">
                         <a class="nav-link position-relative header-bell @if($userLogs->count()) has-notifications @endif" data-toggle="dropdown" href="#">
@@ -686,5 +792,4 @@
         </nav>
         <!-- /.navbar -->
 
-@push('scripts')
-@endpush
+
