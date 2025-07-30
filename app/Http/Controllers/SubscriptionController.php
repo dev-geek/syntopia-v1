@@ -143,6 +143,50 @@ class SubscriptionController extends Controller
         return $targetPrice < $currentPrice;
     }
 
+    /**
+     * Determine if user is a returning customer who has previously purchased packages
+     */
+    private function isReturningCustomer($user)
+    {
+        return $user->isReturningCustomer();
+    }
+
+    /**
+     * Get user's purchase history summary
+     */
+    private function getUserPurchaseHistory($user)
+    {
+        return $user->getPurchaseHistory();
+    }
+
+    /**
+     * Determine the appropriate payment gateway for the user
+     */
+    private function getAppropriatePaymentGateway($user, $type)
+    {
+        // If user is a returning customer, try to use their original payment gateway
+        if ($user->isReturningCustomer() && $user->paymentGateway) {
+            // Check if their original gateway is still active
+            if ($user->paymentGateway->is_active) {
+                return $user->paymentGateway;
+            } else {
+                // Original gateway is no longer active, but we'll still use it for returning customers
+                // This allows them to continue with their preferred payment method
+                return $user->paymentGateway;
+            }
+        }
+
+        // For new customers or returning customers without a payment gateway, use admin's active gateway
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
+
+        if (!$activeGateway) {
+            // No active gateway found, try to get any available gateway
+            $activeGateway = PaymentGateways::first();
+        }
+
+        return $activeGateway;
+    }
+
     public function handleSubscription()
     {
         $user = Auth::user();
@@ -313,15 +357,13 @@ class SubscriptionController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        $targetGateway = $type === 'upgrade'
-            ? ($user->paymentGateway && $user->paymentGateway->is_active === 1
-                ? $user->paymentGateway
-                : null)
-            : PaymentGateways::where('is_active', true)->first();
+        // Determine the appropriate payment gateway based on customer type
+        $targetGateway = $this->getAppropriatePaymentGateway($user, $type);
 
+        // For upgrade scenarios, ensure the user has a payment gateway
         if ($type === 'upgrade' && !$targetGateway) {
             return redirect()->route('user.dashboard')
-                ->with('error', 'Your original payment gateway is no longer available. Please contact support.');
+                ->with('error', 'No payment gateway available. Please contact support.');
         }
 
         $gateways = collect($targetGateway ? [$targetGateway] : []);
@@ -353,17 +395,22 @@ class SubscriptionController extends Controller
             'currentPackagePrice' => $currentUserPackage ? $currentUserPackage->price : 0,
             'activeGateway' => $targetGateway,
             'currentLoggedInUserPaymentGateway' => $targetGateway ? $targetGateway->name : null,
-            'userOriginalGateway' => $type === 'upgrade' ? ($targetGateway ? $targetGateway->name : null) : null,
+            'userOriginalGateway' => $user->paymentGateway ? $user->paymentGateway->name : null,
             'activeGatewaysByAdmin' => PaymentGateways::where('is_active', true)->pluck('name')->values(),
             'packages' => $packages,
             'pageType' => $type,
             'isUpgrade' => $type === 'upgrade',
-            'upgradeEligible' => $type === 'upgrade' && $targetGateway && $targetGateway->is_active,
+            'upgradeEligible' => $type === 'upgrade' && $targetGateway,
             'hasActiveSubscription' => $this->hasActiveSubscription($user),
             'selectedPackage' => $selectedPackage,
             'packageAvailability' => $packageAvailability,
             'upgradeablePackages' => $upgradeablePackages,
-            'downgradeablePackages' => $downgradeablePackages
+            'downgradeablePackages' => $downgradeablePackages,
+            'isReturningCustomer' => $this->isReturningCustomer($user),
+            'purchaseHistory' => $this->getUserPurchaseHistory($user),
+            'selectedPaymentGateway' => $targetGateway ? $targetGateway->name : null,
+            'isUsingOriginalGateway' => $user->isReturningCustomer() && $user->paymentGateway && $targetGateway && $user->paymentGateway->id === $targetGateway->id,
+            'isUsingAdminGateway' => !$user->isReturningCustomer() || !$user->paymentGateway || ($targetGateway && $user->paymentGateway && $user->paymentGateway->id !== $targetGateway->id)
         ]);
     }
 }

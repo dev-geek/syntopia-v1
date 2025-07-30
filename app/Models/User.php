@@ -159,4 +159,73 @@ class User extends Authenticatable implements MustVerifyEmail
         $pattern = '/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/';
         return preg_match($pattern, $this->subscriber_password) === 1;
     }
+
+    /**
+     * Check if user is a returning customer who has previously purchased packages
+     *
+     * @return bool
+     */
+    public function isReturningCustomer(): bool
+    {
+        // Check if user has any completed orders
+        $hasCompletedOrders = $this->orders()
+            ->where('status', 'completed')
+            ->exists();
+
+        // Check if user has any order history at all
+        $hasAnyOrderHistory = $this->orders()->exists();
+
+        // Check if user has a payment gateway (indicates previous purchase)
+        $hasPaymentGateway = $this->payment_gateway_id !== null;
+
+        // Check if user has a package assigned
+        $hasPackage = $this->package_id !== null;
+
+        // Check if user is currently subscribed
+        $isCurrentlySubscribed = $this->is_subscribed;
+
+        // User is considered returning if they have any of these indicators
+        return $hasCompletedOrders || $hasAnyOrderHistory || $hasPaymentGateway || $hasPackage || $isCurrentlySubscribed;
+    }
+
+    /**
+     * Get user's purchase history summary
+     *
+     * @return array
+     */
+    public function getPurchaseHistory(): array
+    {
+        $orders = $this->orders()
+            ->with(['package', 'paymentGateway'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $completedOrders = $orders->where('status', 'completed');
+        $pendingOrders = $orders->where('status', 'pending');
+        $failedOrders = $orders->where('status', 'failed');
+
+        return [
+            'total_orders' => $orders->count(),
+            'completed_orders' => $completedOrders->count(),
+            'pending_orders' => $pendingOrders->count(),
+            'failed_orders' => $failedOrders->count(),
+            'first_purchase_date' => $orders->first() ? $orders->first()->created_at : null,
+            'last_purchase_date' => $completedOrders->first() ? $completedOrders->first()->created_at : null,
+            'total_spent' => $completedOrders->sum('amount'),
+            'current_package' => $this->package ? $this->package->name : null,
+            'payment_gateway' => $this->paymentGateway ? $this->paymentGateway->name : null,
+            'is_currently_subscribed' => $this->is_subscribed,
+            'has_active_license' => $this->userLicence && $this->userLicence->isActive(),
+        ];
+    }
+
+    /**
+     * Check if user is a new customer (no purchase history)
+     *
+     * @return bool
+     */
+    public function isNewCustomer(): bool
+    {
+        return !$this->isReturningCustomer();
+    }
 }
