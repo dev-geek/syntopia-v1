@@ -9,11 +9,21 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Models\{Package, User, PaymentGateways, Order};
+use App\Services\LicenseService;
+use App\Services\LicenseApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
+    private $licenseService;
+    private $licenseApiService;
+
+    public function __construct(LicenseService $licenseService, LicenseApiService $licenseApiService)
+    {
+        $this->licenseService = $licenseService;
+        $this->licenseApiService = $licenseApiService;
+    }
     private function validatePackageAndGetUser($packageName)
     {
         $user = Auth::user();
@@ -90,153 +100,11 @@ class PaymentController extends Controller
         return true;
     }
 
-    private function makeLicense($user = null, $bypassCache = false)
-    {
-        if ($bypassCache) {
-            // Make fresh API call without using cache
-            Log::info('Making fresh license API call (bypassing cache)', [
-                'user_id' => $user ? $user->id : null
-            ]);
 
-            $summary = Http::withHeaders([
-                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/search', [
-                'pageIndex' => 1,
-                'pageSize' => 100,
-                'appIds' => [1],
-                'subscriptionType' => 'license',
-            ]);
-
-            if (!$summary->successful() || $summary->json()['code'] !== 200) {
-                Log::error('Failed to fetch subscription summary in makeLicense (fresh call)', [
-                    'response' => $summary->body(),
-                ]);
-                return null;
-            }
-
-            $summaryData = $summary->json()['data']['data'] ?? [];
-        } else {
-            // Use cache for other scenarios
-            $cacheKey = 'license_summary_' . ($user ? $user->id : 'general');
-            $summaryData = Cache::remember($cacheKey, 300, function () {
-                $summary = Http::withHeaders([
-                    'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
-                ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/channel/inventory/subscription/summary/search', [
-                    'pageIndex' => 1,
-                    'pageSize' => 100,
-                    'appIds' => [1],
-                    'subscriptionType' => 'license',
-                ]);
-
-                if (!$summary->successful() || $summary->json()['code'] !== 200) {
-                    Log::error('Failed to fetch subscription summary in makeLicense', [
-                        'response' => $summary->body(),
-                    ]);
-                    return null;
-                }
-
-                return $summary->json()['data']['data'] ?? [];
-            });
-        }
-
-        if (empty($summaryData)) {
-            Log::error('No subscription data found in summary response', [
-                'bypass_cache' => $bypassCache
-            ]);
-            return null;
-        }
-
-        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
-        if (!$licenseKey) {
-            Log::error('Subscription code not found in summary response', [
-                'bypass_cache' => $bypassCache
-            ]);
-            return null;
-        }
-
-        Log::info('License key retrieved', [
-            'license_key' => $licenseKey,
-            'bypass_cache' => $bypassCache
-        ]);
-        return $licenseKey;
-    }
-
-    private function addLicenseToExternalAPI($user, $licenseKey)
-    {
-        try {
-            $tenantId = $user->tenant_id;
-            if (!$tenantId) {
-                Log::error('Tenant ID not found for user', ['user_id' => $user->id]);
-                return false;
-            }
-
-            $payload = [
-                'tenantId' => $tenantId,
-                'subscriptionCode' => $licenseKey,
-            ];
-
-            $response = Http::withHeaders([
-                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/tenant/subscription/license/add', $payload);
-
-            $responseData = $response->json();
-            Log::info("License response", $responseData);
-
-            if ($response->successful() && $responseData['code'] === 200) {
-                $user->update([
-                    'license_key' => $licenseKey
-                ]);
-
-                Log::info('License added successfully via API', [
-                    'user_id' => $user->id,
-                    'tenant_id' => $tenantId,
-                    'license_key' => $licenseKey
-                ]);
-                return true;
-            } else {
-                // Handle specific error codes
-                $errorCode = $responseData['code'] ?? null;
-                $errorMessage = $responseData['message'] ?? 'Unknown error';
-
-                if ($errorCode === 710) {
-                    Log::error('License API resource insufficiency', [
-                        'user_id' => $user->id,
-                        'tenant_id' => $tenantId,
-                        'error_code' => $errorCode,
-                        'error_message' => $errorMessage,
-                        'trace_id' => $responseData['traceId'] ?? null
-                    ]);
-                    // For resource insufficiency, we might want to retry later or notify admin
-                    return false;
-                }
-
-                Log::error('Failed to add license via API', [
-                    'user_id' => $user->id,
-                    'tenant_id' => $tenantId,
-                    'error_code' => $errorCode,
-                    'error_message' => $errorMessage,
-                    'response' => $response->body(),
-                ]);
-                return false;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error calling license API', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage(),
-            ]);
-            return false;
-        }
-    }
 
     public function paddleCheckout(Request $request, string $package)
     {
-        \Log::info('[paddleCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
+        Log::info('[paddleCheckout] called', ['package' => $package, 'user_id' => Auth::id()]);
         Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
         // Log Paddle configuration for debugging
@@ -258,47 +126,40 @@ class PaymentController extends Controller
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
-            // For paid packages, check license availability from API and update user's license
-            if (!$packageData->isFree()) {
-                Log::info('Checking license availability from API for paid package', [
+            // Check license availability from API and update user's license
+            Log::info('Checking license availability from API', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'package_price' => $packageData->price,
+                'is_upgrade' => $isUpgrade,
+                'is_downgrade' => $isDowngrade
+            ]);
+
+            // Create and activate license using LicenseService
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $packageData,
+                null,
+                $this->getPaymentGatewayId('paddle')
+            );
+
+            if (!$license) {
+                Log::info('No license record created (no subscription_id), proceeding with checkout', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'package_price' => $packageData->price,
-                    'is_upgrade' => $isUpgrade,
-                    'is_downgrade' => $isDowngrade
+                    'package_name' => $packageData->name
                 ]);
+                // Continue with checkout even if no license record was created
+            }
 
-                // Get license from API (bypass cache for fresh license)
-                $licenseKey = $this->makeLicense($user, true);
-                if (!$licenseKey) {
-                    Log::error('License not available from API - blocking checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Try to add license to external API first
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license to external API - blocking checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_key' => $licenseKey
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Only update user's license in database after successful external API call
-                $user->update(['license_key' => $licenseKey]);
-
-                Log::info('License successfully added to external API and updated in user table', [
+            if ($license) {
+                Log::info('License successfully created and activated', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'license_key' => $licenseKey
+                    'license_id' => $license->id,
+                    'license_key' => $license->license_key
                 ]);
             } else {
-                Log::info('Skipping license check for free package', [
+                Log::info('License key updated without creating license record', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -552,47 +413,40 @@ class PaymentController extends Controller
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
-            // For paid packages, check license availability from API and update user's license
-            if (!$packageData->isFree()) {
-                Log::info('Checking license availability from API for paid package', [
+            // Check license availability from API and update user's license
+            Log::info('Checking license availability from API', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'package_price' => $packageData->price,
+                'is_upgrade' => $isUpgrade,
+                'is_downgrade' => $isDowngrade
+            ]);
+
+            // Create and activate license using LicenseService
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $packageData,
+                null,
+                $this->getPaymentGatewayId('fastspring')
+            );
+
+            if (!$license) {
+                Log::info('No license record created (no subscription_id), proceeding with checkout', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'package_price' => $packageData->price,
-                    'is_upgrade' => $isUpgrade,
-                    'is_downgrade' => $isDowngrade
+                    'package_name' => $packageData->name
                 ]);
+                // Continue with checkout even if no license record was created
+            }
 
-                // Get license from API (bypass cache for fresh license)
-                $licenseKey = $this->makeLicense($user, true);
-                if (!$licenseKey) {
-                    Log::error('License not available from API - blocking checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Try to add license to external API first
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license to external API - blocking checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_key' => $licenseKey
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Only update user's license in database after successful external API call
-                $user->update(['license_key' => $licenseKey]);
-
-                Log::info('License successfully added to external API and updated in user table', [
+            if ($license) {
+                Log::info('License successfully created and activated', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'license_key' => $licenseKey
+                    'license_id' => $license->id,
+                    'license_key' => $license->license_key
                 ]);
             } else {
-                Log::info('Skipping license check for free package', [
+                Log::info('License key updated without creating license record', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -693,47 +547,40 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Invalid package selected'], 400);
             }
 
-            // For paid packages, check license availability from API and update user's license
-            if (!$packageData->isFree()) {
-                Log::info('Checking license availability from API for paid package', [
+            // Check license availability from API and update user's license
+            Log::info('Checking license availability from API', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'package_price' => $packageData->price,
+                'is_upgrade' => $request->input('is_upgrade', false),
+                'is_downgrade' => $request->input('is_downgrade', false)
+            ]);
+
+            // Create and activate license using LicenseService
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $packageData,
+                null,
+                $this->getPaymentGatewayId('payproglobal')
+            );
+
+            if (!$license) {
+                Log::info('No license record created (no subscription_id), proceeding with checkout', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'package_price' => $packageData->price,
-                    'is_upgrade' => $request->input('is_upgrade', false),
-                    'is_downgrade' => $request->input('is_downgrade', false)
+                    'package_name' => $packageData->name
                 ]);
+                // Continue with checkout even if no license record was created
+            }
 
-                // Get license from API (bypass cache for fresh license)
-                $licenseKey = $this->makeLicense($user, true);
-                if (!$licenseKey) {
-                    Log::error('License not available from API - blocking checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Try to add license to external API first
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license to external API - blocking checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_key' => $licenseKey
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Only update user's license in database after successful external API call
-                $user->update(['license_key' => $licenseKey]);
-
-                Log::info('License successfully added to external API and updated in user table', [
+            if ($license) {
+                Log::info('License successfully created and activated', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'license_key' => $licenseKey
+                    'license_id' => $license->id,
+                    'license_key' => $license->license_key
                 ]);
             } else {
-                Log::info('Skipping license check for free package', [
+                Log::info('License key updated without creating license record', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
@@ -916,9 +763,40 @@ class PaymentController extends Controller
                 ]);
 
                 $order = Order::where('transaction_id', $transactionId)->first();
+
+                // If order not found, look for orders with temporary transaction IDs
+                if (!$order) {
+                    Log::info('Order not found with transaction_id, looking for temporary transaction IDs', [
+                        'transaction_id' => $transactionId
+                    ]);
+
+                    // Look for orders with temporary transaction IDs that might be related to this transaction
+                    $tempOrders = Order::where('metadata->temp_transaction_id', true)
+                        ->where('status', 'pending')
+                        ->get();
+
+                    foreach ($tempOrders as $tempOrder) {
+                        $metadata = $tempOrder->metadata ?? [];
+                        if (isset($metadata['paddle_checkout_id']) && $metadata['paddle_checkout_id'] === $transactionId) {
+                            $order = $tempOrder;
+                            Log::info('Found order with temporary transaction ID', [
+                                'temp_transaction_id' => $tempOrder->transaction_id,
+                                'real_transaction_id' => $transactionId,
+                                'order_id' => $tempOrder->id
+                            ]);
+                            break;
+                        }
+                    }
+                }
+
                 if ($order && $order->status === 'completed') {
                     Log::info('Order already completed', ['transaction_id' => $transactionId]);
                     return redirect()->route('user.dashboard')->with('success', 'Subscription active');
+                }
+
+                // If we found an order with a temporary transaction ID, update it
+                if ($order && isset($order->metadata['temp_transaction_id']) && $order->metadata['temp_transaction_id']) {
+                    $this->updateTemporaryTransactionId($order, $transactionId);
                 }
 
                 $apiKey = config('payment.gateways.Paddle.api_key');
@@ -974,7 +852,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'user_id' => $userId
                     ]);
-                    return redirect()->route('user.dashboard')->with('success', 'Subscription activated');
+                    return redirect()->route('user.dashboard')->with('success', "Subscription to {$packageName} bought successfully!");
                 } else {
                     Log::error('Failed to process Paddle payment via success callback', [
                         'transaction_id' => $transactionId,
@@ -1006,7 +884,7 @@ class PaymentController extends Controller
                 $order = Order::where('transaction_id', $orderId)->first();
                 if ($order && $order->status === 'completed') {
                     Log::info('Order already completed', ['order_id' => $orderId]);
-                    return redirect()->route('user.dashboard')->with('success', 'Subscription active');
+                    return redirect()->route('user.dashboard')->with('success', "Subscription to {$packageName} bought successfully!");
                 }
 
                 // Try orderId as reference first, then as id
@@ -1175,109 +1053,41 @@ class PaymentController extends Controller
                 'order_amount' => $order->amount
             ]);
 
-            // Always check license availability from API for paid packages, regardless of existing license
-            if ($package->isFree()) {
-                Log::info('Skipping license generation for free package', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'package_price' => $package->price
-                ]);
+            // Create and activate license using LicenseService
+            Log::info('Creating and activating license', [
+                'user_id' => $user->id,
+                'action' => $action
+            ]);
 
-                $userUpdateData = [
-                    'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
-                    'package_id' => $package->id,
-                    'subscription_starts_at' => now(),
-                    'is_subscribed' => true,
-                    'subscription_id' => $subscriptionId
-                ];
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $package,
+                $subscriptionId,
+                $this->getPaymentGatewayId($gateway)
+            );
 
-                Log::info('Updating user for free package without license', [
-                    'user_id' => $user->id,
-                    'update_data' => $userUpdateData
-                ]);
-
-                $user->update($userUpdateData);
-
-                Log::info('User updated successfully for free package', [
-                    'user_id' => $user->id,
-                    'is_subscribed' => $user->is_subscribed,
-                    'package_id' => $user->package_id,
-                    'subscription_id' => $user->subscription_id
-                ]);
-
-                // Mark order as completed
-                $order->update(['status' => 'completed']);
-            } else {
-                Log::info('Generating license key', [
-                    'user_id' => $user->id,
-                    'action' => $action
-                ]);
-
-                $licenseKey = $this->makeLicense($user, true);
-                if (!$licenseKey) {
-                    Log::error('Failed to generate license key', ['user_id' => $user->id]);
-                    // Do not mark as completed/subscribed, return error
-                    throw new \Exception('License generation failed');
-                }
-
-                Log::info('License key generated', [
-                    'user_id' => $user->id,
-                    'license_key' => $licenseKey
-                ]);
-
-                $userUpdateData = [
-                    'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
-                    'package_id' => $package->id,
-                    'subscription_starts_at' => now(),
-                    'license_key' => $licenseKey,
-                    'is_subscribed' => true,
-                    'subscription_id' => $subscriptionId
-                ];
-
-                Log::info('Updating user with license', [
-                    'user_id' => $user->id,
-                    'update_data' => $userUpdateData
-                ]);
-
-                $user->update($userUpdateData);
-
-                Log::info('User updated successfully with license', [
-                    'user_id' => $user->id,
-                    'is_subscribed' => $user->is_subscribed,
-                    'package_id' => $user->package_id,
-                    'subscription_id' => $user->subscription_id,
-                    'license_key' => $user->license_key
-                ]);
-
-                // Try to add license to external API - if this fails, we need to rollback
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey, $subscriptionId);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license via API - rolling back payment process', [
-                        'user_id' => $user->id,
-                        'license_key' => $licenseKey,
-                        'transaction_id' => $transactionId
-                    ]);
-
-                    // Rollback user changes
-                    $user->update([
-                        'payment_gateway_id' => null,
-                        'package_id' => null,
-                        'subscription_starts_at' => null,
-                        'license_key' => null,
-                        'is_subscribed' => false,
-                        'subscription_id' => null
-                    ]);
-
-                    // Mark order as failed
-                    $order->update(['status' => 'failed']);
-
-                    // Throw exception to trigger rollback and show error
-                    throw new \Exception('license_api_failed');
-                }
-
-                // Now mark order as completed
-                $order->update(['status' => 'completed']);
+            if (!$license) {
+                Log::error('Failed to create and activate license', ['user_id' => $user->id]);
+                // Do not mark as completed/subscribed, return error
+                throw new \Exception('License generation failed');
             }
+
+            Log::info('License created and activated successfully', [
+                'user_id' => $user->id,
+                'license_id' => $license->id,
+                'license_key' => $license->license_key
+            ]);
+
+            // Update user subscription status
+            $user->update([
+                'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
+                'package_id' => $package->id,
+                'is_subscribed' => true,
+                'subscription_id' => $subscriptionId
+            ]);
+
+            // Now mark order as completed
+            $order->update(['status' => 'completed']);
 
             Log::info('=== PAYMENT PROCESSING COMPLETED ===', [
                 'gateway' => $gateway,
@@ -1299,7 +1109,10 @@ class PaymentController extends Controller
                 ]
             ]);
 
-            return redirect()->route('user.dashboard')->with('success', $action === 'upgrade' ? 'Subscription upgraded' : 'Subscription activated');
+            $successMessage = $action === 'upgrade'
+                ? "Subscription upgraded to {$package->name} successfully!"
+                : "Subscription to {$package->name} bought successfully!";
+            return redirect()->route('user.dashboard')->with('success', $successMessage);
         });
     }
 
@@ -1342,7 +1155,7 @@ class PaymentController extends Controller
 
     public function handlePaddleWebhook(Request $request)
     {
-        \Log::info('[handlePaddleWebhook] called', ['payload' => $request->all()]);
+        Log::info('[handlePaddleWebhook] called', ['payload' => $request->all()]);
         try {
             $payload = $request->all();
             Log::info('Paddle webhook received', ['payload' => $payload]);
@@ -1395,7 +1208,7 @@ class PaymentController extends Controller
 
     public function handleFastSpringWebhook(Request $request)
     {
-        \Log::info('[handleFastSpringWebhook] called', ['payload' => $request->all()]);
+        Log::info('[handleFastSpringWebhook] called', ['payload' => $request->all()]);
         try {
             $payload = $request->all();
             Log::info('FastSpring webhook received', ['payload' => $payload]);
@@ -1409,6 +1222,57 @@ class PaymentController extends Controller
                     'action' => $tags['action'] ?? 'new'
                 ]);
                 return $this->processPayment($paymentData, 'fastspring');
+            } elseif (in_array($payload['type'] ?? null, ['subscription.cancelled', 'subscription.deactivated'])) {
+                // Handle subscription cancellation
+                $subscriptionId = $payload['subscription'] ?? null;
+                if ($subscriptionId) {
+                    $user = User::where('subscription_id', $subscriptionId)->first();
+                    if ($user) {
+                        DB::transaction(function () use ($user, $subscriptionId) {
+                            // Delete the user's license record
+                            $userLicense = $user->userLicence;
+                            if ($userLicense) {
+                                Log::info('Deleting user license record from FastSpring webhook', [
+                                    'license_id' => $userLicense->id,
+                                    'user_id' => $user->id,
+                                    'subscription_id' => $userLicense->subscription_id
+                                ]);
+                                $userLicense->delete();
+                            }
+
+                            // Reset user's subscription data
+                            $user->update([
+                                'is_subscribed' => false,
+                                'subscription_id' => null,
+                                'package_id' => null,
+                                'payment_gateway_id' => null,
+                                'user_license_id' => null
+                            ]);
+
+                            // Update order status
+                            $order = Order::where('user_id', $user->id)
+                                ->where('subscription_id', $subscriptionId)
+                                ->latest('created_at')
+                                ->first();
+
+                            if ($order) {
+                                $order->update(['status' => 'canceled']);
+                                Log::info('Updated order status to canceled from FastSpring webhook', [
+                                    'order_id' => $order->id,
+                                    'user_id' => $user->id,
+                                    'subscription_id' => $subscriptionId
+                                ]);
+                            }
+                        });
+
+                        Log::info('Processed subscription cancellation from FastSpring webhook', [
+                            'user_id' => $user->id,
+                            'subscription_id' => $subscriptionId,
+                            'event_type' => $payload['type']
+                        ]);
+                    }
+                }
+                return response()->json(['status' => 'processed']);
             }
             Log::info('FastSpring webhook ignored', ['type' => $payload['type']]);
             return response()->json(['status' => 'ignored']);
@@ -1626,12 +1490,24 @@ class PaymentController extends Controller
 
                 // Mark subscription as cancelled in database only
                 DB::transaction(function () use ($user) {
+                    // Delete the user's license record
+                    $userLicense = $user->userLicence;
+                    if ($userLicense) {
+                        Log::info('Deleting user license record', [
+                            'license_id' => $userLicense->id,
+                            'user_id' => $user->id,
+                            'subscription_id' => $userLicense->subscription_id
+                        ]);
+                        $userLicense->delete();
+                    }
+
+                    // Reset user's subscription data
                     $user->update([
                         'is_subscribed' => 0,
-                        'subscription_ends_at' => now(),
-                        'subscription_starts_at' => null,
                         'package_id' => null,
-                        'payment_gateway_id' => null
+                        'payment_gateway_id' => null,
+                        'subscription_id' => null,
+                        'user_license_id' => null
                     ]);
 
                     // Update order status
@@ -1703,20 +1579,33 @@ class PaymentController extends Controller
                 //     return redirect()->back()->with('error', 'Subscription cancellation did not confirm');
                 // }
 
-                // Update user subscription status
-                $user->update([
-                    'is_subscribed' => 0,
-                    'subscription_id' => null,
-                    'subscription_ends_at' => null,
-                    'subscription_starts_at' => null,
-                    'payment_gateway_id' => null,
-                    'package_id' => null,
-                ]);
+                // Update user subscription status and delete license
+                DB::transaction(function () use ($user, $subscriptionId) {
+                    // Delete the user's license record
+                    $userLicense = $user->userLicence;
+                    if ($userLicense) {
+                        Log::info('Deleting user license record', [
+                            'license_id' => $userLicense->id,
+                            'user_id' => $user->id,
+                            'subscription_id' => $userLicense->subscription_id
+                        ]);
+                        $userLicense->delete();
+                    }
 
-                // CORRECTED: Proper way to update the order status
-                Order::where('user_id', $user->id)
-                    ->where('subscription_id', $subscriptionId)
-                    ->update(['status' => 'canceled']);
+                    // Reset user's subscription data
+                    $user->update([
+                        'is_subscribed' => 0,
+                        'subscription_id' => null,
+                        'payment_gateway_id' => null,
+                        'package_id' => null,
+                        'user_license_id' => null
+                    ]);
+
+                    // Update order status
+                    Order::where('user_id', $user->id)
+                        ->where('subscription_id', $subscriptionId)
+                        ->update(['status' => 'canceled']);
+                });
 
                 Log::info('FastSpring subscription canceled', [
                     'user_id' => $user->id,
@@ -1771,14 +1660,24 @@ class PaymentController extends Controller
 
             // Update user and order records
             DB::transaction(function () use ($user, $subscriptionId) {
-                // First update the user's subscription status
+                // Delete the user's license record
+                $userLicense = $user->userLicence;
+                if ($userLicense) {
+                    Log::info('Deleting user license record', [
+                        'license_id' => $userLicense->id,
+                        'user_id' => $user->id,
+                        'subscription_id' => $userLicense->subscription_id
+                    ]);
+                    $userLicense->delete();
+                }
+
+                // Reset user's subscription data
                 $user->update([
                     'is_subscribed' => 0,
                     'subscription_id' => null,
-                    'subscription_ends_at' => now(),
-                    'subscription_starts_at' => null,
                     'package_id' => null,
-                    'payment_gateway_id' => null
+                    'payment_gateway_id' => null,
+                    'user_license_id' => null
                 ]);
 
                 // Find the most recent order for this user and update its status
@@ -1962,11 +1861,42 @@ class PaymentController extends Controller
 
             $user = User::where('subscription_id', $subscriptionId)->first();
             if ($user) {
-                $user->update([
-                    'is_subscribed' => false,
-                    'subscription_ends_at' => now(),
-                    'subscription_id' => null
-                ]);
+                DB::transaction(function () use ($user, $subscriptionId) {
+                    // Delete the user's license record
+                    $userLicense = $user->userLicence;
+                    if ($userLicense) {
+                        Log::info('Deleting user license record from Paddle webhook', [
+                            'license_id' => $userLicense->id,
+                            'user_id' => $user->id,
+                            'subscription_id' => $userLicense->subscription_id
+                        ]);
+                        $userLicense->delete();
+                    }
+
+                    // Reset user's subscription data
+                    $user->update([
+                        'is_subscribed' => false,
+                        'subscription_id' => null,
+                        'package_id' => null,
+                        'payment_gateway_id' => null,
+                        'user_license_id' => null
+                    ]);
+
+                    // Update order status
+                    $order = Order::where('user_id', $user->id)
+                        ->where('subscription_id', $subscriptionId)
+                        ->latest('created_at')
+                        ->first();
+
+                    if ($order) {
+                        $order->update(['status' => 'canceled']);
+                        Log::info('Updated order status to canceled from Paddle webhook', [
+                            'order_id' => $order->id,
+                            'user_id' => $user->id,
+                            'subscription_id' => $subscriptionId
+                        ]);
+                    }
+                });
 
                 Log::info('Processed subscription cancellation from Paddle webhook', [
                     'user_id' => $user->id,
@@ -2061,79 +1991,43 @@ class PaymentController extends Controller
                 'order_package_id' => $order->package_id
             ]);
 
-            // Always check license availability from API for paid packages, regardless of existing license
-            if ($package->isFree()) {
-                Log::info('Skipping license generation for free package from webhook', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'package_price' => $package->price
-                ]);
-            } else {
-                Log::info('Generating license key from webhook', [
-                    'user_id' => $user->id
-                ]);
-
-                $licenseKey = $this->makeLicense($user, true);
-                if ($licenseKey) {
-                    Log::info('License key generated from webhook', [
-                        'user_id' => $user->id,
-                        'license_key' => $licenseKey
-                    ]);
-
-                    // Try to add license to external API - if this fails, we need to rollback
-                    $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                    if (!$licenseApiSuccess) {
-                        Log::error('Failed to add license via API from webhook - rolling back payment process', [
-                            'user_id' => $user->id,
-                            'license_key' => $licenseKey,
-                            'transaction_id' => $transactionId
-                        ]);
-
-                        // Rollback user changes
-                        $user->update([
-                            'payment_gateway_id' => null,
-                            'package_id' => null,
-                            'subscription_starts_at' => null,
-                            'license_key' => null,
-                            'is_subscribed' => false,
-                            'subscription_id' => null
-                        ]);
-
-                        // Mark order as failed
-                        $order->update(['status' => 'failed']);
-
-                        // Throw exception to trigger rollback and show error
-                        throw new \Exception('license_api_failed');
-                    }
-                } else {
-                    Log::error('Failed to generate license key from webhook', ['user_id' => $user->id]);
-                    throw new \Exception('License generation failed');
-                }
-            }
-
-            $userUpdateData = [
-                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
-                'package_id' => $package->id,
-                'subscription_starts_at' => now(),
-                'is_subscribed' => true,
-                'subscription_id' => $transactionData['subscription_id'] ?? null
-            ];
-
-            Log::info('Updating user from webhook', [
-                'user_id' => $user->id,
-                'update_data' => $userUpdateData
+            // Create and activate license using LicenseService from webhook
+            Log::info('Creating and activating license from webhook', [
+                'user_id' => $user->id
             ]);
 
-            // Update user subscription
-            $user->update($userUpdateData);
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $package,
+                $transactionData['subscription_id'] ?? null,
+                $this->getPaymentGatewayId('paddle')
+            );
+
+            if (!$license) {
+                Log::error('Failed to create and activate license from webhook', ['user_id' => $user->id]);
+                throw new \Exception('License generation failed');
+            }
+
+            Log::info('License created and activated successfully from webhook', [
+                'user_id' => $user->id,
+                'license_id' => $license->id,
+                'license_key' => $license->license_key
+            ]);
+
+            // Update user subscription status
+            $user->update([
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'package_id' => $package->id,
+                'is_subscribed' => true,
+                'subscription_id' => $transactionData['subscription_id'] ?? null
+            ]);
 
             Log::info('User updated successfully from webhook', [
                 'user_id' => $user->id,
                 'is_subscribed' => $user->is_subscribed,
                 'package_id' => $user->package_id,
                 'subscription_id' => $user->subscription_id,
-                'payment_gateway_id' => $user->payment_gateway_id,
-                'subscription_starts_at' => $user->subscription_starts_at
+                'payment_gateway_id' => $user->payment_gateway_id
             ]);
 
             Log::info('=== PADDLE WEBHOOK PROCESSING COMPLETED ===', [
@@ -2172,53 +2066,34 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // For paid packages, check license availability from API and update user's license
-            if (!$packageData->isFree()) {
-                Log::info('Checking license availability from API for paid package upgrade', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'package_price' => $packageData->price
-                ]);
-
-                // Get license from API (bypass cache for fresh license)
-                $licenseKey = $this->makeLicense($user, true);
-                if (!$licenseKey) {
-                    Log::error('License not available from API - blocking upgrade', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Try to add license to external API first
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license to external API - blocking upgrade', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_key' => $licenseKey
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Only update user's license in database after successful external API call
-                $user->update(['license_key' => $licenseKey]);
-
-                Log::info('License successfully added to external API and updated in user table for upgrade', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'license_key' => $licenseKey
-                ]);
-            } else {
-                Log::info('Skipping license check for free package upgrade', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name
-                ]);
+            // Check if user has an active subscription first
+            if (!$user->is_subscribed) {
+                return response()->json(['error' => 'No active subscription to upgrade'], 400);
             }
 
-            // Check if user has an active subscription
-            if (!$user->is_subscribed || !$user->subscription_id) {
-                return response()->json(['error' => 'No active subscription to upgrade'], 400);
+            // Get the current active license to get the subscription_id
+            $currentLicense = $user->userLicence;
+            if (!$currentLicense || !$currentLicense->subscription_id) {
+                return response()->json(['error' => 'No active subscription found for upgrade'], 400);
+            }
+
+            $subscriptionId = $currentLicense->subscription_id;
+
+            Log::info('Starting package upgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'package_price' => $packageData->price,
+                'current_subscription_id' => $subscriptionId
+            ]);
+
+            // Check if user has a payment gateway
+            if (!$user->payment_gateway_id) {
+                return response()->json(['error' => 'No payment gateway associated with subscription'], 400);
+            }
+
+            $gateway = $user->paymentGateway;
+            if (!$gateway) {
+                return response()->json(['error' => 'Payment gateway not found'], 400);
             }
 
             // Check if user has a payment gateway
@@ -2233,11 +2108,11 @@ class PaymentController extends Controller
 
             // Handle upgrade based on gateway
             if ($gateway->name === 'Paddle') {
-                return $this->handlePaddleUpgrade($user, $packageData);
+                return $this->handlePaddleUpgrade($user, $packageData, $subscriptionId);
             } elseif ($gateway->name === 'FastSpring') {
-                return $this->handleFastSpringUpgrade($user, $packageData);
+                return $this->handleFastSpringUpgrade($user, $packageData, $subscriptionId);
             } elseif ($gateway->name === 'Pay Pro Global') {
-                return $this->handlePayProGlobalUpgrade($user, $packageData);
+                return $this->handlePayProGlobalUpgrade($user, $packageData, $subscriptionId);
             } else {
                 return response()->json(['error' => 'Unsupported payment gateway for upgrade'], 400);
             }
@@ -2251,7 +2126,7 @@ class PaymentController extends Controller
         }
     }
 
-    private function handlePaddleUpgrade($user, $packageData)
+    private function handlePaddleUpgrade($user, $packageData, $subscriptionId)
     {
         try {
             $apiKey = config('payment.gateways.Paddle.api_key');
@@ -2290,43 +2165,28 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'No active price'], 400);
             }
 
-            // Update the subscription
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json'
-            ])->patch("{$apiBaseUrl}/subscriptions/{$user->subscription_id}", [
-                'items' => [
-                    [
-                        'price_id' => $price['id'],
-                        'quantity' => 1
-                    ]
-                ],
-                'proration_billing_mode' => 'prorated_immediately'
-            ]);
+            // For Paddle upgrades, we need to create a checkout session
+            // This will redirect to Paddle's upgrade flow
+            $checkoutUrl = $this->createPaddleUpgradeCheckout($user, $packageData, $subscriptionId, $price['id']);
 
-            if (!$response->successful()) {
-                Log::error('Paddle subscription upgrade failed', [
-                    'subscription_id' => $user->subscription_id,
-                    'response' => $response->body()
+            if (!$checkoutUrl) {
+                Log::error('Failed to create Paddle upgrade checkout', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
                 ]);
-                return response()->json(['error' => 'Upgrade failed'], 500);
+                return response()->json(['error' => 'Failed to create upgrade checkout'], 500);
             }
 
-            // Update user record
-            $user->update([
-                'package_id' => $packageData->id,
-                'subscription_starts_at' => now()
-            ]);
-
-            Log::info('Paddle subscription upgraded successfully', [
+            Log::info('Paddle upgrade checkout created successfully', [
                 'user_id' => $user->id,
-                'subscription_id' => $user->subscription_id,
-                'new_package' => $packageData->name
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Subscription upgraded successfully'
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Upgrade checkout created successfully'
             ]);
         } catch (\Exception $e) {
             Log::error('Paddle upgrade error', [
@@ -2337,17 +2197,267 @@ class PaymentController extends Controller
         }
     }
 
-    private function handleFastSpringUpgrade($user, $packageData)
+    private function handleFastSpringUpgrade($user, $packageData, $subscriptionId)
     {
-        // FastSpring upgrade logic would go here
-        // This would typically involve creating a new order for the upgrade
-        return response()->json(['error' => 'FastSpring upgrade not yet implemented'], 501);
+        try {
+            Log::info('Starting FastSpring upgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'subscription_id' => $subscriptionId
+            ]);
+
+            // For FastSpring upgrades, we need to create a new order
+            // This will redirect to FastSpring's upgrade flow
+            $checkoutUrl = $this->createFastSpringUpgradeOrder($user, $packageData, $subscriptionId);
+
+            if (!$checkoutUrl) {
+                Log::error('Failed to create FastSpring upgrade order', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return response()->json(['error' => 'Failed to create upgrade order'], 500);
+            }
+
+            Log::info('FastSpring upgrade order created successfully', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Upgrade order created successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('FastSpring upgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id
+            ]);
+            return response()->json(['error' => 'Upgrade failed'], 500);
+        }
     }
 
-    private function handlePayProGlobalUpgrade($user, $packageData)
+    private function createFastSpringUpgradeOrder($user, $packageData, $subscriptionId)
     {
-        // PayProGlobal upgrade logic would go here
-        return response()->json(['error' => 'PayProGlobal upgrade not yet implemented'], 501);
+        try {
+            // Generate a temporary transaction ID for the upgrade order
+            $tempTransactionId = 'FS-UPGRADE-' . Str::random(10);
+
+            // Create a new order for the upgrade
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
+                'order_type' => 'upgrade',
+                'subscription_id' => $subscriptionId,
+                'transaction_id' => $tempTransactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'upgrade_to' => $packageData->name,
+                    'upgrade_type' => 'subscription_upgrade',
+                    'temp_transaction_id' => true
+                ]
+            ]);
+
+            // Generate FastSpring checkout URL for upgrade
+            $checkoutUrl = $this->generateFastSpringUpgradeUrl($order, $packageData, $subscriptionId);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create FastSpring upgrade order', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
+    }
+
+        private function generateFastSpringUpgradeUrl($order, $packageData, $subscriptionId)
+    {
+        // Generate FastSpring upgrade URL
+        // This would typically include the subscription ID and new package
+        $baseUrl = config('payment.gateways.FastSpring.base_url', 'https://sbl.onfastspring.com');
+        $storefront = config('payment.gateways.FastSpring.storefront', 'livebuzzstudio.test.onfastspring.com/popup-test-87654-payment');
+
+        $upgradeUrl = "{$baseUrl}/{$storefront}?product={$packageData->name}&subscription={$subscriptionId}&order_id={$order->id}";
+
+        return $upgradeUrl;
+    }
+
+    private function createPaddleUpgradeCheckout($user, $packageData, $subscriptionId, $priceId)
+    {
+        try {
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
+            // Create a checkout session for the upgrade
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->post("{$apiBaseUrl}/transactions", [
+                'items' => [
+                    [
+                        'price_id' => $priceId,
+                        'quantity' => 1
+                    ]
+                ],
+                'subscription_id' => $subscriptionId,
+                'proration_billing_mode' => 'prorated_immediately',
+                'success_url' => url('/payments/success?gateway=paddle&upgrade=true'),
+                'cancel_url' => url('/subscription?error=upgrade_cancelled')
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('Paddle upgrade checkout creation failed', [
+                    'response' => $response->body(),
+                    'status' => $response->status()
+                ]);
+                return null;
+            }
+
+            $data = $response->json();
+            $checkoutUrl = $data['data']['checkout']['url'] ?? null;
+
+            if (!$checkoutUrl) {
+                Log::error('No checkout URL in Paddle response', [
+                    'response' => $data
+                ]);
+                return null;
+            }
+
+            // Create order record for tracking
+            $transactionId = $data['data']['id'] ?? null;
+            if (!$transactionId) {
+                $transactionId = 'PADDLE-UPGRADE-' . Str::random(10);
+            }
+
+            Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'order_type' => 'upgrade',
+                'subscription_id' => $subscriptionId,
+                'transaction_id' => $transactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'upgrade_to' => $packageData->name,
+                    'upgrade_type' => 'subscription_upgrade',
+                    'paddle_checkout_id' => $data['data']['id'] ?? null,
+                    'temp_transaction_id' => !$data['data']['id']
+                ]
+            ]);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create Paddle upgrade checkout', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
+    }
+
+    private function handlePayProGlobalUpgrade($user, $packageData, $subscriptionId)
+    {
+        try {
+            Log::info('Starting PayProGlobal upgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'subscription_id' => $subscriptionId
+            ]);
+
+            // For PayProGlobal upgrades, we need to create a new order
+            // This will redirect to PayProGlobal's upgrade flow
+            $checkoutUrl = $this->createPayProGlobalUpgradeOrder($user, $packageData, $subscriptionId);
+
+            if (!$checkoutUrl) {
+                Log::error('Failed to create PayProGlobal upgrade order', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return response()->json(['error' => 'Failed to create upgrade order'], 500);
+            }
+
+            Log::info('PayProGlobal upgrade order created successfully', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Upgrade order created successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PayProGlobal upgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id
+            ]);
+            return response()->json(['error' => 'Upgrade failed'], 500);
+        }
+    }
+
+    private function createPayProGlobalUpgradeOrder($user, $packageData, $subscriptionId)
+    {
+        try {
+            // Generate a temporary transaction ID for the upgrade order
+            $tempTransactionId = 'PPG-UPGRADE-' . Str::random(10);
+
+            // Create a new order for the upgrade
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
+                'order_type' => 'upgrade',
+                'subscription_id' => $subscriptionId,
+                'transaction_id' => $tempTransactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'upgrade_to' => $packageData->name,
+                    'upgrade_type' => 'subscription_upgrade',
+                    'temp_transaction_id' => true
+                ]
+            ]);
+
+            // Generate PayProGlobal checkout URL for upgrade
+            $checkoutUrl = $this->generatePayProGlobalUpgradeUrl($order, $packageData, $subscriptionId);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create PayProGlobal upgrade order', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
+    }
+
+    private function generatePayProGlobalUpgradeUrl($order, $packageData, $subscriptionId)
+    {
+        // Generate PayProGlobal upgrade URL
+        $baseUrl = config('payment.gateways.PayProGlobal.base_url', 'https://store.payproglobal.com');
+        $merchantId = config('payment.gateways.PayProGlobal.merchant_id', '');
+
+        $upgradeUrl = "{$baseUrl}/checkout?merchant_id={$merchantId}&product={$packageData->name}&subscription={$subscriptionId}&order_id={$order->id}&upgrade=true";
+
+        return $upgradeUrl;
     }
 
     public function downgradeSubscription(Request $request)
@@ -2374,54 +2484,25 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Invalid package selected'], 400);
             }
 
-            // For paid packages, check license availability from API and update user's license
-            if (!$packageData->isFree()) {
-                Log::info('Checking license availability from API for paid package downgrade', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'package_price' => $packageData->price
-                ]);
-
-                // Get license from API (bypass cache for fresh license)
-                $licenseKey = $this->makeLicense($user, true);
-                if (!$licenseKey) {
-                    Log::error('License not available from API - blocking downgrade', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Try to add license to external API first
-                $licenseApiSuccess = $this->addLicenseToExternalAPI($user, $licenseKey);
-                if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license to external API - blocking downgrade', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_key' => $licenseKey
-                    ]);
-                    return response()->json(['error' => 'License not available at the moment. Please try again later.'], 503);
-                }
-
-                // Only update user's license in database after successful external API call
-                $user->update(['license_key' => $licenseKey]);
-
-                Log::info('License successfully added to external API and updated in user table for downgrade', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'license_key' => $licenseKey
-                ]);
-            } else {
-                Log::info('Skipping license check for free package downgrade', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name
-                ]);
-            }
-
-            // Check if user has an active subscription
-            if (!$user->is_subscribed || !$user->subscription_id) {
+            // Check if user has an active subscription first
+            if (!$user->is_subscribed) {
                 return response()->json(['error' => 'No active subscription to downgrade'], 400);
             }
+
+            // Get the current active license to get the subscription_id
+            $currentLicense = $user->userLicence;
+            if (!$currentLicense || !$currentLicense->subscription_id) {
+                return response()->json(['error' => 'No active subscription found for downgrade'], 400);
+            }
+
+            $subscriptionId = $currentLicense->subscription_id;
+
+            Log::info('Starting package downgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'package_price' => $packageData->price,
+                'current_subscription_id' => $subscriptionId
+            ]);
 
             // Check if user has a payment gateway
             if (!$user->payment_gateway_id) {
@@ -2435,11 +2516,11 @@ class PaymentController extends Controller
 
             // Handle downgrade based on gateway
             if ($gateway->name === 'Paddle') {
-                return $this->handlePaddleDowngrade($user, $packageData);
+                return $this->handlePaddleDowngrade($user, $packageData, $subscriptionId);
             } elseif ($gateway->name === 'FastSpring') {
-                return $this->handleFastSpringDowngrade($user, $packageData);
+                return $this->handleFastSpringDowngrade($user, $packageData, $subscriptionId);
             } elseif ($gateway->name === 'Pay Pro Global') {
-                return $this->handlePayProGlobalDowngrade($user, $packageData);
+                return $this->handlePayProGlobalDowngrade($user, $packageData, $subscriptionId);
             } else {
                 return response()->json(['error' => 'Unsupported payment gateway for downgrade'], 400);
             }
@@ -2452,7 +2533,7 @@ class PaymentController extends Controller
         }
     }
 
-    private function handlePaddleDowngrade($user, $packageData)
+    private function handlePaddleDowngrade($user, $packageData, $subscriptionId)
     {
         try {
             $apiKey = config('payment.gateways.Paddle.api_key');
@@ -2491,41 +2572,28 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'No active price'], 400);
             }
 
-            // Update the subscription
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json'
-            ])->patch("{$apiBaseUrl}/subscriptions/{$user->subscription_id}", [
-                'items' => [
-                    [
-                        'price_id' => $price['id'],
-                        'quantity' => 1
-                    ]
-                ],
-                'proration_billing_mode' => 'prorated_immediately'
-            ]);
+            // For Paddle downgrades, we need to create a checkout session
+            // This will redirect to Paddle's downgrade flow
+            $checkoutUrl = $this->createPaddleDowngradeCheckout($user, $packageData, $subscriptionId, $price['id']);
 
-            if (!$response->successful()) {
-                Log::error('Paddle subscription downgrade failed', [
-                    'status' => $response->status(),
-                    'response' => $response->body()
+            if (!$checkoutUrl) {
+                Log::error('Failed to create Paddle downgrade checkout', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
                 ]);
-                return response()->json(['error' => 'Downgrade failed'], 500);
+                return response()->json(['error' => 'Failed to create downgrade checkout'], 500);
             }
 
-            // Update user's package in database
-            $user->update([
-                'package_id' => $packageData->id
-            ]);
-
-            Log::info('Paddle subscription downgraded successfully', [
+            Log::info('Paddle downgrade checkout created successfully', [
                 'user_id' => $user->id,
-                'new_package' => $packageData->name
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Subscription downgraded successfully'
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Downgrade checkout created successfully'
             ]);
         } catch (\Exception $e) {
             Log::error('Paddle downgrade error', ['error' => $e->getMessage()]);
@@ -2533,16 +2601,307 @@ class PaymentController extends Controller
         }
     }
 
-    private function handleFastSpringDowngrade($user, $packageData)
+    private function createPaddleDowngradeCheckout($user, $packageData, $subscriptionId, $priceId)
     {
-        // FastSpring downgrade logic would go here
-        return response()->json(['error' => 'FastSpring downgrade not implemented yet'], 501);
+        try {
+            $apiKey = config('payment.gateways.Paddle.api_key');
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $apiBaseUrl = $environment === 'production'
+                ? 'https://api.paddle.com'
+                : 'https://sandbox-api.paddle.com';
+
+            // Create a checkout session for the downgrade
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->post("{$apiBaseUrl}/transactions", [
+                'items' => [
+                    [
+                        'price_id' => $priceId,
+                        'quantity' => 1
+                    ]
+                ],
+                'subscription_id' => $subscriptionId,
+                'proration_billing_mode' => 'prorated_immediately',
+                'success_url' => url('/payments/success?gateway=paddle&downgrade=true'),
+                'cancel_url' => url('/subscription?error=downgrade_cancelled')
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('Paddle downgrade checkout creation failed', [
+                    'response' => $response->body(),
+                    'status' => $response->status()
+                ]);
+                return null;
+            }
+
+            $data = $response->json();
+            $checkoutUrl = $data['data']['checkout']['url'] ?? null;
+
+            if (!$checkoutUrl) {
+                Log::error('No checkout URL in Paddle downgrade response', [
+                    'response' => $data
+                ]);
+                return null;
+            }
+
+            // Create order record for tracking
+            $transactionId = $data['data']['id'] ?? null;
+            if (!$transactionId) {
+                $transactionId = 'PADDLE-DOWNGRADE-' . Str::random(10);
+            }
+
+            Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'order_type' => 'downgrade',
+                'subscription_id' => $subscriptionId,
+                'transaction_id' => $transactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'downgrade_to' => $packageData->name,
+                    'downgrade_type' => 'subscription_downgrade',
+                    'paddle_checkout_id' => $data['data']['id'] ?? null,
+                    'temp_transaction_id' => !$data['data']['id']
+                ]
+            ]);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create Paddle downgrade checkout', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
     }
 
-    private function handlePayProGlobalDowngrade($user, $packageData)
+    private function handleFastSpringDowngrade($user, $packageData, $subscriptionId)
     {
-        // PayProGlobal downgrade logic would go here
-        return response()->json(['error' => 'PayProGlobal downgrade not implemented yet'], 501);
+        try {
+            Log::info('Starting FastSpring downgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'subscription_id' => $subscriptionId
+            ]);
+
+            // For FastSpring downgrades, we need to create a new order
+            // This will redirect to FastSpring's downgrade flow
+            $checkoutUrl = $this->createFastSpringDowngradeOrder($user, $packageData, $subscriptionId);
+
+            if (!$checkoutUrl) {
+                Log::error('Failed to create FastSpring downgrade order', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return response()->json(['error' => 'Failed to create downgrade order'], 500);
+            }
+
+            Log::info('FastSpring downgrade order created successfully', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Downgrade order created successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('FastSpring downgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id
+            ]);
+            return response()->json(['error' => 'Downgrade failed'], 500);
+        }
+    }
+
+    private function createFastSpringDowngradeOrder($user, $packageData, $subscriptionId)
+    {
+        try {
+            // Generate a temporary transaction ID for the downgrade order
+            $tempTransactionId = 'FS-DOWNGRADE-' . Str::random(10);
+
+            // Create a new order for the downgrade
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
+                'order_type' => 'downgrade',
+                'subscription_id' => $subscriptionId,
+                'transaction_id' => $tempTransactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'downgrade_to' => $packageData->name,
+                    'downgrade_type' => 'subscription_downgrade',
+                    'temp_transaction_id' => true
+                ]
+            ]);
+
+            // Generate FastSpring checkout URL for downgrade
+            $checkoutUrl = $this->generateFastSpringDowngradeUrl($order, $packageData, $subscriptionId);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create FastSpring downgrade order', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
+    }
+
+    private function generateFastSpringDowngradeUrl($order, $packageData, $subscriptionId)
+    {
+        // Generate FastSpring downgrade URL
+        $baseUrl = config('payment.gateways.FastSpring.base_url', 'https://sbl.onfastspring.com');
+        $storefront = config('payment.gateways.FastSpring.storefront', 'livebuzzstudio.test.onfastspring.com/popup-test-87654-payment');
+
+        $downgradeUrl = "{$baseUrl}/{$storefront}?product={$packageData->name}&subscription={$subscriptionId}&order_id={$order->id}&downgrade=true";
+
+        return $downgradeUrl;
+    }
+
+    private function handlePayProGlobalDowngrade($user, $packageData, $subscriptionId)
+    {
+        try {
+            Log::info('Starting PayProGlobal downgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'subscription_id' => $subscriptionId
+            ]);
+
+            // For PayProGlobal downgrades, we need to create a new order
+            // This will redirect to PayProGlobal's downgrade flow
+            $checkoutUrl = $this->createPayProGlobalDowngradeOrder($user, $packageData, $subscriptionId);
+
+            if (!$checkoutUrl) {
+                Log::error('Failed to create PayProGlobal downgrade order', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return response()->json(['error' => 'Failed to create downgrade order'], 500);
+            }
+
+            Log::info('PayProGlobal downgrade order created successfully', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Downgrade order created successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PayProGlobal downgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id
+            ]);
+            return response()->json(['error' => 'Downgrade failed'], 500);
+        }
+    }
+
+    private function createPayProGlobalDowngradeOrder($user, $packageData, $subscriptionId)
+    {
+        try {
+            // Generate a temporary transaction ID for the downgrade order
+            $tempTransactionId = 'PPG-DOWNGRADE-' . Str::random(10);
+
+            // Create a new order for the downgrade
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
+                'order_type' => 'downgrade',
+                'subscription_id' => $subscriptionId,
+                'transaction_id' => $tempTransactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'downgrade_to' => $packageData->name,
+                    'downgrade_type' => 'subscription_downgrade',
+                    'temp_transaction_id' => true
+                ]
+            ]);
+
+            // Generate PayProGlobal checkout URL for downgrade
+            $checkoutUrl = $this->generatePayProGlobalDowngradeUrl($order, $packageData, $subscriptionId);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create PayProGlobal downgrade order', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
+    }
+
+        private function generatePayProGlobalDowngradeUrl($order, $packageData, $subscriptionId)
+    {
+        // Generate PayProGlobal downgrade URL
+        $baseUrl = config('payment.gateways.PayProGlobal.base_url', 'https://store.payproglobal.com');
+        $merchantId = config('payment.gateways.PayProGlobal.merchant_id', '');
+
+        $downgradeUrl = "{$baseUrl}/checkout?merchant_id={$merchantId}&product={$packageData->name}&subscription={$subscriptionId}&order_id={$order->id}&downgrade=true";
+
+        return $downgradeUrl;
+    }
+
+    private function updateTemporaryTransactionId($order, $realTransactionId)
+    {
+        try {
+            // Check if this is a temporary transaction ID
+            $metadata = $order->metadata ?? [];
+            if (!isset($metadata['temp_transaction_id']) || !$metadata['temp_transaction_id']) {
+                return false; // Not a temporary transaction ID
+            }
+
+            Log::info('Updating temporary transaction ID', [
+                'old_transaction_id' => $order->transaction_id,
+                'new_transaction_id' => $realTransactionId,
+                'order_id' => $order->id
+            ]);
+
+            // Update the order with the real transaction ID
+            $order->update([
+                'transaction_id' => $realTransactionId,
+                'metadata' => array_merge($metadata, [
+                    'temp_transaction_id' => false,
+                    'real_transaction_id' => $realTransactionId,
+                    'updated_at' => now()->toISOString()
+                ])
+            ]);
+
+            Log::info('Successfully updated temporary transaction ID', [
+                'order_id' => $order->id,
+                'new_transaction_id' => $realTransactionId
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to update temporary transaction ID', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+                'real_transaction_id' => $realTransactionId
+            ]);
+            return false;
+        }
     }
 
     public function verifyOrder(Request $request, string $transactionId)

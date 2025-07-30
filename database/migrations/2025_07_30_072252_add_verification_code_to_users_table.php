@@ -11,11 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('payment_gateways', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->boolean('is_active')->default(0);
-            $table->timestamps();
+        Schema::table('users', function (Blueprint $table) {
+            $table->string('verification_code', 6)->nullable()->after('email_verified_at');
         });
     }
 
@@ -24,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('payment_gateways');
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn('verification_code');
+        });
     }
 };

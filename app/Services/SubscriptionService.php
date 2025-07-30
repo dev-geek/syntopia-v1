@@ -45,8 +45,7 @@ class SubscriptionService
                 );
 
                 $user->update([
-                    'package_id' => $newPackageModel->id,
-                    'subscription_starts_at' => now()
+                    'package_id' => $newPackageModel->id
                 ]);
 
                 return [
@@ -80,8 +79,7 @@ class SubscriptionService
                 );
 
                 $user->update([
-                    'package_id' => $newPackageModel->id,
-                    'subscription_starts_at' => now()
+                    'package_id' => $newPackageModel->id
                 ]);
 
                 return [
@@ -105,8 +103,7 @@ class SubscriptionService
                 $client->cancelSubscription($user->payment_gateway_id);
 
                 $user->update([
-                    'is_subscribed' => false,
-                    'subscription_ends_at' => now()
+                    'is_subscribed' => false
                 ]);
 
                 return ['success' => true];

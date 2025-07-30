@@ -363,18 +363,18 @@
                                             </div>
                                         </div>
                                     </div>
-                                    @if ($user->subscription_starts_at || $user->subscription_ends_at)
+                                    @if ($user->userLicence)
                                         <div class="info-card">
                                             <h3 class="card-title">
-                                                <i class="fas fa-calendar-alt mr-2"></i>Subscription Period
+                                                <i class="fas fa-calendar-alt mr-2"></i>License Period
                                             </h3>
                                             <div class="row">
                                                 <div class="col-12">
-                                                    @if ($user->subscription_starts_at)
-                                                        <p class="text-muted mb-2"><strong>Start Date:</strong></p>
+                                                    @if ($user->userLicence->activated_at)
+                                                        <p class="text-muted mb-2"><strong>Activated Date:</strong></p>
                                                         <p class="mb-2">
                                                             <i class="fas fa-play-circle text-success mr-1"></i>
-                                                            {{ $user->subscription_starts_at->format('F j, Y') }}
+                                                            {{ $user->userLicence->activated_at->format('F j, Y') }}
                                                         </p>
                                                     @endif
                                                     @if ($calculatedEndDate)
@@ -408,7 +408,7 @@
                                     @endif
                                 </div>
                                 <div class="col-md-6">
-                                    @if ($user->license_key)
+                                    @if ($user->userLicence && $user->userLicence->license_key)
                                         <div class="info-card">
                                             <h3 class="card-title">
                                                 <i class="fas fa-key mr-2"></i>License Information
@@ -418,7 +418,7 @@
                                                     <p class="text-muted mb-2"><strong>License Key:</strong></p>
                                                     <div class="input-group">
                                                         <input type="text" class="form-control"
-                                                            value="{{ $user->license_key }}" readonly
+                                                            value="{{ $user->userLicence->license_key }}" readonly
                                                             id="licenseKey">
                                                         <div class="input-group-append">
                                                             <button class="btn btn-outline-secondary"

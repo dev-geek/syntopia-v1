@@ -134,20 +134,20 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label for="first_name">First Name</label>
-                        <input type="text" id="first_name" name="first_name" class="form-control @error('first_name') is-invalid @enderror"
+                        <input type="text" id="first_name" name="first_name" class="form-control"
                             placeholder="Enter your first name" required value="{{ old('first_name') }}">
                         @error('first_name')
-                            <span class="invalid-feedback" role="alert">
+                            <span class="invalid-feedback">
                                 <strong>{{ $message }}</strong>
                             </span>
                         @enderror
                     </div>
                     <div class="col-md-6 mb-3">
                         <label for="last_name">Last Name</label>
-                        <input type="text" id="last_name" name="last_name" class="form-control @error('last_name') is-invalid @enderror"
+                        <input type="text" id="last_name" name="last_name" class="form-control"
                             placeholder="Enter your last name" required value="{{ old('last_name') }}">
                         @error('last_name')
-                            <span class="invalid-feedback" role="alert">
+                            <span class="invalid-feedback">
                                 <strong>{{ $message }}</strong>
                             </span>
                         @enderror
@@ -155,22 +155,26 @@
                 </div>
                 <div class="mb-3">
                     <label for="email">Email Address</label>
-                    <input type="email" id="email" name="email" class="form-control @error('email') is-invalid @enderror"
+                    <input type="email" id="email" name="email" class="form-control"
                         value="{{ request()->get('email') }}" readonly required
                         style="background-color: #f8f9fa; cursor: not-allowed;"
                         autocomplete="off" data-lpignore="true">
                     @error('email')
-                        <span class="invalid-feedback" role="alert">
+                        <span class="invalid-feedback">
                             <strong>{{ $message }}</strong>
                         </span>
                     @enderror
                 </div>
                 <div class="mb-3">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" class="form-control @error('password') is-invalid @enderror"
+                    <input type="password" id="password" name="password" class="form-control"
                         placeholder="Enter a strong password" required>
+                    <small class="form-text text-muted" style="font-size: 11px; text-align: left; display: block; margin-top: 5px;">
+                        <strong>Password requirements:</strong> At least 8 characters with uppercase, lowercase, number, and special character.<br>
+                        <strong>Allowed special characters:</strong> , &lt; &gt; { } ~ ! @ # $ % ^ & _
+                    </small>
                     @error('password')
-                        <span class="invalid-feedback d-block" role="alert">
+                        <span class="invalid-feedback d-block">
                             <strong>{{ $message }}</strong>
                         </span>
                     @enderror

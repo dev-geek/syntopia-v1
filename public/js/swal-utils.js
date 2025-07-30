@@ -1,8 +1,12 @@
 // SWAL Utilities for Syntopia Application
 // Centralized SweetAlert2 functions for consistent messaging across the application
 
-// Global SWAL configuration
-const SWAL_CONFIG = {
+// Prevent multiple inclusions
+if (typeof window.SwalUtils !== 'undefined') {
+    console.warn('SwalUtils already loaded, skipping initialization');
+} else {
+    // Global SWAL configuration
+    const SWAL_CONFIG = {
     confirmButtonColor: '#28a745',
     cancelButtonColor: '#dc3545',
     confirmButtonText: 'OK',
@@ -250,17 +254,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (infoMessage) showInfo(infoMessage);
 });
 
-// Export functions for global use
-window.SwalUtils = {
-    showSuccess,
-    showError,
-    showWarning,
-    showInfo,
-    showConfirm,
-    showDeleteConfirm,
-    showLoading,
-    showToast,
-    showValidationErrors,
-    handleAjaxError,
-    handleFormSubmit
-};
+    // Export functions for global use
+    window.SwalUtils = {
+        showSuccess,
+        showError,
+        showWarning,
+        showInfo,
+        showConfirm,
+        showDeleteConfirm,
+        showLoading,
+        showToast,
+        showValidationErrors,
+        handleAjaxError,
+        handleFormSubmit
+    };
+}

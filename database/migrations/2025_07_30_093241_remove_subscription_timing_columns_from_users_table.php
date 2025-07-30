@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('license_key')->nullable()->after('email');
+            $table->dropColumn(['subscription_starts_at', 'subscription_ends_at']);
         });
     }
 
@@ -22,7 +22,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('license_key');
+            $table->timestamp('subscription_starts_at')->nullable();
+            $table->timestamp('subscription_ends_at')->nullable();
         });
     }
 };

@@ -29,15 +29,27 @@
                 }, 1000);
             }
 
-            // Show success message
-            Swal.fire({
-                icon: 'success',
-                title: 'Payment Successful',
-                text: 'Your payment has been processed successfully.',
-                confirmButtonText: 'Go to Dashboard'
-            }).then(() => {
-                window.location.href = '/user/dashboard';
-            });
+            // Check for error message first
+            @if(session('error'))
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Payment Failed',
+                    text: '{{ session("error") }}',
+                    confirmButtonText: 'Go to Dashboard'
+                }).then(() => {
+                    window.location.href = '/user/dashboard';
+                });
+            @else
+                // Show success message
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Payment Successful',
+                    text: '{{ session("success", "Your payment has been processed successfully.") }}',
+                    confirmButtonText: 'Go to Dashboard'
+                }).then(() => {
+                    window.location.href = '/user/dashboard';
+                });
+            @endif
         });
     </script>
 </head>

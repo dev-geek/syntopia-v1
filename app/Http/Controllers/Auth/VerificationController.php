@@ -220,7 +220,7 @@ class VerificationController extends Controller
      */
     private function hasActiveSubscription($user)
     {
-        if (!$user->is_subscribed || !$user->subscription_starts_at || !$user->package) {
+        if (!$user->is_subscribed || !$user->package) {
             return false;
         }
 
@@ -228,11 +228,18 @@ class VerificationController extends Controller
             return true;
         }
 
-        $startDate = \Carbon\Carbon::parse($user->subscription_starts_at);
-        $durationInDays = $user->package->getDurationInDays();
-        $endDate = $durationInDays ? $startDate->copy()->addDays($durationInDays) : null;
+        // Check if user has an active license
+        $activeLicense = $user->userLicence;
+        if (!$activeLicense || !$activeLicense->isActive()) {
+            return false;
+        }
 
-        return $endDate ? \Carbon\Carbon::now()->lte($endDate) : $user->is_subscribed;
+        // Check if license is not expired
+        if ($activeLicense->isExpired()) {
+            return false;
+        }
+
+        return true;
     }
 
     public function deleteUserAndRedirect(Request $request)

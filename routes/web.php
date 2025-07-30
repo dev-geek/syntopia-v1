@@ -57,9 +57,6 @@ Route::controller(SocialController::class)->group(function () {
 // Public routes
 Route::get('/subscription', [SubscriptionController::class, 'showSubscriptionWithPackage'])->name('subscription');
 Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check-email');
-Route::get('/password-toggle-demo', function () {
-    return view('password-toggle-demo');
-})->name('password-toggle-demo');
 
 // Payment callback routes
 Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payments.success');

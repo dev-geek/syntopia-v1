@@ -82,4 +82,12 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // Orders
     Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('orders.index');
+
+    // License management
+    Route::prefix('licenses')->name('licenses.')->group(function () {
+        Route::get('/current', [\App\Http\Controllers\API\LicenseController::class, 'getCurrentLicense'])->name('current');
+        Route::get('/history', [\App\Http\Controllers\API\LicenseController::class, 'getLicenseHistory'])->name('history');
+        Route::post('/activate/{licenseId}', [\App\Http\Controllers\API\LicenseController::class, 'activateLicense'])->name('activate');
+        Route::get('/check-access/{packageName}', [\App\Http\Controllers\API\LicenseController::class, 'checkPackageAccess'])->name('check-access');
+    });
 });

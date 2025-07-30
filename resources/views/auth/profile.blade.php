@@ -45,11 +45,11 @@
                             </div>
                             @endif
 
-                            @if($user->license_key)
+                            @if($user->userLicence && $user->userLicence->license_key)
                             <div class="form-group">
                                 <label for="license_key">License Key</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" value="{{ $user->license_key }}" readonly id="licenseKey">
+                                    <input type="text" class="form-control" value="{{ $user->userLicence->license_key }}" readonly id="licenseKey">
                                     <div class="input-group-append">
                                         <button class="btn btn-outline-secondary" type="button" data-copy="element" data-copy-element="licenseKey" data-toast="true" data-success-text="License key copied to clipboard!">
                                             <i class="fas fa-copy"></i>

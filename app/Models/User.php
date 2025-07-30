@@ -34,13 +34,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'pet',
         'verification_code',
         'payment_gateway_id',
-        'subscription_starts_at',
         'package_id',
-        'license_key',
         'is_subscribed',
         'tenant_id',
-        'subscription_id',
         'paddle_customer_id',
+        'user_license_id',
     ];
 
     protected $hidden = [
@@ -49,7 +47,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $casts = [
         'email_verified_at' => 'datetime',
-        'subscription_starts_at' => 'datetime',
         'is_subscribed' => 'boolean',
         'password' => 'hashed',
     ];
@@ -69,14 +66,21 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Order::class);
     }
 
+    public function userLicence()
+    {
+        return $this->belongsTo(UserLicence::class, 'user_license_id');
+    }
+
     // Cached accessors
     public function getSubscriptionStatusAttribute(): array
     {
         return Cache::remember("user_{$this->id}_subscription_status", 300, function () {
+            $activeLicense = $this->userLicence;
             return [
-                'is_active' => $this->is_subscribed && $this->subscription_starts_at,
+                'is_active' => $this->is_subscribed && $activeLicense && $activeLicense->isActive(),
                 'package_name' => $this->package?->name,
-                'starts_at' => $this->subscription_starts_at,
+                'starts_at' => $activeLicense?->activated_at,
+                'expires_at' => $activeLicense?->expires_at,
                 'gateway' => $this->paymentGateway?->name,
             ];
         });
@@ -104,8 +108,8 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasActiveSubscription(): bool
     {
         return $this->is_subscribed &&
-               $this->subscription_starts_at &&
-               $this->subscription_starts_at->isPast();
+               $this->userLicence &&
+               $this->userLicence->isActive();
     }
 
     public function canAccessPackage(string $packageName): bool

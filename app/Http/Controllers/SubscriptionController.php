@@ -24,7 +24,7 @@ class SubscriptionController extends Controller
 
     private function hasActiveSubscription($user)
     {
-        if (!$user->is_subscribed || !$user->subscription_starts_at || !$user->package) {
+        if (!$user->is_subscribed || !$user->package) {
             return false;
         }
 
@@ -32,16 +32,24 @@ class SubscriptionController extends Controller
             return true;
         }
 
-        $startDate = Carbon::parse($user->subscription_starts_at);
-        $durationInDays = $user->package->getDurationInDays();
-        $endDate = $durationInDays ? $startDate->copy()->addDays($durationInDays) : null;
+        // Check if user has an active license
+        $activeLicense = $user->userLicence;
+        if (!$activeLicense || !$activeLicense->isActive()) {
+            return false;
+        }
 
-        return $endDate ? Carbon::now()->lte($endDate) : $user->is_subscribed;
+        // Check if license is not expired
+        if ($activeLicense->isExpired()) {
+            return false;
+        }
+
+        return true;
     }
 
     private function canUpgradeSubscription($user)
     {
         return $this->hasActiveSubscription($user) &&
+            $user->package &&
             strtolower($user->package->name) !== 'free' &&
             $user->paymentGateway &&
             $user->paymentGateway->is_active;
@@ -151,6 +159,7 @@ class SubscriptionController extends Controller
     public function showSubscriptionWithPackage(Request $request)
     {
         $packageName = $request->query('package_name');
+        $type = $request->query('type');
 
         // Check if user is authenticated
         if (!auth()->check()) {
@@ -159,17 +168,27 @@ class SubscriptionController extends Controller
             return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
         }
 
-        // Validate package name
-        if (!$packageName) {
-            return redirect()->route('home')->with('error', 'No package selected.');
+        // Handle different types
+        if ($type === 'upgrade') {
+            return $this->showSubscriptionPage('upgrade');
         }
 
-        $package = Package::where('name', $packageName)->first();
-        if (!$package) {
-            return redirect()->route('home')->with('error', 'Invalid package selected.');
+        if ($type === 'downgrade') {
+            return $this->showSubscriptionPage('downgrade');
         }
 
-        return $this->showSubscriptionPage('new', $package);
+        // Handle package_name parameter (existing logic)
+        if ($packageName) {
+            $package = Package::where('name', $packageName)->first();
+            if (!$package) {
+                return redirect()->route('home')->with('error', 'Invalid package selected.');
+            }
+
+            return $this->showSubscriptionPage('new', $package);
+        }
+
+        // Default behavior - show subscription page without specific package
+        return $this->showSubscriptionPage('new');
     }
 
     public function upgrade(Request $request, $package = null)
@@ -220,20 +239,17 @@ class SubscriptionController extends Controller
         }
 
         $package = $user->package;
-        $calculatedEndDate = null;
+        $activeLicense = $user->userLicence;
+        $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
         $hasActiveSubscription = $this->hasActiveSubscription($user);
         $canUpgrade = $this->canUpgradeSubscription($user);
 
-        if ($package && $user->subscription_starts_at) {
-            $durationInDays = $package->getDurationInDays();
-            if ($durationInDays) {
-                $calculatedEndDate = Carbon::parse($user->subscription_starts_at)->addDays($durationInDays);
-                Log::info('Subscription end date calculated', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'end_date' => $calculatedEndDate->toDateTimeString()
-                ]);
-            }
+        if ($activeLicense && $calculatedEndDate) {
+            Log::info('License expiration date retrieved', [
+                'user_id' => $user->id,
+                'package_name' => $package ? $package->name : 'Unknown',
+                'end_date' => $calculatedEndDate->toDateTimeString()
+            ]);
         }
 
         return view('subscription.details', [
@@ -257,9 +273,7 @@ class SubscriptionController extends Controller
                 $user->update([
                     'package_id' => $package->id,
                     'payment_gateway_id' => $paymentGateway->id,
-                    'is_subscribed' => true,
-                    'subscription_starts_at' => now(),
-                    'subscription_ends_at' => null
+                    'is_subscribed' => true
                 ]);
 
                 $order->update([
