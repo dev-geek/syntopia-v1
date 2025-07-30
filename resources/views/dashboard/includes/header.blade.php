@@ -586,16 +586,49 @@
             }
         }
 
-        /* Password Modal Styles - Matching Project Theme */
-        .password-modal .modal-content {
+        /* Custom Password Modal Styles */
+        .password-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+
+        .password-modal-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 20px;
+        }
+
+        .password-modal-box {
             background: linear-gradient(135deg, #f8fafd 0%, #e9f3ff 100%);
             border: 1px solid #e3eafc;
             border-radius: 1.1rem;
             box-shadow: 0 8px 32px rgba(13,110,253,0.13);
             overflow: hidden;
+            animation: modalSlideIn 0.3s ease-out;
         }
 
-        .password-modal .modal-header {
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .password-modal-header {
             background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
             color: #fff;
             border-bottom: 1px solid #e3eafc;
@@ -603,45 +636,18 @@
             position: relative;
         }
 
-        .password-modal .modal-title {
+        .password-modal-title {
             font-weight: 700;
             font-size: 1.3rem;
             margin: 0;
         }
 
-        .password-modal .btn-close {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            opacity: 0.8;
-        }
-
-        .password-modal .btn-close:hover {
-            background: rgba(255,255,255,0.3);
-            opacity: 1;
-            transform: scale(1.1);
-        }
-
-        .password-modal .btn-close::before {
-            content: "×";
-            color: #fff;
-            font-size: 1.5rem;
-            font-weight: bold;
-            line-height: 1;
-        }
-
-        .password-modal .modal-body {
+        .password-modal-body {
             padding: 2rem;
             text-align: center;
         }
 
-        .password-modal .modal-body p {
+        .password-modal-body p {
             color: #6c757d;
             font-size: 1.1rem;
             font-weight: 500;
@@ -649,7 +655,7 @@
             line-height: 1.6;
         }
 
-        .password-modal .btn-set-password {
+        .btn-set-password {
             background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
             border: none;
             border-radius: 8px;
@@ -663,9 +669,12 @@
             gap: 8px;
             transition: all 0.3s ease;
             box-shadow: 0 2px 8px rgba(13,110,253,0.15);
+            cursor: pointer;
+            outline: none;
+            user-select: none;
         }
 
-        .password-modal .btn-set-password:hover {
+        .btn-set-password:hover {
             background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
             color: #fff;
             transform: translateY(-2px);
@@ -673,21 +682,17 @@
             text-decoration: none;
         }
 
-        .password-modal .btn-set-password:focus {
+        .btn-set-password:focus {
             box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+            color: #fff;
         }
 
-        .password-modal .btn-set-password i {
+        .btn-set-password:active {
+            transform: translateY(0);
+        }
+
+        .btn-set-password i {
             font-size: 1.1rem;
-        }
-
-        /* Prevent modal backdrop click */
-        .password-modal .modal-backdrop {
-            pointer-events: none;
-        }
-
-        .password-modal .modal {
-            pointer-events: auto;
         }
     </style>
 
@@ -725,15 +730,39 @@
 
             <!-- Right navbar links -->
             <ul class="navbar-nav ml-auto">
-                @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin')
-                    && (!Auth::user()->password == NULL || !Auth::user()->password == ''))
+                @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item">
-                        <a href="{{ route('software.access') }}" class="btn btn-primary header-software-btn" target="_blank">
+                        <a href="#" class="btn btn-primary header-software-btn" id="accessSoftwareBtn" onclick="checkPasswordAndAccess()">
                             <i class="bi bi-box-arrow-up-right"></i>
                             <span class="d-none d-md-inline">ACCESS THE SOFTWARE</span>
                         </a>
                     </li>
                 @endif
+
+
+
+        @if (Auth::user()->password == NULL || Auth::user()->password == '')
+        {{-- Custom modal overlay for password setup --}}
+        <div id="passwordModalOverlay" class="password-modal-overlay" style="display: none;">
+            <div class="password-modal-container">
+                <div class="password-modal-box">
+                    <div class="password-modal-header">
+                        <h5 class="password-modal-title">
+                            <i class="fas fa-shield-alt me-2"></i>
+                            Set/Change Password
+                        </h5>
+                    </div>
+                    <div class="password-modal-body">
+                        <p>You haven't set a password yet. Please set a password to continue.</p>
+                        <button type="button" class="btn-set-password">
+                            <i class="fas fa-key"></i>
+                            Set Password
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 
                 @if (!Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item dropdown">
