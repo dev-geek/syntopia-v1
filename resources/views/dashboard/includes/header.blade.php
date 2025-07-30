@@ -179,6 +179,7 @@
         .toast .toast-title {
             font-weight: bold;
         }
+
         .header-bell {
             background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
             color: #fff;
@@ -188,23 +189,43 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 2px 8px rgba(13,110,253,0.12);
+            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.12);
             position: relative;
             transition: box-shadow 0.2s, background 0.2s;
             cursor: pointer;
         }
-        .header-bell:hover, .header-bell.has-notifications {
+
+        .header-bell:hover,
+        .header-bell.has-notifications {
             animation: bell-shake 0.7s;
-            box-shadow: 0 4px 16px rgba(13,110,253,0.18);
+            box-shadow: 0 4px 16px rgba(13, 110, 253, 0.18);
             background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
         }
+
         @keyframes bell-shake {
-            0%, 100% { transform: rotate(0); }
-            20% { transform: rotate(-15deg); }
-            40% { transform: rotate(10deg); }
-            60% { transform: rotate(-8deg); }
-            80% { transform: rotate(8deg); }
+
+            0%,
+            100% {
+                transform: rotate(0);
+            }
+
+            20% {
+                transform: rotate(-15deg);
+            }
+
+            40% {
+                transform: rotate(10deg);
+            }
+
+            60% {
+                transform: rotate(-8deg);
+            }
+
+            80% {
+                transform: rotate(8deg);
+            }
         }
+
         .header-bell .navbar-badge {
             position: absolute;
             top: 2px;
@@ -215,17 +236,18 @@
             border-radius: 50%;
             padding: 2px 6px;
             font-weight: bold;
-            box-shadow: 0 1px 4px rgba(220,53,69,0.18);
+            box-shadow: 0 1px 4px rgba(220, 53, 69, 0.18);
         }
 
         .header-user-dropdown .dropdown-menu {
             background: #f8fafd;
             border-radius: 1.1rem;
-            box-shadow: 0 8px 32px rgba(13,110,253,0.13);
+            box-shadow: 0 8px 32px rgba(13, 110, 253, 0.13);
             min-width: 280px;
             padding: 0.5rem 0;
             animation: fadeInDown 0.35s;
         }
+
         .header-user-dropdown .dropdown-header {
             font-weight: 700;
             color: #0d6efd;
@@ -235,6 +257,7 @@
             font-size: 1.1rem;
             border-bottom: 1px solid #e3eafc;
         }
+
         .header-user-dropdown .dropdown-item {
             display: flex;
             align-items: center;
@@ -247,10 +270,12 @@
             color: #222;
             font-weight: 500;
         }
+
         .header-user-dropdown .dropdown-item:hover {
             background: #e9f3ff;
             color: #0d6efd;
         }
+
         .header-user-dropdown .dropdown-item i {
             background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
             color: #fff;
@@ -262,12 +287,14 @@
             justify-content: center;
             font-size: 1.2rem;
             flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.10);
         }
+
         .header-user-dropdown .dropdown-divider {
             margin: 0;
             border-color: #e3eafc;
         }
+
         .header-user-dropdown .dropdown-footer {
             text-align: center;
             padding: 0.7rem 1.2rem 0.9rem 1.2rem;
@@ -278,28 +305,40 @@
             border-top: 1px solid #e3eafc;
             transition: background 0.18s;
         }
+
         .header-user-dropdown .dropdown-footer:hover {
             background: #d0e7ff;
             color: #c82333;
             text-decoration: underline;
         }
+
         @keyframes fadeInDown {
-            from { opacity: 0; transform: translateY(-16px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(-16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
         .header-user-name {
             font-weight: bold;
             color: #0d6efd;
             margin-right: 6px;
         }
+
         .dropdown-menu.notifications-dropdown {
             background: #f8fafd;
             border-radius: 1.1rem;
-            box-shadow: 0 8px 32px rgba(13,110,253,0.13);
+            box-shadow: 0 8px 32px rgba(13, 110, 253, 0.13);
             min-width: 320px;
             padding: 0.5rem 0;
             animation: fadeInDown 0.35s;
         }
+
         .notifications-dropdown .dropdown-header {
             font-weight: 700;
             color: #0d6efd;
@@ -309,6 +348,7 @@
             font-size: 1.1rem;
             border-bottom: 1px solid #e3eafc;
         }
+
         .notification-item {
             display: flex;
             align-items: flex-start;
@@ -319,9 +359,11 @@
             transition: background 0.18s;
             cursor: pointer;
         }
+
         .notification-item:hover {
             background: #e9f3ff;
         }
+
         .notification-icon {
             background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
             color: #fff;
@@ -333,12 +375,14 @@
             justify-content: center;
             font-size: 1.2rem;
             flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(13,110,253,0.10);
+            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.10);
         }
+
         .notification-content {
             flex: 1;
             min-width: 0;
         }
+
         .notification-activity {
             font-weight: 600;
             color: #222;
@@ -347,11 +391,13 @@
             white-space: normal;
             word-break: break-word;
         }
+
         .notification-time {
             color: #6c757d;
             font-size: 0.85rem;
             font-weight: 400;
         }
+
         .dropdown-footer.notifications-footer {
             text-align: center;
             padding: 0.7rem 1.2rem 0.9rem 1.2rem;
@@ -362,6 +408,7 @@
             border-top: 1px solid #e3eafc;
             transition: background 0.18s;
         }
+
         .dropdown-footer.notifications-footer:hover {
             background: #d0e7ff;
             color: #0a58ca;
@@ -379,7 +426,7 @@
             color: #fff;
             margin-right: 15px;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(13,110,253,0.15);
+            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.15);
             display: flex;
             align-items: center;
             gap: 6px;
@@ -389,12 +436,12 @@
             background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
             color: #fff;
             transform: translateY(-1px);
-            box-shadow: 0 4px 16px rgba(13,110,253,0.25);
+            box-shadow: 0 4px 16px rgba(13, 110, 253, 0.25);
             text-decoration: none;
         }
 
         .header-software-btn:focus {
-            box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
         }
 
         .header-software-btn i {
@@ -414,8 +461,8 @@
             }
         }
 
-            /* Password Toggle Styles - Imported from dedicated file */
-    /* Note: password-toggle.css is included separately in layouts */
+        /* Password Toggle Styles - Imported from dedicated file */
+        /* Note: password-toggle.css is included separately in layouts */
 
         /* Footer Styles - Override AdminLTE positioning */
         .main-footer {
@@ -502,7 +549,7 @@
 
         .footer-link:hover {
             color: #0d6efd;
-            background: rgba(13,110,253,0.08);
+            background: rgba(13, 110, 253, 0.08);
             text-decoration: none;
             transform: translateY(-1px);
         }
@@ -612,7 +659,7 @@
             background: linear-gradient(135deg, #f8fafd 0%, #e9f3ff 100%);
             border: 1px solid #e3eafc;
             border-radius: 1.1rem;
-            box-shadow: 0 8px 32px rgba(13,110,253,0.13);
+            box-shadow: 0 8px 32px rgba(13, 110, 253, 0.13);
             overflow: hidden;
             animation: modalSlideIn 0.3s ease-out;
         }
@@ -622,6 +669,7 @@
                 opacity: 0;
                 transform: translateY(-50px) scale(0.9);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0) scale(1);
@@ -668,7 +716,7 @@
             align-items: center;
             gap: 8px;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(13,110,253,0.15);
+            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.15);
             cursor: pointer;
             outline: none;
             user-select: none;
@@ -678,12 +726,12 @@
             background: linear-gradient(135deg, #0dcaf0 0%, #0d6efd 100%);
             color: #fff;
             transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(13,110,253,0.25);
+            box-shadow: 0 4px 16px rgba(13, 110, 253, 0.25);
             text-decoration: none;
         }
 
         .btn-set-password:focus {
-            box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
             color: #fff;
         }
 
@@ -705,7 +753,8 @@
             <!-- Left navbar links -->
             <ul class="navbar-nav">
                 <li class="nav-item d-lg-none">
-                    <button class="btn btn-outline-primary border-0" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas">
+                    <button class="btn btn-outline-primary border-0" type="button" data-bs-toggle="offcanvas"
+                        data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas">
                         <i class="bi bi-list" style="font-size: 1.7rem;"></i>
                     </button>
                 </li>
@@ -732,7 +781,8 @@
             <ul class="navbar-nav ml-auto">
                 @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item">
-                        <a href="#" class="btn btn-primary header-software-btn" id="accessSoftwareBtn" onclick="checkPasswordAndAccess()">
+                        <a href="#" class="btn btn-primary header-software-btn" id="accessSoftwareBtn"
+                            onclick="checkPasswordAndAccess()">
                             <i class="bi bi-box-arrow-up-right"></i>
                             <span class="d-none d-md-inline">ACCESS THE SOFTWARE</span>
                         </a>
@@ -741,34 +791,35 @@
 
 
 
-        @if (Auth::user()->password == NULL || Auth::user()->password == '')
-        {{-- Custom modal overlay for password setup --}}
-        <div id="passwordModalOverlay" class="password-modal-overlay" style="display: none;">
-            <div class="password-modal-container">
-                <div class="password-modal-box">
-                    <div class="password-modal-header">
-                        <h5 class="password-modal-title">
-                            <i class="fas fa-shield-alt me-2"></i>
-                            Set/Change Password
-                        </h5>
+                @if (Auth::user()->password == null || Auth::user()->password == '')
+                    {{-- Custom modal overlay for password setup --}}
+                    <div id="passwordModalOverlay" class="password-modal-overlay" style="display: none;">
+                        <div class="password-modal-container">
+                            <div class="password-modal-box">
+                                <div class="password-modal-header">
+                                    <h5 class="password-modal-title">
+                                        <i class="fas fa-shield-alt me-2"></i>
+                                        Set Your Password
+                                    </h5>
+                                </div>
+                                <div class="password-modal-body">
+                                    <p>You haven't set a password yet. Please set a password to continue.</p>
+                                    <button type="button" class="btn-set-password">
+                                        <i class="fas fa-key"></i>
+                                        Set Password
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="password-modal-body">
-                        <p>You haven't set a password yet. Please set a password to continue.</p>
-                        <button type="button" class="btn-set-password">
-                            <i class="fas fa-key"></i>
-                            Set Password
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @endif
+                @endif
 
                 @if (!Auth::user()->hasRole('Sub Admin'))
                     <li class="nav-item dropdown">
-                        <a class="nav-link position-relative header-bell @if($userLogs->count()) has-notifications @endif" data-toggle="dropdown" href="#">
+                        <a class="nav-link position-relative header-bell @if ($userLogs->count()) has-notifications @endif"
+                            data-toggle="dropdown" href="#">
                             <i class="far fa-bell"></i>
-                            @if($userLogs->count())
+                            @if ($userLogs->count())
                                 <span class="badge navbar-badge">{{ $userLogs->count() }}</span>
                             @endif
                         </a>
@@ -780,12 +831,14 @@
                                     <span class="notification-icon"><i class="fas fa-user"></i></span>
                                     <div class="notification-content">
                                         <div class="notification-activity">{{ $log->activity }}</div>
-                                        <div class="notification-time">{{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>
+                                        <div class="notification-time">
+                                            {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>
                                     </div>
                                 </div>
                                 <div class="dropdown-divider m-0"></div>
                             @endforeach
-                            <a href="{{ route('admin.users-logs') }}" class="dropdown-footer notifications-footer">See All Notifications</a>
+                            <a href="{{ route('admin.users-logs') }}" class="dropdown-footer notifications-footer">See
+                                All Notifications</a>
                         </div>
                     </li>
                 @endif
@@ -810,9 +863,12 @@
                             </a>
                         @endif
                         <div class="dropdown-divider m-0"></div>
-                        <a href="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin']) ? 'admin.logout' : 'logout') }}" class="dropdown-footer"
+                        <a href="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])? 'admin.logout': 'logout') }}"
+                            class="dropdown-footer"
                             onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
-                        <form id="logout-form" action="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin']) ? 'admin.logout' : 'logout') }}" method="POST" style="display: none;">
+                        <form id="logout-form"
+                            action="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])? 'admin.logout': 'logout') }}"
+                            method="POST" style="display: none;">
                             @csrf
                         </form>
                     </div>
@@ -820,5 +876,3 @@
             </ul>
         </nav>
         <!-- /.navbar -->
-
-

@@ -117,7 +117,7 @@
                     setPasswordBtn.addEventListener('click', function(e) {
                         console.log('Set Password button clicked!');
                         e.stopPropagation();
-                        window.open('{{ route('password.request') }}', '_blank');
+                        window.open('/user/profile', '_self');
                     });
                 } else {
                     console.error('Set Password button not found');
