@@ -21,7 +21,7 @@
 
             {{-- Show to role User --}}
             @role('User')
-                @if (Auth::user()->password == null || Auth::user()->password == '')
+                @if (Auth::user()->google_id == NULL || Auth::user()->google_id == '')
                     @include('dashboard.includes.password-notification')
                 @endif
                 <h2 class="overview-title">Basic Overview</h2>

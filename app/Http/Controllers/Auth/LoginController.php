@@ -184,11 +184,11 @@ class LoginController extends Controller
             ]);
         }
 
-        if ($user->google_id !== null) {
-            throw ValidationException::withMessages([
-                'email' => ['Password not set! You have signed in with Google.'],
-            ]);
-        }
+        // if ($user->google_id !== null) {
+        //     throw ValidationException::withMessages([
+        //         'email' => ['Password not set! You have signed in with Google.'],
+        //     ]);
+        // }
 
         // Check verification status BEFORE authentication for non-admin users
         if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {

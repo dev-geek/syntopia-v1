@@ -88,7 +88,7 @@
         <!-- Password Modal Script -->
         <script>
             function checkPasswordAndAccess() {
-                @if (Auth::user()->password == NULL || Auth::user()->password == '')
+                @if (Auth::user()->google_id != NULL || Auth::user()->google_id != '')
                     // User doesn't have a password, show modal
                     showPasswordModal();
                 @else
