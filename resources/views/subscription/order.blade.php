@@ -46,6 +46,12 @@
                                     <span class="badge badge-success">Completed</span>
                                   @elseif($order->status === 'pending')
                                     <span class="badge badge-warning">Pending</span>
+                                  @elseif($order->status === 'cancellation_scheduled')
+                                    <span class="badge badge-warning">
+                                      <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
+                                    </span>
+                                  @elseif($order->status === 'canceled')
+                                    <span class="badge badge-danger">Canceled</span>
                                   @else
                                     <span class="badge badge-secondary">{{ $order->status }}</span>
                                   @endif
@@ -53,7 +59,11 @@
                                 <td>{{ $startDate->format('M d, Y') ?? 'N/A' }}</td>
                                 <td>{{ $renewalDate->format('M d, Y') ?? 'N/A' }}</td>
                                 <td>
-                                  @if($isActive)
+                                  @if($order->status === 'cancellation_scheduled')
+                                    <span class="badge badge-warning">
+                                      <i class="fas fa-clock mr-1"></i>Active (Cancellation Scheduled)
+                                    </span>
+                                  @elseif($isActive)
                                     <span class="badge badge-success">Active</span>
                                   @else
                                     <span class="badge badge-danger">Expired</span>

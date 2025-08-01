@@ -46,6 +46,17 @@ class SubscriptionController extends Controller
         return true;
     }
 
+    private function hasScheduledCancellation($user)
+    {
+        // Check if there's an order with cancellation_scheduled status for this user
+        // We check orders by user_id and also verify the user_licence has the subscription_id
+        $scheduledCancellation = \App\Models\Order::where('user_id', $user->id)
+            ->where('status', 'cancellation_scheduled')
+            ->exists();
+
+        return $scheduledCancellation;
+    }
+
     private function canUpgradeSubscription($user)
     {
         return $this->hasActiveSubscription($user) &&
@@ -296,11 +307,14 @@ class SubscriptionController extends Controller
             ]);
         }
 
+        $hasScheduledCancellation = $this->hasScheduledCancellation($user);
+
         return view('subscription.details', [
             'currentPackage' => $package ? $package->name : null,
             'user' => $user,
             'calculatedEndDate' => $calculatedEndDate,
             'hasActiveSubscription' => $hasActiveSubscription,
+            'hasScheduledCancellation' => $hasScheduledCancellation,
             'canUpgrade' => $canUpgrade,
             'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false
         ]);

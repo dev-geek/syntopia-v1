@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use App\Models\{Package, User, PaymentGateways, Order};
+use App\Models\{Package, User, PaymentGateways, Order, UserLicence};
 use App\Services\LicenseService;
 use App\Services\LicenseApiService;
 use Illuminate\Support\Facades\Cache;
@@ -770,22 +770,20 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId
                     ]);
 
-                    // Look for orders with temporary transaction IDs that might be related to this transaction
-                    $tempOrders = Order::where('metadata->temp_transaction_id', true)
-                        ->where('status', 'pending')
+                    // Look for pending orders that might be related to this transaction
+                    // Since orders table doesn't have metadata, we'll look for pending orders by user
+                    $pendingOrders = Order::where('status', 'pending')
                         ->get();
 
-                    foreach ($tempOrders as $tempOrder) {
-                        $metadata = $tempOrder->metadata ?? [];
-                        if (isset($metadata['paddle_checkout_id']) && $metadata['paddle_checkout_id'] === $transactionId) {
-                            $order = $tempOrder;
-                            Log::info('Found order with temporary transaction ID', [
-                                'temp_transaction_id' => $tempOrder->transaction_id,
-                                'real_transaction_id' => $transactionId,
-                                'order_id' => $tempOrder->id
-                            ]);
-                            break;
-                        }
+                    foreach ($pendingOrders as $pendingOrder) {
+                        // Check if this order might be related to the current transaction
+                        // We'll use a simple approach - if no order found by transaction_id,
+                        // we'll process the payment using the webhook method
+                        Log::info('Found pending order', [
+                            'order_id' => $pendingOrder->id,
+                            'transaction_id' => $pendingOrder->transaction_id,
+                            'user_id' => $pendingOrder->user_id
+                        ]);
                     }
                 }
 
@@ -794,9 +792,12 @@ class PaymentController extends Controller
                     return redirect()->route('user.dashboard')->with('success', 'Subscription active');
                 }
 
-                // If we found an order with a temporary transaction ID, update it
-                if ($order && isset($order->metadata['temp_transaction_id']) && $order->metadata['temp_transaction_id']) {
-                    $this->updateTemporaryTransactionId($order, $transactionId);
+                // If we found an order, we can update it if needed
+                if ($order) {
+                    Log::info('Found existing order for transaction', [
+                        'order_id' => $order->id,
+                        'transaction_id' => $transactionId
+                    ]);
                 }
 
                 $apiKey = config('payment.gateways.Paddle.api_key');
@@ -1226,19 +1227,17 @@ class PaymentController extends Controller
                 // Handle subscription cancellation
                 $subscriptionId = $payload['subscription'] ?? null;
                 if ($subscriptionId) {
-                    $user = User::where('subscription_id', $subscriptionId)->first();
-                    if ($user) {
-                        DB::transaction(function () use ($user, $subscriptionId) {
-                            // Delete the user's license record
-                            $userLicense = $user->userLicence;
-                            if ($userLicense) {
-                                Log::info('Deleting user license record from FastSpring webhook', [
-                                    'license_id' => $userLicense->id,
-                                    'user_id' => $user->id,
-                                    'subscription_id' => $userLicense->subscription_id
-                                ]);
-                                $userLicense->delete();
-                            }
+                    // Find user by subscription_id in user_licences table
+                    $userLicense = \App\Models\UserLicence::where('subscription_id', $subscriptionId)->first();
+                    if ($userLicense) {
+                        $user = $userLicense->user;
+                        DB::transaction(function () use ($user, $userLicense, $subscriptionId) {
+                            Log::info('Deleting user license record from FastSpring webhook', [
+                                'license_id' => $userLicense->id,
+                                'user_id' => $user->id,
+                                'subscription_id' => $userLicense->subscription_id
+                            ]);
+                            $userLicense->delete();
 
                             // Reset user's subscription data
                             $user->update([
@@ -1251,7 +1250,6 @@ class PaymentController extends Controller
 
                             // Update order status
                             $order = Order::where('user_id', $user->id)
-                                ->where('subscription_id', $subscriptionId)
                                 ->latest('created_at')
                                 ->first();
 
@@ -1479,9 +1477,10 @@ class PaymentController extends Controller
                 return redirect()->back()->with('error', 'No active subscription to cancel');
             }
 
-            // Check if user has subscription_id, if not, we'll just mark as cancelled in database
-            if (!$user->subscription_id) {
-                Log::info('User has subscription but no subscription_id, marking as cancelled in database', [
+            // Check if user has subscription_id in user_licences table
+            $userLicense = $user->userLicence;
+            if (!$userLicense || !$userLicense->subscription_id) {
+                Log::info('User has subscription but no subscription_id in license, marking as cancelled in database', [
                     'user_id' => $user->id,
                     'is_subscribed' => $user->is_subscribed,
                     'package_id' => $user->package_id,
@@ -1538,6 +1537,71 @@ class PaymentController extends Controller
                 return redirect()->back()->with('success', 'Subscription cancelled successfully');
             }
 
+            $subscriptionId = $userLicense->subscription_id;
+
+            // Check if this is a real subscription or a one-time payment
+            $isRealSubscription = strpos($subscriptionId, 'sub_') === 0;
+
+            if (!$isRealSubscription) {
+                Log::info('User attempting to cancel one-time payment', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $subscriptionId,
+                    'package' => $user->package->name ?? 'Unknown'
+                ]);
+
+                // For one-time payments, we can't cancel through the payment gateway
+                // We need to handle this as a database-only cancellation
+                DB::transaction(function () use ($user, $subscriptionId) {
+                    // Delete the user's license record
+                    $userLicense = $user->userLicence;
+                    if ($userLicense) {
+                        Log::info('Deleting user license record for one-time payment', [
+                            'license_id' => $userLicense->id,
+                            'user_id' => $user->id,
+                            'transaction_id' => $subscriptionId
+                        ]);
+                        $userLicense->delete();
+                    }
+
+                    // Reset user's subscription data
+                    $user->update([
+                        'is_subscribed' => 0,
+                        'package_id' => null,
+                        'payment_gateway_id' => null,
+                        'subscription_id' => null,
+                        'user_license_id' => null
+                    ]);
+
+                    // Update order status
+                    $order = Order::where('user_id', $user->id)
+                        ->latest('created_at')
+                        ->first();
+
+                    if ($order) {
+                        $order->update(['status' => 'canceled']);
+                        Log::info('Updated order status to canceled for one-time payment', [
+                            'order_id' => $order->id,
+                            'user_id' => $user->id,
+                            'transaction_id' => $subscriptionId
+                        ]);
+                    }
+                });
+
+                Log::info('One-time payment cancelled in database', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $subscriptionId
+                ]);
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Subscription cancelled successfully'
+                    ]);
+                }
+
+                return redirect()->back()->with('success', 'Subscription cancelled successfully');
+            }
+
             $gateway = $user->paymentGateway ? $user->paymentGateway->name : null;
             if (!$gateway) {
                 Log::error('No payment gateway associated with user', ['user_id' => $user->id]);
@@ -1545,13 +1609,14 @@ class PaymentController extends Controller
             }
 
             $gateway = strtolower($gateway);
-            $subscriptionId = $user->subscription_id;
 
             if ($gateway === 'fastspring') {
-                $response = Http::withBasicAuth(
+                $fastSpringClient = new \App\Services\FastSpringClient(
                     config('payment.gateways.FastSpring.username'),
                     config('payment.gateways.FastSpring.password')
-                )->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}");
+                );
+
+                $response = $fastSpringClient->cancelSubscription($subscriptionId, 1); // billingPeriod = 1 (end of billing period)
 
                 // Check HTTP status first
                 if (!$response->successful()) {
@@ -1561,25 +1626,131 @@ class PaymentController extends Controller
                         'response' => $response->body(),
                         'status' => $response->status()
                     ]);
+
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Failed to cancel subscription'
+                        ], 500);
+                    }
                     return redirect()->back()->with('error', 'Failed to cancel subscription');
                 }
 
                 $responseData = $response->json();
+                Log::info('FastSpring cancellation response', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'response_data' => $responseData
+                ]);
 
-                // Validate response structure and success indicators
-                // if (!isset($responseData['subscriptions'][0]['action']) ||
-                //     !isset($responseData['subscriptions'][0]['result']) ||
-                //     $responseData['subscriptions'][0]['action'] !== 'subscription.cancel' ||
-                //     $responseData['subscriptions'][0]['result'] !== 'success') {
-                //     Log::error('FastSpring subscription cancellation invalid response', [
-                //         'user_id' => $user->id,
-                //         'subscription_id' => $subscriptionId,
-                //         'response' => $responseData
-                //     ]);
-                //     return redirect()->back()->with('error', 'Subscription cancellation did not confirm');
-                // }
+                // For FastSpring, we don't immediately update the user's subscription status
+                // as the cancellation happens at the end of the billing period
+                // The webhook will handle the actual status change when the cancellation takes effect
 
-                // Update user subscription status and delete license
+                // Update order status to indicate cancellation is scheduled
+                $order = Order::where('user_id', $user->id)
+                    ->latest('created_at')
+                    ->first();
+                if ($order) {
+                    $order->update(['status' => 'cancellation_scheduled']);
+                }
+
+                Log::info('FastSpring subscription cancellation scheduled', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'cancellation_type' => 'end_of_billing_period'
+                ]);
+            } elseif ($gateway === 'paddle') {
+                // Use PaddleClient for cancellation with end-of-billing-period by default
+                $paddleClient = new \App\Services\PaddleClient(config('payment.gateways.Paddle.api_key'));
+
+                Log::info('Canceling Paddle subscription', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'cancellation_type' => 'end_of_billing_period'
+                ]);
+
+                $response = $paddleClient->cancelSubscription($subscriptionId, false); // false = end of billing period
+
+                if (!$response->successful()) {
+                    Log::error('Paddle subscription cancellation failed', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'response_status' => $response->status(),
+                        'response_body' => $response->body()
+                    ]);
+
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Failed to cancel subscription'
+                        ], 500);
+                    }
+                    return redirect()->back()->with('error', 'Failed to cancel subscription');
+                }
+
+                $responseData = $response->json();
+                Log::info('Paddle cancellation response', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'response_data' => $responseData,
+                    'cancellation_type' => 'end_of_billing_period'
+                ]);
+
+                // For Paddle, we don't immediately update the user's subscription status
+                // as the cancellation happens at the end of the billing period
+                // The webhook will handle the actual status change when the cancellation takes effect
+
+                // Update order status to indicate cancellation is scheduled
+                $order = Order::where('user_id', $user->id)
+                    ->latest('created_at')
+                    ->first();
+                if ($order) {
+                    $order->update(['status' => 'cancellation_scheduled']);
+                }
+
+                Log::info('Paddle subscription cancellation scheduled', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'cancellation_type' => 'end_of_billing_period'
+                ]);
+            } elseif ($gateway === 'payproglobal') {
+                // Use PayProGlobalClient for cancellation
+                $payProGlobalClient = new \App\Services\PayProGlobalClient(config('payment.gateways.PayProGlobal.api_key'));
+
+                Log::info('Canceling PayProGlobal subscription', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'cancellation_type' => 'immediate'
+                ]);
+
+                $response = $payProGlobalClient->cancelSubscription($subscriptionId, 2, null, true); // Default reason, send notification
+
+                if (!$response->successful()) {
+                    Log::error('PayProGlobal subscription cancellation failed', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'response_status' => $response->status(),
+                        'response_body' => $response->body()
+                    ]);
+
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Failed to cancel subscription'
+                        ], 500);
+                    }
+                    return redirect()->back()->with('error', 'Failed to cancel subscription');
+                }
+
+                $responseData = $response->json();
+                Log::info('PayProGlobal cancellation response', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'response_data' => $responseData
+                ]);
+
+                // For PayProGlobal, cancellation is immediate, so we update the user's status
                 DB::transaction(function () use ($user, $subscriptionId) {
                     // Delete the user's license record
                     $userLicense = $user->userLicence;
@@ -1602,126 +1773,57 @@ class PaymentController extends Controller
                     ]);
 
                     // Update order status
-                    Order::where('user_id', $user->id)
-                        ->where('subscription_id', $subscriptionId)
-                        ->update(['status' => 'canceled']);
+                    $order = Order::where('user_id', $user->id)
+                        ->latest('created_at')
+                        ->first();
+                    if ($order) {
+                        $order->update(['status' => 'canceled']);
+                    }
                 });
 
-                Log::info('FastSpring subscription canceled', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId
-                ]);
-            } elseif ($gateway === 'paddle') {
-                $apiKey = config('payment.gateways.Paddle.api_key');
-                $environment = config('payment.gateways.Paddle.environment', 'sandbox');
-
-                // Use the correct API URL based on environment
-                $apiBaseUrl = $environment === 'production'
-                    ? 'https://api.paddle.com'
-                    : 'https://sandbox-api.paddle.com';
-
-                Log::info('Canceling Paddle subscription', [
+                Log::info('PayProGlobal subscription canceled immediately', [
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId,
-                    'environment' => $environment,
-                    'api_endpoint' => "{$apiBaseUrl}/subscriptions/{$subscriptionId}/cancel"
-                ]);
-
-                // Use the correct Paddle API endpoint for subscription cancellation
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'Content-Type' => 'application/json'
-                ])->post("{$apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
-                    'effective_from' => 'immediately' // Cancel immediately instead of at end of billing period
-                ]);
-
-                if (!$response->successful()) {
-                    Log::error('Paddle subscription cancellation failed', [
-                        'user_id' => $user->id,
-                        'subscription_id' => $subscriptionId,
-                        'response_status' => $response->status(),
-                        'response_body' => $response->body(),
-                        'environment' => $environment
-                    ]);
-                    return redirect()->back()->with('error', 'Failed to cancel subscription');
-                }
-
-                $responseData = $response->json();
-                Log::info('Paddle cancellation response', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'response_data' => $responseData,
-                    'environment' => $environment
+                    'cancellation_type' => 'immediate'
                 ]);
             } else {
                 Log::error('Unsupported payment gateway for cancellation', ['gateway' => $gateway, 'user_id' => $user->id]);
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Unsupported payment gateway'
+                    ], 400);
+                }
                 return redirect()->back()->with('error', 'Unsupported payment gateway');
             }
 
-            // Update user and order records
-            DB::transaction(function () use ($user, $subscriptionId) {
-                // Delete the user's license record
-                $userLicense = $user->userLicence;
-                if ($userLicense) {
-                    Log::info('Deleting user license record', [
-                        'license_id' => $userLicense->id,
-                        'user_id' => $user->id,
-                        'subscription_id' => $userLicense->subscription_id
-                    ]);
-                    $userLicense->delete();
-                }
+            // Determine cancellation type and appropriate message
+            $cancellationType = 'immediate';
+            $successMessage = 'Subscription cancelled successfully';
 
-                // Reset user's subscription data
-                $user->update([
-                    'is_subscribed' => 0,
-                    'subscription_id' => null,
-                    'package_id' => null,
-                    'payment_gateway_id' => null,
-                    'user_license_id' => null
-                ]);
-
-                // Find the most recent order for this user and update its status
-                $order = Order::where('user_id', $user->id)
-                    ->latest('created_at')
-                    ->first();
-
-                if ($order) {
-                    $order->update(['status' => 'canceled']);
-                    Log::info('Updated order status to canceled', [
-                        'order_id' => $order->id,
-                        'user_id' => $user->id,
-                        'subscription_id' => $subscriptionId
-                    ]);
-                } else {
-                    Log::warning('No order found for user when canceling subscription', [
-                        'user_id' => $user->id,
-                        'subscription_id' => $subscriptionId
-                    ]);
-                }
-            });
+            if (in_array($gateway, ['fastspring', 'paddle'])) {
+                $cancellationType = 'end_of_billing_period';
+                $successMessage = 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.';
+            }
 
             Log::info('Subscription cancellation completed', [
                 'user_id' => $user->id,
-                'subscription_id' => $subscriptionId
-            ]);
-
-            // Debug response decision
-            Log::info('Response decision', [
-                'wantsJson' => $request->wantsJson(),
-                'accept' => $request->header('Accept'),
-                'willReturnJson' => $request->wantsJson()
+                'subscription_id' => $subscriptionId,
+                'gateway' => $gateway,
+                'cancellation_type' => $cancellationType
             ]);
 
             if ($request->wantsJson()) {
-                Log::info('Returning JSON response');
                 return response()->json([
                     'success' => true,
-                    'message' => 'Subscription canceled successfully'
+                    'message' => $successMessage,
+                    'cancellation_type' => $cancellationType,
+                    'gateway' => $gateway
                 ]);
             }
 
-            Log::info('Returning redirect response');
-            return redirect()->back()->with('success', 'Subscription canceled successfully');
+            return redirect()->back()->with('success', $successMessage);
         } catch (\Exception $e) {
             Log::error('Subscription cancellation error', [
                 'error' => $e->getMessage(),
@@ -1993,7 +2095,8 @@ class PaymentController extends Controller
 
             // Create and activate license using LicenseService from webhook
             Log::info('Creating and activating license from webhook', [
-                'user_id' => $user->id
+                'user_id' => $user->id,
+                'subscription_id' => $transactionData['subscription_id'] ?? null
             ]);
 
             $license = $this->licenseService->createAndActivateLicense(
@@ -2003,16 +2106,31 @@ class PaymentController extends Controller
                 $this->getPaymentGatewayId('paddle')
             );
 
-            if (!$license) {
+            // For one-time payments without subscription_id, license creation might return null
+            // but we should still allow the user to be marked as subscribed
+            if (!$license && !($transactionData['subscription_id'] ?? null)) {
+                Log::info('One-time payment without subscription_id - proceeding without license record', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId
+                ]);
+            } elseif (!$license) {
                 Log::error('Failed to create and activate license from webhook', ['user_id' => $user->id]);
                 throw new \Exception('License generation failed');
-            }
-
-            Log::info('License created and activated successfully from webhook', [
+            } else {
+                            Log::info('License created and activated successfully from webhook', [
                 'user_id' => $user->id,
                 'license_id' => $license->id,
                 'license_key' => $license->license_key
             ]);
+
+            // Update user's user_license_id to link to the created license
+            $user->update(['user_license_id' => $license->id]);
+
+            Log::info('User license_id updated for subscription license', [
+                'user_id' => $user->id,
+                'user_license_id' => $license->id
+            ]);
+            }
 
             // Update user subscription status
             $user->update([
@@ -2021,6 +2139,53 @@ class PaymentController extends Controller
                 'is_subscribed' => true,
                 'subscription_id' => $transactionData['subscription_id'] ?? null
             ]);
+
+            // For one-time payments without subscription_id, create a license record with transaction_id as reference
+            if (!$license && !($transactionData['subscription_id'] ?? null)) {
+                Log::info('Creating license record for one-time payment', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId
+                ]);
+
+                // Get a license key from the API
+                $summaryData = $this->licenseApiService->getSubscriptionSummary($user->tenant_id, true);
+                if (!empty($summaryData)) {
+                    $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+                    if ($licenseKey) {
+                        // Create license record with transaction_id as reference
+                        $license = UserLicence::create([
+                            'user_id' => $user->id,
+                            'license_key' => $licenseKey,
+                            'package_id' => $package->id,
+                            'subscription_id' => $transactionId, // Use transaction_id as reference
+                            'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                            'activated_at' => now(),
+                            'expires_at' => now()->addYear(),
+                            'is_active' => true,
+                            'metadata' => [
+                                'transaction_id' => $transactionId,
+                                'payment_type' => 'one_time',
+                                'created_from' => 'paddle_webhook'
+                            ]
+                        ]);
+
+                        Log::info('License record created for one-time payment', [
+                            'user_id' => $user->id,
+                            'license_id' => $license->id,
+                            'license_key' => $license->license_key,
+                            'transaction_id' => $transactionId
+                        ]);
+
+                        // Update user's user_license_id to link to the created license
+                        $user->update(['user_license_id' => $license->id]);
+
+                        Log::info('User license_id updated', [
+                            'user_id' => $user->id,
+                            'user_license_id' => $license->id
+                        ]);
+                    }
+                }
+            }
 
             Log::info('User updated successfully from webhook', [
                 'user_id' => $user->id,
@@ -2078,6 +2243,21 @@ class PaymentController extends Controller
             }
 
             $subscriptionId = $currentLicense->subscription_id;
+
+            // Check if this is a real subscription or a one-time payment
+            $isRealSubscription = strpos($subscriptionId, 'sub_') === 0;
+
+            if (!$isRealSubscription) {
+                Log::info('User attempting to upgrade from one-time payment', [
+                    'user_id' => $user->id,
+                    'current_package' => $user->package->name ?? 'Unknown',
+                    'target_package' => $packageData->name,
+                    'transaction_id' => $subscriptionId
+                ]);
+
+                // For one-time payments, we'll create a new one-time payment for the upgrade
+                // This is not a true subscription upgrade, but a new purchase
+            }
 
             Log::info('Starting package upgrade process', [
                 'user_id' => $user->id,
@@ -2298,22 +2478,31 @@ class PaymentController extends Controller
                 ? 'https://api.paddle.com'
                 : 'https://sandbox-api.paddle.com';
 
-            // Create a checkout session for the upgrade
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json'
-            ])->post("{$apiBaseUrl}/transactions", [
+            // Check if this is a real subscription ID or a transaction ID (one-time payment)
+            $isRealSubscription = strpos($subscriptionId, 'sub_') === 0;
+
+            $requestData = [
                 'items' => [
                     [
                         'price_id' => $priceId,
                         'quantity' => 1
                     ]
                 ],
-                'subscription_id' => $subscriptionId,
-                'proration_billing_mode' => 'prorated_immediately',
                 'success_url' => url('/payments/success?gateway=paddle&upgrade=true'),
                 'cancel_url' => url('/subscription?error=upgrade_cancelled')
-            ]);
+            ];
+
+            // Only add subscription_id and proration if it's a real subscription
+            if ($isRealSubscription) {
+                $requestData['subscription_id'] = $subscriptionId;
+                $requestData['proration_billing_mode'] = 'prorated_immediately';
+            }
+
+            // Create a checkout session for the upgrade
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json'
+            ])->post("{$apiBaseUrl}/transactions", $requestData);
 
             if (!$response->successful()) {
                 Log::error('Paddle upgrade checkout creation failed', [
@@ -2339,6 +2528,21 @@ class PaymentController extends Controller
                 $transactionId = 'PADDLE-UPGRADE-' . Str::random(10);
             }
 
+            $orderMetadata = [
+                'original_package' => $user->package->name ?? 'Unknown',
+                'upgrade_to' => $packageData->name,
+                'paddle_checkout_id' => $data['data']['id'] ?? null,
+                'temp_transaction_id' => !$data['data']['id']
+            ];
+
+            // Set upgrade type based on whether it's a real subscription or one-time payment
+            if ($isRealSubscription) {
+                $orderMetadata['upgrade_type'] = 'subscription_upgrade';
+            } else {
+                $orderMetadata['upgrade_type'] = 'one_time_upgrade';
+                $orderMetadata['original_transaction_id'] = $subscriptionId; // Store the original transaction ID
+            }
+
             Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
@@ -2347,15 +2551,18 @@ class PaymentController extends Controller
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
                 'order_type' => 'upgrade',
+                'subscription_id' => $isRealSubscription ? $subscriptionId : null, // Only set for real subscriptions
+                'transaction_id' => $transactionId,
+                'metadata' => $orderMetadata
+            ]);
+
+            Log::info('Paddle upgrade checkout created', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'is_real_subscription' => $isRealSubscription,
                 'subscription_id' => $subscriptionId,
                 'transaction_id' => $transactionId,
-                'metadata' => [
-                    'original_package' => $user->package->name ?? 'Unknown',
-                    'upgrade_to' => $packageData->name,
-                    'upgrade_type' => 'subscription_upgrade',
-                    'paddle_checkout_id' => $data['data']['id'] ?? null,
-                    'temp_transaction_id' => !$data['data']['id']
-                ]
+                'upgrade_type' => $orderMetadata['upgrade_type']
             ]);
 
             return $checkoutUrl;
@@ -2866,13 +3073,7 @@ class PaymentController extends Controller
     private function updateTemporaryTransactionId($order, $realTransactionId)
     {
         try {
-            // Check if this is a temporary transaction ID
-            $metadata = $order->metadata ?? [];
-            if (!isset($metadata['temp_transaction_id']) || !$metadata['temp_transaction_id']) {
-                return false; // Not a temporary transaction ID
-            }
-
-            Log::info('Updating temporary transaction ID', [
+            Log::info('Updating transaction ID', [
                 'old_transaction_id' => $order->transaction_id,
                 'new_transaction_id' => $realTransactionId,
                 'order_id' => $order->id
@@ -2880,22 +3081,17 @@ class PaymentController extends Controller
 
             // Update the order with the real transaction ID
             $order->update([
-                'transaction_id' => $realTransactionId,
-                'metadata' => array_merge($metadata, [
-                    'temp_transaction_id' => false,
-                    'real_transaction_id' => $realTransactionId,
-                    'updated_at' => now()->toISOString()
-                ])
+                'transaction_id' => $realTransactionId
             ]);
 
-            Log::info('Successfully updated temporary transaction ID', [
+            Log::info('Successfully updated transaction ID', [
                 'order_id' => $order->id,
                 'new_transaction_id' => $realTransactionId
             ]);
 
             return true;
         } catch (\Exception $e) {
-            Log::error('Failed to update temporary transaction ID', [
+            Log::error('Failed to update transaction ID', [
                 'error' => $e->getMessage(),
                 'order_id' => $order->id,
                 'real_transaction_id' => $realTransactionId

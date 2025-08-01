@@ -95,85 +95,6 @@
         .button-loading .btn-text {
             opacity: 0;
         }
-
-        /* Customer Type Banner Styles */
-        .customer-banner {
-            margin: 30px auto;
-            max-width: 600px;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-        }
-
-        .customer-banner:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-        }
-
-        .returning-customer {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .new-customer {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-        }
-
-        .banner-content {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .banner-icon {
-            font-size: 2.5rem;
-            flex-shrink: 0;
-        }
-
-        .banner-text h4 {
-            margin: 0 0 8px 0;
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .banner-text p {
-            margin: 0;
-            font-size: 0.95rem;
-            line-height: 1.5;
-            opacity: 0.95;
-        }
-
-        .banner-text strong {
-            color: #ffd700;
-            font-weight: 600;
-        }
-
-        @media (max-width: 768px) {
-            .customer-banner {
-                margin: 20px auto;
-                padding: 15px;
-            }
-
-            .banner-content {
-                flex-direction: column;
-                text-align: center;
-                gap: 10px;
-            }
-
-            .banner-icon {
-                font-size: 2rem;
-            }
-
-            .banner-text h4 {
-                font-size: 1.1rem;
-            }
-
-            .banner-text p {
-                font-size: 0.9rem;
-            }
-        }
     </style>
 
     <!-- Payment Gateway Scripts -->
@@ -1236,85 +1157,6 @@
                     individuals connect with their audiences.
                 @endif
             </p>
-
-            <!-- Customer Type Banner -->
-            @if (isset($isReturningCustomer) && $isReturningCustomer)
-                <div class="customer-banner returning-customer">
-                    <div class="banner-content">
-                        <div class="banner-icon">
-                            @if (isset($isUpgrade) && $isUpgrade)
-                                <i class="fa-solid fa-arrow-up"></i>
-                            @elseif (isset($pageType) && $pageType === 'downgrade')
-                                <i class="fa-solid fa-arrow-down"></i>
-                            @else
-                                <i class="fa-solid fa-handshake"></i>
-                            @endif
-                        </div>
-                        <div class="banner-text">
-                            <h4>
-                                @if (isset($isUpgrade) && $isUpgrade)
-                                    Ready to Upgrade?
-                                @elseif (isset($pageType) && $pageType === 'downgrade')
-                                    Manage Your Subscription
-                                @else
-                                    Welcome back!
-                                @endif
-                            </h4>
-                            <p>
-                                @if (isset($isUpgrade) && $isUpgrade)
-                                    Unlock more features and capabilities with a higher-tier plan.
-                                    {{-- @if (isset($purchaseHistory['current_package']) && $purchaseHistory['current_package'])
-                                        Current: <strong>{{ $purchaseHistory['current_package'] }}</strong>
-                                    @endif --}}
-                                @elseif (isset($pageType) && $pageType === 'downgrade')
-                                    Choose a plan that better fits your current needs.
-                                    {{-- @if (isset($purchaseHistory['current_package']) && $purchaseHistory['current_package'])
-                                        Current: <strong>{{ $purchaseHistory['current_package'] }}</strong>
-                                    @endif --}}
-                                @else
-                                    @if (isset($purchaseHistory) && $purchaseHistory['completed_orders'] > 0)
-                                        You have {{ $purchaseHistory['completed_orders'] }} completed order{{ $purchaseHistory['completed_orders'] > 1 ? 's' : '' }}
-                                        @if (isset($purchaseHistory['total_spent']) && $purchaseHistory['total_spent'] > 0)
-                                            and have spent ${{ number_format($purchaseHistory['total_spent'], 2) }} with us.
-                                        @endif
-                                    @else
-                                        We're glad to see you again!
-                                    @endif
-                                    @if (isset($purchaseHistory['current_package']) && $purchaseHistory['current_package'])
-                                        Your current package: <strong>{{ $purchaseHistory['current_package'] }}</strong>
-                                    @endif
-                                @endif
-
-                                {{-- @if (isset($selectedPaymentGateway) && $selectedPaymentGateway)
-                                    <br><small>Payment method: <strong>{{ $selectedPaymentGateway }}</strong>
-                                    @if (isset($isUsingOriginalGateway) && $isUsingOriginalGateway)
-                                        (your preferred method)
-                                    @elseif (isset($isUsingAdminGateway) && $isUsingAdminGateway)
-                                        (currently available)
-                                    @endif
-                                    </small>
-                                @endif --}}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            @else
-                <div class="customer-banner new-customer">
-                    <div class="banner-content">
-                        <div class="banner-icon">
-                            <i class="fa-solid fa-handshake"></i>
-                        </div>
-                        <div class="banner-text">
-                            <h4>Welcome to Syntopia!</h4>
-                            <p>You're about to start your journey with hyperrealistic AI avatars. Choose the perfect plan for your needs.
-                                {{-- @if (isset($selectedPaymentGateway) && $selectedPaymentGateway)
-                                    <br><small>Payment method: <strong>{{ $selectedPaymentGateway }}</strong> (currently available)</small>
-                                @endif --}}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            @endif
             <div class="pricing-grid">
                 @foreach ($packages as $package)
                     @php
@@ -1388,33 +1230,28 @@
         const currentPackage = "{{ $currentPackage ?? '' }}";
         const currentPackagePrice = parseFloat("{{ $currentPackagePrice ?? 0 }}");
         const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
-        const selectedPaymentGateway = "{{ $selectedPaymentGateway ?? '' }}";
-        const isUsingOriginalGateway = '{{ isset($isUsingOriginalGateway) && $isUsingOriginalGateway ? 'true' : 'false' }}';
-        const isUsingAdminGateway = '{{ isset($isUsingAdminGateway) && $isUsingAdminGateway ? 'true' : 'false' }}';
         const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
         const isUpgrade = '{{ isset($isUpgrade) && $isUpgrade ? 'true' : 'false' }}';
         const pageType = '{{ $pageType ?? 'new' }}';
         const hasActiveSubscription = '{{ isset($hasActiveSubscription) && $hasActiveSubscription ? 'true' : 'false' }}';
         const selectedPackage = @json($selectedPackage ?? null);
+        const currentPaymentGateway = "{{ $currentLoggedInUserPaymentGateway ?? '' }}";
 
         document.addEventListener("DOMContentLoaded", function() {
             console.log('Page configuration:', {
                 currentPackage,
                 currentPackagePrice,
                 userOriginalGateway,
-                selectedPaymentGateway,
-                isUsingOriginalGateway,
-                isUsingAdminGateway,
                 activeGatewaysByAdmin,
                 isUpgrade,
                 pageType,
                 hasActiveSubscription
             });
 
-            // Use the selected payment gateway from the server
-            let selectedGateway = selectedPaymentGateway || (activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null);
+            let selectedGateway = isUpgrade === 'true' && userOriginalGateway ?
+                userOriginalGateway :
+                activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null;
             console.log('Selected gateway:', selectedGateway);
-            console.log('Gateway selection reason:', isUsingOriginalGateway === 'true' ? 'User\'s original gateway' : 'Admin\'s active gateway');
 
             console.log(`[${isUpgrade === 'true' ? 'UPGRADE' : pageType.toUpperCase()}] Using gateway:`,
                 selectedGateway);
@@ -1907,9 +1744,18 @@
 
             function cancelSubscription() {
                 console.log('=== CANCEL SUBSCRIPTION ===');
+
+                // Determine cancellation behavior based on payment gateway
+                let cancellationInfo = '';
+                if (currentPaymentGateway === 'fastspring' || currentPaymentGateway === 'paddle') {
+                    cancellationInfo = '<br><br><small class="text-muted">Your subscription will remain active until the end of your current billing period.</small>';
+                } else if (currentPaymentGateway === 'payproglobal') {
+                    cancellationInfo = '<br><br><small class="text-muted">Your subscription will be cancelled immediately.</small>';
+                }
+
                 Swal.fire({
                     title: 'Confirm Cancellation',
-                    html: `Are you sure you want to cancel your <strong>${currentPackage}</strong> subscription? This action cannot be undone.`,
+                    html: `Are you sure you want to cancel your <strong>${currentPackage}</strong> subscription? This action cannot be undone.${cancellationInfo}`,
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonText: 'Cancel Subscription',
@@ -1942,10 +1788,19 @@
                             .then(data => {
                                 hideSpinner(); // Hide spinner on success
                                 if (data.success) {
-                                    showSuccess('Subscription Cancelled',
-                                        'Your subscription has been cancelled.').then(() => {
-                                        window.location.href = '/user/dashboard';
-                                    });
+                                    // Handle different cancellation types with appropriate messages
+                                    if (data.cancellation_type === 'end_of_billing_period') {
+                                        showInfo('Cancellation Scheduled',
+                                            data.message || 'Your subscription cancellation has been scheduled. You will continue to have access until the end of your current billing period.').then(() => {
+                                            window.location.href = '/user/dashboard';
+                                        });
+                                    } else {
+                                        // Immediate cancellation
+                                        showSuccess('Subscription Cancelled',
+                                            data.message || 'Your subscription has been cancelled successfully.').then(() => {
+                                            window.location.href = '/user/dashboard';
+                                        });
+                                    }
                                 } else {
                                     throw new Error(data.error || 'Cancellation failed.');
                                 }

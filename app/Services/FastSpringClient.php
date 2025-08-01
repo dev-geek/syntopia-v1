@@ -37,11 +37,11 @@ class FastSpringClient
         return $this->upgradeSubscription($subscriptionId, $newProductId);
     }
 
-    public function cancelSubscription(string $subscriptionId)
+    public function cancelSubscription(string $subscriptionId, int $billingPeriod = 1)
     {
         return Http::withBasicAuth($this->username, $this->password)
-            ->post('https://api.fastspring.com/subscriptions/cancel', [
-                'subscription' => $subscriptionId
+            ->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}", [
+                'billingPeriod' => $billingPeriod
             ]);
     }
 }

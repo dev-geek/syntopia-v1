@@ -41,7 +41,7 @@ class PaddleClient
         return $this->upgradeSubscription($subscriptionId, $newProductId);
     }
 
-    public function cancelSubscription(string $subscriptionId)
+    public function cancelSubscription(string $subscriptionId, bool $immediate = false)
     {
         $environment = config('payment.gateways.Paddle.environment', 'sandbox');
         $apiBaseUrl = $environment === 'production'
@@ -52,7 +52,7 @@ class PaddleClient
             'Authorization' => 'Bearer ' . $this->apiKey,
             'Content-Type' => 'application/json'
         ])->post("{$apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
-            'effective_from' => 'immediately'
+            'effective_from' => $immediate ? 'immediately' : 'next_billing_period'
         ]);
     }
 }

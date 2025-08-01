@@ -72,16 +72,21 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     // Cached accessors
-    public function getSubscriptionStatusAttribute(): array
+        public function getSubscriptionStatusAttribute(): array
     {
         return Cache::remember("user_{$this->id}_subscription_status", 300, function () {
             $activeLicense = $this->userLicence;
+            $hasScheduledCancellation = $this->orders()
+                ->where('status', 'cancellation_scheduled')
+                ->exists();
+
             return [
                 'is_active' => $this->is_subscribed && $activeLicense && $activeLicense->isActive(),
                 'package_name' => $this->package?->name,
                 'starts_at' => $activeLicense?->activated_at,
                 'expires_at' => $activeLicense?->expires_at,
                 'gateway' => $this->paymentGateway?->name,
+                'has_scheduled_cancellation' => $hasScheduledCancellation,
             ];
         });
     }
@@ -110,6 +115,13 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->is_subscribed &&
                $this->userLicence &&
                $this->userLicence->isActive();
+    }
+
+    public function hasScheduledCancellation(): bool
+    {
+        return $this->orders()
+            ->where('status', 'cancellation_scheduled')
+            ->exists();
     }
 
     public function canAccessPackage(string $packageName): bool

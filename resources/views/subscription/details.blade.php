@@ -277,9 +277,15 @@
                                 <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
                                     <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
                                 </a>
-                                <button class="btn btn-danger" id="cancelSubscriptionBtn">
-                                    <i class="fas fa-times mr-1"></i>Cancel Subscription
-                                </button>
+                                @if ($hasScheduledCancellation)
+                                    <button class="btn btn-secondary" disabled>
+                                        <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
+                                    </button>
+                                @else
+                                    <button class="btn btn-danger" id="cancelSubscriptionBtn">
+                                        <i class="fas fa-times mr-1"></i>Cancel Subscription
+                                    </button>
+                                @endif
                                 @elseif ($hasActiveSubscription && !$canUpgrade)
                                     <a class="btn btn-success"
                                         href="{{ route('subscription', ['type' => 'upgrade']) }}">
@@ -288,9 +294,15 @@
                                     <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
                                         <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
                                     </a>
-                                    <button class="btn btn-danger" id="cancelSubscriptionBtn">
-                                        <i class="fas fa-times mr-1"></i>Cancel Subscription
-                                    </button>
+                                    @if ($hasScheduledCancellation)
+                                        <button class="btn btn-secondary" disabled>
+                                            <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
+                                        </button>
+                                    @else
+                                        <button class="btn btn-danger" id="cancelSubscriptionBtn">
+                                            <i class="fas fa-times mr-1"></i>Cancel Subscription
+                                        </button>
+                                    @endif
                                 @elseif (!$hasActiveSubscription)
                                     <a class="btn btn-warning" href="{{ route('subscription', ['type' => 'new']) }}">
                                         <i class="fas fa-shopping-cart mr-1"></i>Buy Subscription
@@ -348,9 +360,25 @@
                                                 </p>
                                                 <p class="text-muted mb-2"><strong>Status:</strong></p>
                                                 @if ($hasActiveSubscription)
-                                                    <span class="badge badge-success px-3 py-2">
-                                                        <i class="fas fa-check-circle"></i> Active
-                                                    </span>
+                                                    @if ($hasScheduledCancellation)
+                                                        <div>
+                                                            <span class="badge badge-success px-3 py-2">
+                                                                <i class="fas fa-check-circle"></i> Active
+                                                            </span>
+                                                            <br>
+                                                            <span class="badge badge-warning px-3 py-2 mt-2">
+                                                                <i class="fas fa-clock"></i> Cancellation Scheduled
+                                                            </span>
+                                                            <p class="text-muted mt-2 small">
+                                                                <i class="fas fa-info-circle"></i>
+                                                                Your subscription will remain active until the end of your current billing period.
+                                                            </p>
+                                                        </div>
+                                                    @else
+                                                        <span class="badge badge-success px-3 py-2">
+                                                            <i class="fas fa-check-circle"></i> Active
+                                                        </span>
+                                                    @endif
                                                 @elseif ($isExpired)
                                                     <span class="badge badge-danger px-3 py-2">
                                                         <i class="fas fa-times-circle"></i> Expired
