@@ -19,9 +19,12 @@
                 @include('dashboard.includes.cards')
             @endhasanyrole
 
+
+            @include('dashboard.includes.login-to-software-notification')
+
             {{-- Show to role User --}}
             @role('User')
-                @if (Auth::user()->google_id == NULL || Auth::user()->google_id == '')
+                @if (Auth::user()->google_id != NULL || Auth::user()->google_id != '')
                     @include('dashboard.includes.password-notification')
                 @endif
                 <h2 class="overview-title">Basic Overview</h2>
