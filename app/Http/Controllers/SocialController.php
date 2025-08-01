@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
 use App\Services\PasswordBindingService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 
 
 class SocialController extends Controller
@@ -106,43 +108,14 @@ class SocialController extends Controller
                         return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Please update your password in your profile for full functionality.');
                     }
                 } else {
-                    // Create new user
+                    // Create new user with tenant creation
                     try {
+                        DB::beginTransaction();
+
                         // Generate a compliant password for the new user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the new user
-                        $apiResponse = $passwordBindingService->bindPassword(
-                            (new User())->forceFill(['email' => $googleUser->email]),
-                            $compliantPassword
-                        );
-
-                        if (!$apiResponse['success']) {
-                            Log::warning('Failed to bind password for new Google user, proceeding with fallback', [
-                                'email' => $googleUser->email,
-                                'error' => $apiResponse['error_message']
-                            ]);
-
-                            // Fallback: Create user with temporary password
-                            $tempPassword = $this->generateCompliantPassword();
-                            $userData = User::create([
-                                'name' => $googleUser->name,
-                                'email' => $googleUser->email,
-                                'google_id' => $googleUser->id,
-                                'password' => Hash::make($tempPassword),
-                                'subscriber_password' => $tempPassword,
-                                'email_verified_at' => Carbon::now(),
-                                'status' => 1,
-                                'verification_code' => null
-                            ]);
-
-                            $userData->assignRole('User');
-                            Auth::login($userData);
-
-                            return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google. Please update your password in your profile for full functionality.');
-                        }
-
-                        // Success: Create user with proper password
+                        // Create user first
                         $userData = User::create([
                             'name' => $googleUser->name,
                             'email' => $googleUser->email,
@@ -155,33 +128,53 @@ class SocialController extends Controller
                         ]);
 
                         $userData->assignRole('User');
-                        Auth::login($userData);
 
+                        // Create tenant and bind password using the same logic as VerificationController
+                        Log::info('[googleAuthentication] Calling callXiaoiceApiWithCreds for new Google user', ['user_id' => $userData->id]);
+                        $apiResponse = $this->callXiaoiceApiWithCreds($userData, $compliantPassword);
+                        Log::info('[googleAuthentication] callXiaoiceApiWithCreds response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+
+                        if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                            DB::rollBack();
+                            Log::error('[googleAuthentication] API returned swal error', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
+                            return redirect()->route('login')->with('error', $apiResponse['error_message']);
+                        }
+
+                        if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                            DB::rollBack();
+                            Log::error('[googleAuthentication] API failed or missing tenantId', [
+                                'user_id' => $userData->id,
+                                'apiResponse' => $apiResponse
+                            ]);
+                            $userData->delete(); // Delete user data on failure
+                            $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                            return redirect()->route('login')->with('error', $errorMsg);
+                        }
+
+                        // Update user with tenant_id
+                        $userData->update([
+                            'tenant_id' => $apiResponse['data']['tenantId'],
+                        ]);
+
+                        DB::commit();
+                        Log::info('[googleAuthentication] New Google user created with tenant', ['user_id' => $userData->id]);
+
+                        Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
 
                     } catch (\Exception $e) {
-                        Log::error('Error creating new Google user', [
-                            'email' => $googleUser->email,
-                            'error' => $e->getMessage()
+                        DB::rollBack();
+                        Log::error('[googleAuthentication] Exception during new Google user creation', [
+                            'exception' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                            'email' => $googleUser->email
                         ]);
 
-                        // Final fallback: Create user with basic info
-                        $tempPassword = $this->generateCompliantPassword();
-                        $userData = User::create([
-                            'name' => $googleUser->name,
-                            'email' => $googleUser->email,
-                            'google_id' => $googleUser->id,
-                            'password' => Hash::make($tempPassword),
-                            'subscriber_password' => $tempPassword,
-                            'email_verified_at' => Carbon::now(),
-                            'status' => 1,
-                            'verification_code' => null
-                        ]);
+                        if (isset($userData)) {
+                            $userData->delete(); // Delete user data on failure
+                        }
 
-                        $userData->assignRole('User');
-                        Auth::login($userData);
-
-                        return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google. Please update your password in your profile for full functionality.');
+                        return redirect()->route('login')->with('error', 'Failed to create account. Please try again or contact support.');
                     }
                 }
             }
@@ -441,5 +434,213 @@ class SocialController extends Controller
         }
 
         return true;
+    }
+
+    /**
+     * Create tenant and bind password using Xiaoice API (same logic as VerificationController)
+     */
+    private function callXiaoiceApiWithCreds(User $user, string $plainPassword): array
+    {
+        if (!$this->validatePasswordFormat($plainPassword)) {
+            Log::error('Password format validation failed before API call', [
+                'user_id' => $user->id,
+                'password_length' => strlen($plainPassword)
+            ]);
+            return [
+                'success' => false,
+                'data' => null,
+                'error_message' => 'Password format is invalid. Please contact support.'
+            ];
+        }
+
+        try {
+            // Create the tenant
+            $createResponse = $this->makeXiaoiceApiRequest(
+                'api/partner/tenant/create',
+                [
+                    'name' => $user->name,
+                    'regionCode' => 'CN',
+                    'adminName' => $user->name,
+                    'adminEmail' => $user->email,
+                    'adminPhone' => '',
+                    'adminPassword' => $plainPassword,
+                    'appIds' => [1],
+                ]
+            );
+
+            $createJson = $createResponse->json();
+            if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
+                return [
+                    'success' => false,
+                    'data' => null,
+                    'error_message' => 'This admin is already registered with another company. Please use a different email or contact support.',
+                    'swal' => true
+                ];
+            }
+
+            if (!$createResponse->successful()) {
+                return $this->handleFailedTenantCreation($createResponse, $user);
+            }
+
+            Log::info('Tenant created successfully', [
+                'user_id' => $user->id,
+                'response' => $createResponse->json()
+            ]);
+
+            $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
+            if (!$tenantId) {
+                Log::error('Failed to extract tenantId from create response', [
+                    'user_id' => $user->id,
+                    'response' => $createResponse->json()
+                ]);
+                return [
+                    'success' => false,
+                    'data' => null,
+                    'error_message' => 'Failed to create tenant. Missing tenantId in response.'
+                ];
+            }
+
+            // Continue with password binding
+            $passwordBindResponse = $this->makeXiaoiceApiRequest(
+                'api/partner/tenant/user/password/bind',
+                [
+                    'email' => $user->email,
+                    'phone' => '',
+                    'newPassword' => $plainPassword
+                ]
+            );
+
+            if (!$passwordBindResponse->successful()) {
+                return $this->handleFailedPasswordBind($passwordBindResponse, $user);
+            }
+
+            $bindJson = $passwordBindResponse->json();
+            if (!isset($bindJson['code']) || $bindJson['code'] != 200) {
+                $errorMessage = $this->translateXiaoiceError(
+                    $bindJson['code'] ?? null,
+                    $bindJson['message'] ?? 'Password bind failed'
+                );
+
+                Log::error('Failed to bind password', [
+                    'user_id' => $user->id,
+                    'response' => $bindJson
+                ]);
+
+                return [
+                    'success' => false,
+                    'data' => null,
+                    'error_message' => $errorMessage
+                ];
+            }
+
+            Log::info('Password bound successfully', [
+                'user_id' => $user->id,
+                'response' => $bindJson
+            ]);
+
+            return [
+                'success' => true,
+                'data' => ['tenantId' => $tenantId],
+                'error_message' => null
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error calling Xiaoice API', [
+                'user_id' => $user->id,
+                'exception_message' => $e->getMessage()
+            ]);
+            return [
+                'success' => false,
+                'data' => null,
+                'error_message' => 'System error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    private function makeXiaoiceApiRequest(string $endpoint, array $data): \Illuminate\Http\Client\Response
+    {
+        $baseUrl = rtrim(config('services.xiaoice.base_url', 'https://openapi.xiaoice.com/vh-cp'), '/');
+        $fullUrl = $baseUrl . '/' . ltrim($endpoint, '/');
+
+        return Http::timeout(30)
+            ->connectTimeout(15)
+            ->retry(3, 1000)
+            ->withHeaders([
+                'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json'
+            ])
+            ->post($fullUrl, $data);
+    }
+
+    private function handleFailedTenantCreation(\Illuminate\Http\Client\Response $response, User $user): array
+    {
+        $status = $response->status();
+        $errorMessage = "[$status] " . match ($status) {
+            400 => 'Bad Request - Missing required parameters.',
+            401 => 'Unauthorized - Invalid or expired subscription key.',
+            404 => 'Not Found - The requested resource does not exist.',
+            429 => 'Too Many Requests - Rate limit exceeded.',
+            500 => 'Internal Server Error - API server issue.',
+            default => 'Unexpected error occurred.'
+        };
+
+        Log::error('Xiaoice API call failed', [
+            'user_id' => $user->id,
+            'status' => $status,
+            'error_message' => $errorMessage,
+            'response_body' => $response->body()
+        ]);
+
+        return [
+            'success' => false,
+            'data' => null,
+            'error_message' => $errorMessage
+        ];
+    }
+
+    private function handleFailedPasswordBind(\Illuminate\Http\Client\Response $response, User $user): array
+    {
+        $status = $response->status();
+        $errorMessage = "[$status] " . match ($status) {
+            400 => 'Bad Request - Missing required parameters.',
+            401 => 'Unauthorized - Invalid or expired subscription key.',
+            404 => 'Not Found - The requested resource does not exist.',
+            429 => 'Too Many Requests - Rate limit exceeded.',
+            500 => 'Internal Server Error - API server issue.',
+            default => 'Unexpected error occurred.'
+        };
+
+        Log::error('Failed to bind password', [
+            'user_id' => $user->id,
+            'status' => $status,
+            'response' => $response->body()
+        ]);
+
+        return [
+            'success' => false,
+            'data' => null,
+            'error_message' => $errorMessage
+        ];
+    }
+
+    private function translateXiaoiceError(?int $code, string $defaultMessage): string
+    {
+        return match ($code) {
+            665 => 'The application is not activated for this tenant. Please contact support.',
+            730 => 'This admin is already registered with another company.',
+            400 => 'Invalid request parameters.',
+            401 => 'Authentication failed.',
+            404 => 'Resource not found.',
+            429 => 'Too many requests. Please try again later.',
+            500 => 'Internal server error.',
+            default => $defaultMessage
+        };
+    }
+
+    private function validatePasswordFormat(string $password): bool
+    {
+        $pattern = '/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/';
+        return preg_match($pattern, $password) === 1;
     }
 }
