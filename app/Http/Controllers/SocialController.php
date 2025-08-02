@@ -121,7 +121,7 @@ class SocialController extends Controller
                             'email' => $googleUser->email,
                             'google_id' => $googleUser->id,
                             'password' => Hash::make($compliantPassword),
-                            'subscriber_password' => $compliantPassword,
+                            'subscriber_password' => null, // Set to NULL for first-time Google registration
                             'email_verified_at' => Carbon::now(),
                             'status' => 1,
                             'verification_code' => null
