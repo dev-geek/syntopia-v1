@@ -148,10 +148,10 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Store the subscriber password as plain text for API usage
      *
-     * @param string $value
+     * @param string|null $value
      * @return void
      */
-    public function setSubscriberPasswordAttribute(string $value): void
+    public function setSubscriberPasswordAttribute(?string $value): void
     {
         $this->attributes['subscriber_password'] = $value;
     }

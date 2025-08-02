@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="{{ asset('plugins/fontawesome-free/css/all.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
+    <!-- SweetAlert2 -->
+    <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script defer src="{{ asset('js/swal-utils.js') }}"></script>
     <style>
          body {
             background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
@@ -207,6 +210,26 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <!-- SWAL Error Handling -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle SWAL errors from session
+            @if(session('swal_error'))
+                SwalUtils.showError(@json(session('swal_error')));
+            @endif
+
+            // Handle regular errors from session
+            @if(session('error'))
+                SwalUtils.showError(@json(session('error')));
+            @endif
+
+            // Handle success messages from session
+            @if(session('success'))
+                SwalUtils.showSuccess(@json(session('success')));
+            @endif
+        });
+    </script>
 
     <script>
     // Ensure email field is completely locked and cannot be modified

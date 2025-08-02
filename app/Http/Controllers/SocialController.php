@@ -67,6 +67,11 @@ class SocialController extends Controller
                                 'error' => $apiResponse['error_message']
                             ]);
 
+                            // Check if this is a SWAL error
+                            if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                                return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
+                            }
+
                             // Fallback: Link account without updating password
                             $existingUser->update([
                                 'google_id' => $googleUser->id,
@@ -137,7 +142,7 @@ class SocialController extends Controller
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                             DB::rollBack();
                             Log::error('[googleAuthentication] API returned swal error', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
-                            return redirect()->route('login')->with('error', $apiResponse['error_message']);
+                            return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
                         }
 
                         if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
@@ -529,7 +534,8 @@ class SocialController extends Controller
                 return [
                     'success' => false,
                     'data' => null,
-                    'error_message' => $errorMessage
+                    'error_message' => $errorMessage,
+                    'swal' => true
                 ];
             }
 
@@ -595,7 +601,8 @@ class SocialController extends Controller
         return [
             'success' => false,
             'data' => null,
-            'error_message' => $errorMessage
+            'error_message' => $errorMessage,
+            'swal' => true
         ];
     }
 
@@ -620,7 +627,8 @@ class SocialController extends Controller
         return [
             'success' => false,
             'data' => null,
-            'error_message' => $errorMessage
+            'error_message' => $errorMessage,
+            'swal' => true
         ];
     }
 

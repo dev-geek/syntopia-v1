@@ -365,7 +365,8 @@ class VerificationController extends Controller
                 return [
                     'success' => false,
                     'data' => null,
-                    'error_message' => $errorMessage
+                    'error_message' => $errorMessage,
+                    'swal' => true
                 ];
             }
 
@@ -415,7 +416,8 @@ class VerificationController extends Controller
         return [
             'success' => false,
             'data' => null,
-            'error_message' => $errorMessage
+            'error_message' => $errorMessage,
+            'swal' => true
         ];
     }
 
@@ -440,7 +442,8 @@ class VerificationController extends Controller
         return [
             'success' => false,
             'data' => null,
-            'error_message' => $errorMessage
+            'error_message' => $errorMessage,
+            'swal' => true
         ];
     }
 
@@ -465,7 +468,8 @@ class VerificationController extends Controller
         return [
             'success' => false,
             'data' => null,
-            'error_message' => $errorMessage
+            'error_message' => $errorMessage,
+            'swal' => true
         ];
     }
 

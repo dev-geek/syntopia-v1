@@ -9,6 +9,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <title>Login Page</title>
+    <!-- SweetAlert2 -->
+    <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script defer src="{{ asset('js/swal-utils.js') }}"></script>
     <style>
     html,
     body {
@@ -639,6 +642,31 @@
 
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <!-- SWAL Error Handling -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle SWAL errors from session
+            @if(session('swal_error'))
+                SwalUtils.showError(@json(session('swal_error')));
+            @endif
+
+            // Handle regular errors from session
+            @if(session('error'))
+                SwalUtils.showError(@json(session('error')));
+            @endif
+
+            // Handle success messages from session
+            @if(session('success'))
+                SwalUtils.showSuccess(@json(session('success')));
+            @endif
+
+            // Handle login success messages
+            @if(session('login_success'))
+                SwalUtils.showSuccess(@json(session('login_success')));
+            @endif
+        });
+    </script>
 </body>
 
 </html>
