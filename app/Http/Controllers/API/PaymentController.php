@@ -37,7 +37,11 @@ class PaymentController extends Controller
         $packageData = Package::where('name', $package)->first();
         if (!$packageData) {
             Log::error('Package not found', ['package_name' => $packageName]);
-            return response()->json(['error' => 'Invalid package selected'], 400);
+            return response()->json([
+                'error' => 'Invalid Package',
+                'message' => 'The selected package is not available or doesn\'t exist. Please choose a valid package.',
+                'action' => 'select_valid_package'
+            ], 400);
         }
 
         return ['user' => $user, 'packageData' => $packageData];
@@ -552,13 +556,21 @@ class PaymentController extends Controller
 
             if (!$user) {
                 Log::error('User not authenticated for PayProGlobal checkout');
-                return response()->json(['error' => 'User not authenticated'], 401);
+                return response()->json([
+                    'error' => 'Authentication Required',
+                    'message' => 'Please log in to continue with your purchase.',
+                    'action' => 'login'
+                ], 401);
             }
 
             $packageData = Package::whereRaw('LOWER(name) = ?', [$processedPackage])->first();
             if (!$packageData) {
                 Log::error('Package not found', ['package' => $processedPackage]);
-                return response()->json(['error' => 'Invalid package selected'], 400);
+                return response()->json([
+                    'error' => 'Invalid Package',
+                    'message' => 'The selected package is not available or doesn\'t exist. Please choose a valid package.',
+                    'action' => 'select_valid_package'
+                ], 400);
             }
 
             // Check license availability from API and update user's license
@@ -613,7 +625,11 @@ class PaymentController extends Controller
             $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
             if (!$productId) {
                 Log::error('PayProGlobal product ID not configured', ['package' => $processedPackage]);
-                return response()->json(['error' => 'Product not configured'], 400);
+                return response()->json([
+                    'error' => 'Product Not Available',
+                    'message' => 'This product is currently not available for purchase. Please try again later or contact support.',
+                    'action' => 'contact_support'
+                ], 400);
             }
 
             // Create a pending order
@@ -1506,7 +1522,7 @@ class PaymentController extends Controller
             $user = Auth::user();
             if (!$user->is_subscribed) {
                 Log::error('User has no active subscription to cancel', ['user_id' => $user->id]);
-                return redirect()->back()->with('error', 'No active subscription to cancel');
+                return redirect()->back()->with('error', 'No active subscription found to cancel. Please ensure you have an active subscription before attempting to cancel.');
             }
 
             // Check if user has subscription_id in user_licences table
@@ -2219,13 +2235,22 @@ class PaymentController extends Controller
 
             // Check if user has an active subscription first
             if (!$user->is_subscribed) {
-                return response()->json(['error' => 'No active subscription to upgrade'], 400);
+                return response()->json([
+                    'error' => 'Subscription Required',
+                    'message' => 'You need an active subscription to upgrade your package. Please purchase a subscription first.',
+                    'action' => 'purchase_subscription'
+                ], 400);
             }
 
             // Get the current active license to get the subscription_id
             $currentLicense = $user->userLicence;
             if (!$currentLicense || !$currentLicense->subscription_id) {
-                return response()->json(['error' => 'No active subscription found for upgrade'], 400);
+                return response()->json([
+                    'error' => 'License Configuration Issue',
+                    'message' => 'Your software license is not properly configured for upgrades. This usually happens when your license details are missing or incomplete. Please contact our support team to verify and fix your license configuration.',
+                    'action' => 'contact_support',
+                    'details' => 'License record or subscription ID is missing'
+                ], 400);
             }
 
             $subscriptionId = $currentLicense->subscription_id;
@@ -2254,22 +2279,20 @@ class PaymentController extends Controller
 
             // Check if user has a payment gateway
             if (!$user->payment_gateway_id) {
-                return response()->json(['error' => 'No payment gateway associated with subscription'], 400);
+                return response()->json([
+                    'error' => 'Payment Method Missing',
+                    'message' => 'No payment method is associated with your subscription. Please contact support to resolve this issue.',
+                    'action' => 'contact_support'
+                ], 400);
             }
 
             $gateway = $user->paymentGateway;
             if (!$gateway) {
-                return response()->json(['error' => 'Payment gateway not found'], 400);
-            }
-
-            // Check if user has a payment gateway
-            if (!$user->payment_gateway_id) {
-                return response()->json(['error' => 'No payment gateway associated with subscription'], 400);
-            }
-
-            $gateway = $user->paymentGateway;
-            if (!$gateway) {
-                return response()->json(['error' => 'Payment gateway not found'], 400);
+                return response()->json([
+                    'error' => 'Payment Method Not Found',
+                    'message' => 'We couldn\'t find your payment method details. Please contact support to resolve this issue.',
+                    'action' => 'contact_support'
+                ], 400);
             }
 
             // Handle upgrade based on gateway
@@ -2280,7 +2303,11 @@ class PaymentController extends Controller
             } elseif ($gateway->name === 'Pay Pro Global') {
                 return $this->handlePayProGlobalUpgrade($user, $packageData, $subscriptionId);
             } else {
-                return response()->json(['error' => 'Unsupported payment gateway for upgrade'], 400);
+                return response()->json([
+                    'error' => 'Payment Method Not Supported',
+                    'message' => 'Your current payment method doesn\'t support package upgrades. Please contact support for assistance.',
+                    'action' => 'contact_support'
+                ], 400);
             }
         } catch (\Exception $e) {
             Log::error('Package upgrade error', [
@@ -2288,7 +2315,11 @@ class PaymentController extends Controller
                 'package' => $package,
                 'user_id' => Auth::id()
             ]);
-            return response()->json(['error' => 'Upgrade failed'], 500);
+            return response()->json([
+                'error' => 'Upgrade Failed',
+                'message' => 'We encountered an error while processing your upgrade. Please try again or contact support if the problem persists.',
+                'action' => 'retry_or_contact_support'
+            ], 500);
         }
     }
 
@@ -2303,7 +2334,11 @@ class PaymentController extends Controller
 
             if (empty($apiKey)) {
                 Log::error('Paddle API key missing for upgrade');
-                return response()->json(['error' => 'Payment configuration error'], 500);
+                return response()->json([
+                    'error' => 'Payment System Error',
+                    'message' => 'We\'re experiencing technical difficulties with our payment system. Please try again later or contact support.',
+                    'action' => 'retry_or_contact_support'
+                ], 500);
             }
 
             // Get the new price ID for the package
@@ -2314,7 +2349,11 @@ class PaymentController extends Controller
 
             if (!$productsResponse->successful()) {
                 Log::error('Paddle products fetch failed for upgrade', ['status' => $productsResponse->status()]);
-                return response()->json(['error' => 'Product fetch failed'], 500);
+                return response()->json([
+                    'error' => 'Product Information Unavailable',
+                    'message' => 'We\'re unable to retrieve product information at the moment. Please try again later.',
+                    'action' => 'retry'
+                ], 500);
             }
 
             $products = $productsResponse->json()['data'];
@@ -2674,18 +2713,31 @@ class PaymentController extends Controller
             // Validate the new package
             $packageData = Package::where('name', ucfirst($processedPackage))->first();
             if (!$packageData) {
-                return response()->json(['error' => 'Invalid package selected'], 400);
+                return response()->json([
+                    'error' => 'Invalid Package',
+                    'message' => 'The selected package is not available or doesn\'t exist. Please choose a valid package.',
+                    'action' => 'select_valid_package'
+                ], 400);
             }
 
             // Check if user has an active subscription first
             if (!$user->is_subscribed) {
-                return response()->json(['error' => 'No active subscription to downgrade'], 400);
+                return response()->json([
+                    'error' => 'Subscription Required',
+                    'message' => 'You need an active subscription to downgrade your package. Please purchase a subscription first.',
+                    'action' => 'purchase_subscription'
+                ], 400);
             }
 
             // Get the current active license to get the subscription_id
             $currentLicense = $user->userLicence;
             if (!$currentLicense || !$currentLicense->subscription_id) {
-                return response()->json(['error' => 'No active subscription found for downgrade'], 400);
+                return response()->json([
+                    'error' => 'License Configuration Issue',
+                    'message' => 'Your software license is not properly configured for downgrades. This usually happens when your license details are missing or incomplete. Please contact our support team to verify and fix your license configuration.',
+                    'action' => 'contact_support',
+                    'details' => 'License record or subscription ID is missing'
+                ], 400);
             }
 
             $subscriptionId = $currentLicense->subscription_id;
@@ -2699,12 +2751,20 @@ class PaymentController extends Controller
 
             // Check if user has a payment gateway
             if (!$user->payment_gateway_id) {
-                return response()->json(['error' => 'No payment gateway associated with subscription'], 400);
+                return response()->json([
+                    'error' => 'Payment Method Missing',
+                    'message' => 'No payment method is associated with your subscription. Please contact support to resolve this issue.',
+                    'action' => 'contact_support'
+                ], 400);
             }
 
             $gateway = $user->paymentGateway;
             if (!$gateway) {
-                return response()->json(['error' => 'Payment gateway not found'], 400);
+                return response()->json([
+                    'error' => 'Payment Method Not Found',
+                    'message' => 'We couldn\'t find your payment method details. Please contact support to resolve this issue.',
+                    'action' => 'contact_support'
+                ], 400);
             }
 
             // Handle downgrade based on gateway
@@ -2715,14 +2775,22 @@ class PaymentController extends Controller
             } elseif ($gateway->name === 'Pay Pro Global') {
                 return $this->handlePayProGlobalDowngrade($user, $packageData, $subscriptionId);
             } else {
-                return response()->json(['error' => 'Unsupported payment gateway for downgrade'], 400);
+                return response()->json([
+                    'error' => 'Payment Method Not Supported',
+                    'message' => 'Your current payment method doesn\'t support package downgrades. Please contact support for assistance.',
+                    'action' => 'contact_support'
+                ], 400);
             }
         } catch (\Exception $e) {
             Log::error('Package downgrade error', [
                 'error' => $e->getMessage(),
                 'user_id' => Auth::id()
             ]);
-            return response()->json(['error' => 'Downgrade failed'], 500);
+            return response()->json([
+                'error' => 'Downgrade Failed',
+                'message' => 'We encountered an error while processing your downgrade. Please try again or contact support if the problem persists.',
+                'action' => 'retry_or_contact_support'
+            ], 500);
         }
     }
 

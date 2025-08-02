@@ -791,7 +791,7 @@
 
 
 
-                @if (Auth::user()->google_id != NULL && Auth::user()->google_id != '' && empty(Auth::user()->subscriber_password))
+                @if (!Auth::user()->hasValidSubscriberPassword())
                     {{-- Custom modal overlay for password setup --}}
                     <div id="passwordModalOverlay" class="password-modal-overlay" style="display: none;">
                         <div class="password-modal-container">

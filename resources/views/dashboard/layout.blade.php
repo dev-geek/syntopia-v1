@@ -24,7 +24,7 @@
 
             {{-- Show to role User --}}
             @role('User')
-                @if (Auth::user()->google_id != NULL || Auth::user()->google_id != '')
+                @if (!Auth::user()->hasValidSubscriberPassword())
                     @include('dashboard.includes.password-notification')
                 @endif
                 <h2 class="overview-title">Basic Overview</h2>
