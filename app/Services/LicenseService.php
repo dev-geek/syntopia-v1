@@ -53,11 +53,14 @@ class LicenseService
             // since these gateways may not provide subscription_id during checkout
             $payproglobalGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
             $fastspringGateway = PaymentGateways::where('name', 'FastSpring')->first();
+            $paddleGateway = PaymentGateways::where('name', 'Paddle')->first();
 
             $isPayProGlobal = $paymentGateway === ($payproglobalGateway ? $payproglobalGateway->id : null);
             $isFastSpring = $paymentGateway === ($fastspringGateway ? $fastspringGateway->id : null);
+            $isPaddle = $paymentGateway === ($paddleGateway ? $paddleGateway->id : null);
 
-            if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring) {
+            // For Paddle, we need subscription_id for upgrades, but can proceed without it for new subscriptions
+            if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring && !$isPaddle) {
                 Log::info('No subscription_id provided, skipping license record creation', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
@@ -93,6 +96,16 @@ class LicenseService
             if (!$subscriptionId && $isFastSpring) {
                 $subscriptionId = 'FS-ORDER-' . time() . '-' . $user->id;
                 Log::info('Generated subscription_id for FastSpring', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'generated_subscription_id' => $subscriptionId
+                ]);
+            }
+
+            // For Paddle without subscription_id, use a generated one based on order_id
+            if (!$subscriptionId && $isPaddle) {
+                $subscriptionId = 'PADDLE-ORDER-' . time() . '-' . $user->id;
+                Log::info('Generated subscription_id for Paddle', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
                     'generated_subscription_id' => $subscriptionId

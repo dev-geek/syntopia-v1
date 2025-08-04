@@ -1503,10 +1503,16 @@
                         if (selectedGateway === 'FastSpring') {
                             processFastSpring(packageName, action);
                         } else if (selectedGateway === 'Paddle') {
-                            console.log('Executing Paddle checkout...');
-                            processPaddle(packageName, action);
+                            console.log('Executing Paddle checkout with transaction ID from upgrade response...');
+                            // Use the transaction ID from the upgrade response directly
+                            if (data.transaction_id) {
+                                openPaddleCheckout(data.transaction_id, action);
+                            } else {
+                                // Fallback to the old processPaddle method if no transaction_id
+                                processPaddle(packageName, action);
+                            }
                         } else if (selectedGateway === 'Pay Pro Global') {
-                            console.log('Executing Paddle checkout...');
+                            console.log('Executing PayProGlobal checkout...');
                             processPayProGlobal(packageName, action);
                         }
                     })
@@ -1515,6 +1521,50 @@
                         hideSpinner(); // Hide spinner on error
                         showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
                     });
+            }
+
+            function openPaddleCheckout(transactionId, action) {
+                console.log('Opening Paddle checkout with transaction ID:', transactionId);
+
+                // Check if Paddle is properly initialized
+                if (typeof Paddle === 'undefined') {
+                    console.error('Paddle is not initialized');
+                    showError('Payment Error',
+                        'Payment system is not properly initialized. Please refresh the page and try again.');
+                    return;
+                }
+
+                if (typeof Paddle.Checkout === 'undefined') {
+                    console.error('Paddle.Checkout is not available');
+                    showError('Payment Error',
+                        'Payment checkout is not available. Please refresh the page and try again.');
+                    return;
+                }
+
+                // Store current action and transaction ID in session storage for global event listener
+                sessionStorage.setItem('currentPaddleAction', action);
+                sessionStorage.setItem('currentPaddleTransactionId', transactionId);
+                console.log('Stored in session storage:', {
+                    action: action,
+                    transactionId: transactionId
+                });
+
+                // Create a proper event callback function
+                const paddleEventCallback = function(eventData) {
+                    console.log('Paddle event callback triggered:', eventData);
+                    handlePaddleEvent(eventData, action);
+                };
+
+                // Open Paddle checkout with proper error handling
+                try {
+                    Paddle.Checkout.open({
+                        transactionId: transactionId,
+                        eventCallback: paddleEventCallback
+                    });
+                } catch (error) {
+                    console.error('Error opening Paddle checkout:', error);
+                    showError('Checkout Error', 'Failed to open payment checkout. Please try again.');
+                }
             }
 
             function processPaddle(packageName, action) {
@@ -1573,50 +1623,13 @@
                         if (!data.success || !data.transaction_id) {
                             throw new Error(data.error || 'No transaction ID provided');
                         }
-                        console.log(data, 'data');
+                        console.log('Paddle checkout data received:', data);
 
-                        // {success: true, checkout_url: 'https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa', transaction_id: 'txn_01jzd7cf1dae3sper0n1mj28fa'}
-                        // checkout_url
-                        // :
-                        // "https://127.0.0.1:8000?_ptxn=txn_01jzd7cf1dae3sper0n1mj28fa"
-                        // success
-                        // :
-                        // true
-                        // transaction_id
-                        // :
-                        // "txn_01jzd7cf1dae3sper0n1mj28fa"
-                        // [[Prototype]]
-                        // :
-                        // Object
-                        console.log('Opening Paddle checkout with transaction ID:', data.transaction_id);
+                        // Hide spinner when checkout is opened
+                        hideSpinner();
 
-                        // Store current action and transaction ID in session storage for global event listener
-                        sessionStorage.setItem('currentPaddleAction', action);
-                        sessionStorage.setItem('currentPaddleTransactionId', data.transaction_id);
-                        console.log('Stored in session storage:', {
-                            action: action,
-                            transactionId: data.transaction_id
-                        });
-
-                        // Create a proper event callback function
-                        const paddleEventCallback = function(eventData) {
-                            console.log('Paddle event callback triggered:', eventData);
-                            handlePaddleEvent(eventData, action);
-                        };
-
-                        // Open Paddle checkout with proper error handling
-                        try {
-                            Paddle.Checkout.open({
-                                transactionId: data.transaction_id,
-                                eventCallback: paddleEventCallback
-                            });
-                            // Hide spinner when checkout is opened
-                            hideSpinner();
-                        } catch (error) {
-                            console.error('Error opening Paddle checkout:', error);
-                            hideSpinner(); // Hide spinner on error
-                            showError('Checkout Error', 'Failed to open payment checkout. Please try again.');
-                        }
+                        // Use the new openPaddleCheckout function
+                        openPaddleCheckout(data.transaction_id, action);
                     })
                     .catch(error => {
                         console.error('Paddle processing error:', error);

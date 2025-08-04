@@ -28,7 +28,19 @@ class Order extends Model
         'amount',
         'transaction_id',
         'status',
-        'currency'
+        'currency',
+        'order_type',
+        'subscription_id',
+        'metadata'
+    ];
+
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array
+     */
+    protected $casts = [
+        'metadata' => 'array',
     ];
 
     /**
