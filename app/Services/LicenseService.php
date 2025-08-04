@@ -88,8 +88,11 @@ class LicenseService
                     continue;
                 }
 
-                // Calculate expiration date (1 year from now for subscription-based licenses)
-                $expiresAt = now()->addYear();
+                // Calculate expiration date based on package type
+                // Free packages have no expiration, all others expire in 1 month
+                $expiresAt = strtolower($package->name) === 'free'
+                    ? null
+                    : now()->addMonth();
 
                 // Create the license record
                 $license = UserLicence::create([
@@ -134,7 +137,7 @@ class LicenseService
                 'package_name' => $package->name,
                 'license_keys' => array_map(fn($l) => $l->license_key, $createdLicenses),
                 'user_license_id' => $firstLicense->id,
-                'expires_at' => $firstLicense->expires_at->format('Y-m-d H:i:s')
+                'expires_at' => $firstLicense->expires_at ? $firstLicense->expires_at->format('Y-m-d H:i:s') : 'Never (Free package)'
             ]);
 
             return $firstLicense;

@@ -86,21 +86,57 @@ class PaymentController extends Controller
                 return null;
             }
 
-            return $summary->json()['data']['data'] ?? [];
+            $allData = $summary->json()['data']['data'] ?? [];
+
+            // Filter to only use "Free Plan" subscription
+            $freePlanData = collect($allData)->filter(function ($item) {
+                return $item['subscriptionName'] === 'Free Plan';
+            })->first();
+
+            if (!$freePlanData) {
+                Log::error('Free Plan subscription not found in license availability check', [
+                    'available_subscriptions' => collect($allData)->pluck('subscriptionName')->toArray()
+                ]);
+                return null;
+            }
+
+            Log::info('Free Plan subscription found', [
+                'subscription_name' => $freePlanData['subscriptionName'],
+                'subscription_code' => $freePlanData['subscriptionCode'],
+                'total' => $freePlanData['total'],
+                'used' => $freePlanData['used'],
+                'remaining' => $freePlanData['remaining']
+            ]);
+
+            return $freePlanData;
         });
 
         if (empty($summaryData)) {
-            Log::error('No subscription data found in license availability check');
+            Log::error('No Free Plan subscription data found in license availability check');
             return false;
         }
 
-        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        $licenseKey = $summaryData['subscriptionCode'] ?? null;
         if (!$licenseKey) {
-            Log::error('No license codes available in license availability check');
+            Log::error('No license codes available in Free Plan subscription');
             return false;
         }
 
-        Log::info('License availability check passed', ['available' => true]);
+        $remaining = $summaryData['remaining'] ?? 0;
+        if ($remaining <= 0) {
+            Log::error('No remaining licenses available in Free Plan subscription', [
+                'total' => $summaryData['total'] ?? 0,
+                'used' => $summaryData['used'] ?? 0,
+                'remaining' => $remaining
+            ]);
+            return false;
+        }
+
+        Log::info('Free Plan license availability check passed', [
+            'available' => true,
+            'subscription_code' => $licenseKey,
+            'remaining_licenses' => $remaining
+        ]);
         return true;
     }
 
@@ -139,44 +175,35 @@ class PaymentController extends Controller
                 'is_downgrade' => $isDowngrade
             ]);
 
-            // Handle license creation based on package type
+            // Create and activate license
             $license = null;
-            if ($packageData->name != 'Free') {
-                Log::info('Creating and activating license for paid package', [
+            Log::info('Creating and activating license for package', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'is_upgrade' => $isUpgrade,
+                'is_downgrade' => $isDowngrade
+            ]);
+
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $packageData,
+                null,
+                $this->getPaymentGatewayId('paddle')
+            );
+
+            if ($license) {
+                Log::info('License successfully created and activated', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'is_upgrade' => $isUpgrade,
-                    'is_downgrade' => $isDowngrade
+                    'license_id' => $license->id,
+                    'license_key' => $license->license_key
                 ]);
-
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $packageData,
-                    null,
-                    $this->getPaymentGatewayId('paddle')
-                );
-
-                if ($license) {
-                    Log::info('License successfully created and activated', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_id' => $license->id,
-                        'license_key' => $license->license_key
-                    ]);
-                } else {
-                    Log::error('Failed to create and activate license', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    throw new \Exception('License generation failed');
-                }
             } else {
-                Log::info('Skipping license creation for Free package', [
+                Log::error('Failed to create and activate license', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'is_upgrade' => $isUpgrade,
-                    'is_downgrade' => $isDowngrade
+                    'package_name' => $packageData->name
                 ]);
+                throw new \Exception('License generation failed');
             }
 
             $apiKey = config('payment.gateways.Paddle.api_key');
@@ -412,7 +439,7 @@ class PaymentController extends Controller
 
     public function fastspringCheckout(Request $request, $package)
     {
-        \Log::info('[fastspringCheckout] called', ['package' => $package, 'user_id' => \Auth::id()]);
+        Log::info('[fastspringCheckout] called', ['package' => $package, 'user_id' => Auth::id()]);
         Log::info('FastSpring checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
@@ -439,14 +466,12 @@ class PaymentController extends Controller
             // Create and activate license using LicenseService
             $license = null;
 
-            if($packageData->name != 'Free') {
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $packageData,
-                    null,
-                    $this->getPaymentGatewayId('fastspring')
-                );
-            }
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $packageData,
+                null,
+                $this->getPaymentGatewayId('fastspring')
+            );
 
             if (!$license) {
                 Log::info('No license record created (no subscription_id), proceeding with checkout', [
@@ -582,44 +607,35 @@ class PaymentController extends Controller
                 'is_downgrade' => $request->input('is_downgrade', false)
             ]);
 
-            // Handle license creation based on package type
+            // Create and activate license
             $license = null;
-            if ($packageData->name != 'Free') {
-                Log::info('Creating and activating license for paid package', [
+            Log::info('Creating and activating license for package', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'is_upgrade' => $request->input('is_upgrade', false),
+                'is_downgrade' => $request->input('is_downgrade', false)
+            ]);
+
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $packageData,
+                null,
+                $this->getPaymentGatewayId('payproglobal')
+            );
+
+            if ($license) {
+                Log::info('License successfully created and activated', [
                     'user_id' => $user->id,
                     'package_name' => $packageData->name,
-                    'is_upgrade' => $request->input('is_upgrade', false),
-                    'is_downgrade' => $request->input('is_downgrade', false)
+                    'license_id' => $license->id,
+                    'license_key' => $license->license_key
                 ]);
-
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $packageData,
-                    null,
-                    $this->getPaymentGatewayId('payproglobal')
-                );
-
-                if ($license) {
-                    Log::info('License successfully created and activated', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_id' => $license->id,
-                        'license_key' => $license->license_key
-                    ]);
-                } else {
-                    Log::error('Failed to create and activate license', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    throw new \Exception('License generation failed');
-                }
             } else {
-                Log::info('Skipping license creation for Free package', [
+                Log::error('Failed to create and activate license', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'is_upgrade' => $request->input('is_upgrade', false),
-                    'is_downgrade' => $request->input('is_downgrade', false)
+                    'package_name' => $packageData->name
                 ]);
+                throw new \Exception('License generation failed');
             }
 
             $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
@@ -1093,39 +1109,31 @@ class PaymentController extends Controller
                 'order_amount' => $order->amount
             ]);
 
-            // Handle license creation based on package type
+            // Create and activate license
             $license = null;
-            if ($package->name != 'Free') {
-                Log::info('Creating and activating license for paid package', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'action' => $action
-                ]);
+            Log::info('Creating and activating license for package', [
+                'user_id' => $user->id,
+                'package_name' => $package->name,
+                'action' => $action
+            ]);
 
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $package,
-                    $subscriptionId,
-                    $this->getPaymentGatewayId($gateway)
-                );
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $package,
+                $subscriptionId,
+                $this->getPaymentGatewayId($gateway)
+            );
 
-                if (!$license) {
-                    Log::error('Failed to create and activate license', ['user_id' => $user->id]);
-                    throw new \Exception('License generation failed');
-                }
-
-                Log::info('License created and activated successfully', [
-                    'user_id' => $user->id,
-                    'license_id' => $license->id,
-                    'license_key' => $license->license_key
-                ]);
-            } else {
-                Log::info('Skipping license creation for Free package', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'action' => $action
-                ]);
+            if (!$license) {
+                Log::error('Failed to create and activate license', ['user_id' => $user->id]);
+                throw new \Exception('License generation failed');
             }
+
+            Log::info('License created and activated successfully', [
+                'user_id' => $user->id,
+                'license_id' => $license->id,
+                'license_key' => $license->license_key
+            ]);
 
             // Update user subscription status
             $user->update([
@@ -1506,7 +1514,7 @@ class PaymentController extends Controller
 
     public function cancelSubscription(Request $request)
     {
-        \Log::info('[cancelSubscription] called', ['user_id' => \Auth::id()]);
+        Log::info('[cancelSubscription] called', ['user_id' => Auth::id()]);
         Log::info('Subscription cancellation started', ['user_id' => Auth::id()]);
 
         // Debug request details
@@ -1933,16 +1941,6 @@ class PaymentController extends Controller
                     'transaction_id' => $transactionId
                 ]);
 
-                // Check if this is a license API failure
-                if ($e->getMessage() === 'license_api_failed') {
-                    Log::error('License API failed during webhook processing', [
-                        'transaction_id' => $eventData['id'] ?? null,
-                        'event_data' => $eventData
-                    ]);
-                    // For webhooks, we return a 200 status to prevent retries, but log the error
-                    return response()->json(['status' => 'failed_license_api'], 200);
-                }
-
                 return response()->json(['error' => 'Processing failed'], 500);
             }
         } catch (\Exception $e) {
@@ -2141,44 +2139,36 @@ class PaymentController extends Controller
                 'order_package_id' => $order->package_id
             ]);
 
-            // Handle license creation based on package type
+            // Create and activate license from webhook
             $license = null;
-            if ($package->name != 'Free') {
-                Log::info('Creating and activating license from webhook for paid package', [
+            Log::info('Creating and activating license from webhook for package', [
+                'user_id' => $user->id,
+                'package_name' => $package->name,
+                'subscription_id' => $transactionData['subscription_id'] ?? null
+            ]);
+
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $package,
+                $transactionData['subscription_id'] ?? null,
+                $this->getPaymentGatewayId('paddle')
+            );
+
+            if ($license) {
+                // Update user's user_license_id to link to the created license
+                $user->update(['user_license_id' => $license->id]);
+
+                Log::info('License created and user license_id updated', [
                     'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'subscription_id' => $transactionData['subscription_id'] ?? null
+                    'license_id' => $license->id,
+                    'user_license_id' => $license->id
                 ]);
-
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $package,
-                    $transactionData['subscription_id'] ?? null,
-                    $this->getPaymentGatewayId('paddle')
-                );
-
-                if ($license) {
-                    // Update user's user_license_id to link to the created license
-                    $user->update(['user_license_id' => $license->id]);
-
-                    Log::info('License created and user license_id updated', [
-                        'user_id' => $user->id,
-                        'license_id' => $license->id,
-                        'user_license_id' => $license->id
-                    ]);
-                } else {
-                    Log::error('Failed to create and activate license from webhook', [
-                        'user_id' => $user->id,
-                        'package_name' => $package->name
-                    ]);
-                    throw new \Exception('License generation failed');
-                }
             } else {
-                Log::info('Skipping license creation for Free package from webhook', [
+                Log::error('Failed to create and activate license from webhook', [
                     'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'subscription_id' => $transactionData['subscription_id'] ?? null
+                    'package_name' => $package->name
                 ]);
+                throw new \Exception('License generation failed');
             }
 
             // Update user subscription status
@@ -2220,7 +2210,7 @@ class PaymentController extends Controller
 
     public function upgradeToPackage(Request $request, string $package)
     {
-        \Log::info('[upgradeToPackage] called', ['package' => $package, 'user_id' => \Auth::id()]);
+        Log::info('[upgradeToPackage] called', ['package' => $package, 'user_id' => Auth::id()]);
         Log::info('Package upgrade requested', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
@@ -3156,9 +3146,9 @@ class PaymentController extends Controller
 
     public function verifyOrder(Request $request, string $transactionId)
     {
-        \Log::info('[verifyOrder] called', [
+        Log::info('[verifyOrder] called', [
             'transaction_id' => $transactionId,
-            'user_id' => \Auth::id(),
+            'user_id' => Auth::id(),
             'request_data' => $request->all()
         ]);
         Log::info('=== ORDER VERIFICATION STARTED ===', [
@@ -3336,7 +3326,7 @@ class PaymentController extends Controller
 
     public function handleCancel(Request $request)
     {
-        \Log::info('[handleCancel] called', [
+        Log::info('[handleCancel] called', [
             'params' => $request->all(),
             'query' => $request->query(),
             'url' => $request->fullUrl()
