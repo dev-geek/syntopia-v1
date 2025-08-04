@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\Package;
+use App\Models\PaymentGateways;
 use App\Models\UserLicence;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -48,11 +49,19 @@ class LicenseService
 
             $createdLicenses = [];
 
-            // Only create license records if there's a subscription_id
-            if (!$subscriptionId) {
+            // For FastSpring and PayProGlobal, we can create license records even without subscription_id
+            // since these gateways may not provide subscription_id during checkout
+            $payproglobalGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
+            $fastspringGateway = PaymentGateways::where('name', 'FastSpring')->first();
+
+            $isPayProGlobal = $paymentGateway === ($payproglobalGateway ? $payproglobalGateway->id : null);
+            $isFastSpring = $paymentGateway === ($fastspringGateway ? $fastspringGateway->id : null);
+
+            if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring) {
                 Log::info('No subscription_id provided, skipping license record creation', [
                     'user_id' => $user->id,
-                    'package_name' => $package->name
+                    'package_name' => $package->name,
+                    'payment_gateway' => $paymentGateway
                 ]);
 
                 // No license record created (no subscription_id provided)
@@ -68,6 +77,26 @@ class LicenseService
 
                 DB::commit();
                 return null;
+            }
+
+            // For PayProGlobal without subscription_id, use a generated one based on order_id
+            if (!$subscriptionId && $isPayProGlobal) {
+                $subscriptionId = 'PPG-ORDER-' . time() . '-' . $user->id;
+                Log::info('Generated subscription_id for PayProGlobal', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'generated_subscription_id' => $subscriptionId
+                ]);
+            }
+
+            // For FastSpring without subscription_id, use a generated one based on order_id
+            if (!$subscriptionId && $isFastSpring) {
+                $subscriptionId = 'FS-ORDER-' . time() . '-' . $user->id;
+                Log::info('Generated subscription_id for FastSpring', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'generated_subscription_id' => $subscriptionId
+                ]);
             }
 
             // Create a license for each available license key

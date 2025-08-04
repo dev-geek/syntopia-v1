@@ -39,9 +39,12 @@ class FastSpringClient
 
     public function cancelSubscription(string $subscriptionId, int $billingPeriod = 1)
     {
+        // Validate billing period
+        if (!in_array($billingPeriod, [0, 1])) {
+            throw new \InvalidArgumentException('Billing period must be 0 (immediate) or 1 (end of period)');
+        }
+
         return Http::withBasicAuth($this->username, $this->password)
-            ->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}", [
-                'billingPeriod' => $billingPeriod
-            ]);
+            ->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}?billingPeriod={$billingPeriod}");
     }
 }

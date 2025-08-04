@@ -293,9 +293,34 @@ class SubscriptionController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        $package = $user->package;
         $activeLicense = $user->userLicence;
         $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
+
+        // Check for pending upgrade orders first
+        $pendingUpgrade = Order::where('user_id', $user->id)
+            ->whereIn('status', ['pending', 'pending_upgrade'])
+            ->where(function($query) {
+                $query->where('transaction_id', 'like', 'FS-UPGRADE-%')
+                      ->orWhere('transaction_id', 'like', 'PPG-UPGRADE-%')
+                      ->orWhere('transaction_id', 'like', 'PADDLE-UPGRADE-%');
+            })
+            ->where('created_at', '>=', now()->subDays(30)) // Only show recent upgrades
+            ->first();
+
+        $hasPendingUpgrade = $pendingUpgrade !== null;
+        $pendingUpgradeDetails = null;
+
+        // Determine the current package
+        // If there's a pending upgrade, the current package should be the original one (from the license)
+        // If no pending upgrade, use the user's assigned package
+        if ($hasPendingUpgrade && $activeLicense && $activeLicense->package) {
+            // Use the package from the active license (original package)
+            $package = $activeLicense->package;
+        } else {
+            // Use the user's assigned package
+            $package = $user->package;
+        }
+
         $hasActiveSubscription = $this->hasActiveSubscription($user);
         $canUpgrade = $this->canUpgradeSubscription($user);
 
@@ -303,11 +328,20 @@ class SubscriptionController extends Controller
             Log::info('License expiration date retrieved', [
                 'user_id' => $user->id,
                 'package_name' => $package ? $package->name : 'Unknown',
-                'end_date' => $calculatedEndDate->toDateTimeString()
+                'end_date' => $calculatedEndDate->toDateTimeString(),
+                'has_pending_upgrade' => $hasPendingUpgrade
             ]);
         }
 
         $hasScheduledCancellation = $this->hasScheduledCancellation($user);
+
+        if ($hasPendingUpgrade) {
+            $pendingUpgradeDetails = [
+                'target_package' => $pendingUpgrade->package->name ?? 'Unknown',
+                'created_at' => $pendingUpgrade->created_at,
+                'upgrade_type' => 'subscription_upgrade'
+            ];
+        }
 
         return view('subscription.details', [
             'currentPackage' => $package ? $package->name : null,
@@ -316,7 +350,9 @@ class SubscriptionController extends Controller
             'hasActiveSubscription' => $hasActiveSubscription,
             'hasScheduledCancellation' => $hasScheduledCancellation,
             'canUpgrade' => $canUpgrade,
-            'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false
+            'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false,
+            'hasPendingUpgrade' => $hasPendingUpgrade,
+            'pendingUpgradeDetails' => $pendingUpgradeDetails
         ]);
     }
 

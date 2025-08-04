@@ -1420,7 +1420,7 @@
             function showConfirmation(packageName, action, gateway) {
                 const title = action === 'upgrade' ? 'Confirm Upgrade' : 'Confirm Downgrade';
                 const text = action === 'upgrade' ?
-                    `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be prorated.` :
+                    `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be active only when current subscription expires.` :
                     `You're about to downgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. The change will take effect at the end of your current billing cycle.`;
                 Swal.fire({
                     title: title,

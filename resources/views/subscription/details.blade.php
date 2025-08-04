@@ -259,14 +259,70 @@
     <!-- Main content -->
     <section class="content">
         <div class="container-fluid">
+            {{-- Pending Upgrade Notice --}}
+            @if($hasPendingUpgrade && $pendingUpgradeDetails)
+                <div class="row">
+                    <div class="col-12">
+                        <div class="alert alert-info upgrade-notice" style="background: linear-gradient(135deg, #17a2b8 0%, #20c997 100%); border: none; color: white; border-radius: 1rem; box-shadow: 0 4px 24px rgba(23, 162, 184, 0.15); position: relative;">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-clock fa-2x mr-3" style="color: rgba(255,255,255,0.8);"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h5 class="alert-heading mb-2" style="color: white; font-weight: 700;">
+                                        <i class="fas fa-info-circle mr-2"></i>
+                                        Upgrade Scheduled
+                                    </h5>
+                                    <p class="mb-2" style="color: white; font-size: 1.1rem; line-height: 1.5;">
+                                        Your subscription has been successfully upgraded to <strong>{{ $pendingUpgradeDetails['target_package'] }}</strong> on {{ $pendingUpgradeDetails['created_at']->format('F j, Y') }}.
+                                    </p>
+                                    <p class="mb-0" style="color: rgba(255,255,255,0.9); font-size: 1rem;">
+                                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                                        <strong>Important:</strong> Your upgraded subscription will become active only after your current plan expires on {{ $calculatedEndDate ? $calculatedEndDate->format('F j, Y') : 'the end of your billing cycle' }}.
+                                        @if($calculatedEndDate)
+                                            <br><small style="color: rgba(255,255,255,0.8);">({{ $calculatedEndDate->diffInDays(now()) }} days remaining)</small>
+                                        @endif
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Scheduled Cancellation Notice --}}
+            @if($hasScheduledCancellation && $calculatedEndDate)
+                <div class="row">
+                    <div class="col-12">
+                        <div class="alert alert-warning cancellation-notice" style="background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); border: none; color: white; border-radius: 1rem; box-shadow: 0 4px 24px rgba(255, 193, 7, 0.15); position: relative;">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle fa-2x mr-3" style="color: rgba(255,255,255,0.8);"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h5 class="alert-heading mb-2" style="color: white; font-weight: 700;">
+                                        <i class="fas fa-clock mr-2"></i>
+                                        Cancellation Scheduled
+                                    </h5>
+                                    <p class="mb-2" style="color: white; font-size: 1.1rem; line-height: 1.5;">
+                                        Your subscription cancellation has been scheduled and will take effect on <strong>{{ $calculatedEndDate->format('F j, Y') }}</strong>.
+                                    </p>
+                                    <p class="mb-0" style="color: rgba(255,255,255,0.9); font-size: 1rem;">
+                                        <i class="fas fa-info-circle mr-2"></i>
+                                        <strong>Important:</strong> Your subscription remains fully active until the end of your current billing period. You can continue using all premium features until {{ $calculatedEndDate->format('F j, Y') }}.
+                                        <br><small style="color: rgba(255,255,255,0.8);">({{ $calculatedEndDate->diffInDays(now()) }} days remaining)</small>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="row">
                 <div class="col-12">
                     <div class="card subscription-card">
                         <div class="card-header">
-                            <h3 class="card-title">
-                                <i class="fas fa-credit-card mr-2"></i>
-                                Current Subscription Status
-                            </h3>
 
                             <div class="float-right">
                                 @if ($hasActiveSubscription && $canUpgrade)
@@ -357,13 +413,30 @@
                                                     @if ($currentPackage && strtolower($currentPackage) === 'free')
                                                         <span class="badge badge-secondary ml-2">Free Plan</span>
                                                     @endif
+                                                    @if ($hasPendingUpgrade)
+                                                        <span class="badge badge-info ml-2">
+                                                            <i class="fas fa-clock"></i> Active Until Expiration
+                                                        </span>
+                                                    @endif
                                                 </p>
+                                                @if ($hasPendingUpgrade && $pendingUpgradeDetails)
+                                                    <p class="text-muted mb-2"><strong>Upgrading To:</strong></p>
+                                                    <p class="mb-2">
+                                                        <span class="badge badge-success px-3 py-2">
+                                                            <i class="fas fa-arrow-up mr-1"></i>
+                                                            {{ $pendingUpgradeDetails['target_package'] }}
+                                                        </span>
+                                                        <span class="badge badge-warning ml-2">
+                                                            <i class="fas fa-clock"></i> Pending
+                                                        </span>
+                                                    </p>
+                                                @endif
                                                 <p class="text-muted mb-2"><strong>Status:</strong></p>
                                                 @if ($hasActiveSubscription)
                                                     @if ($hasScheduledCancellation)
                                                         <div>
                                                             <span class="badge badge-success px-3 py-2">
-                                                                <i class="fas fa-check-circle"></i> Active
+                                                                <i class="fas fa-check-circle"></i> Active Until Expiration
                                                             </span>
                                                             <br>
                                                             <span class="badge badge-warning px-3 py-2 mt-2">
@@ -371,7 +444,7 @@
                                                             </span>
                                                             <p class="text-muted mt-2 small">
                                                                 <i class="fas fa-info-circle"></i>
-                                                                Your subscription will remain active until the end of your current billing period.
+                                                                <strong>Your subscription remains fully active!</strong> You can continue using all premium features until {{ $calculatedEndDate ? $calculatedEndDate->format('F j, Y') : 'the end of your billing cycle' }}.
                                                             </p>
                                                         </div>
                                                     @else
@@ -517,13 +590,166 @@
     @csrf
 </form>
 
+<style>
+    /* Undismissable Upgrade Notice Styles */
+    .upgrade-notice {
+        position: relative !important;
+        z-index: 1000;
+        animation: pulse-glow 2s ease-in-out infinite alternate;
+    }
+
+    .upgrade-notice .close {
+        display: none !important;
+    }
+
+    .upgrade-notice:hover {
+        transform: translateY(-2px);
+        transition: transform 0.3s ease;
+        animation: none;
+    }
+
+    /* Prevent any dismissal attempts */
+    .upgrade-notice[style*="display: none"] {
+        display: block !important;
+    }
+
+    .upgrade-notice.fade {
+        opacity: 1 !important;
+    }
+
+    /* Pulsing glow animation */
+    @keyframes pulse-glow {
+        0% {
+            box-shadow: 0 4px 24px rgba(23, 162, 184, 0.15);
+        }
+        100% {
+            box-shadow: 0 4px 32px rgba(23, 162, 184, 0.3);
+        }
+    }
+
+    /* Cancellation Notice Styles */
+    .cancellation-notice {
+        position: relative !important;
+        z-index: 1000;
+        animation: pulse-glow-cancellation 2s ease-in-out infinite alternate;
+    }
+
+    .cancellation-notice .close {
+        display: none !important;
+    }
+
+    .cancellation-notice:hover {
+        transform: translateY(-2px);
+        transition: transform 0.3s ease;
+        animation: none;
+    }
+
+    /* Prevent any dismissal attempts */
+    .cancellation-notice[style*="display: none"] {
+        display: block !important;
+    }
+
+    .cancellation-notice.fade {
+        opacity: 1 !important;
+    }
+
+    /* Pulsing glow animation for cancellation */
+    @keyframes pulse-glow-cancellation {
+        0% {
+            box-shadow: 0 4px 24px rgba(255, 193, 7, 0.15);
+        }
+        100% {
+            box-shadow: 0 4px 32px rgba(255, 193, 7, 0.3);
+        }
+    }
+</style>
+
 <script>
+    // Make upgrade notice undismissable
+    document.addEventListener('DOMContentLoaded', function() {
+        const upgradeNotice = document.querySelector('.upgrade-notice');
+        if (upgradeNotice) {
+            // Remove any close buttons
+            const closeButtons = upgradeNotice.querySelectorAll('.close, .btn-close, [data-dismiss="alert"]');
+            closeButtons.forEach(btn => btn.remove());
+
+            // Prevent hiding via JavaScript
+            const originalDisplay = upgradeNotice.style.display;
+            Object.defineProperty(upgradeNotice.style, 'display', {
+                get: function() { return originalDisplay || 'block'; },
+                set: function(value) {
+                    if (value === 'none') {
+                        console.log('Attempt to hide upgrade notice blocked');
+                        return;
+                    }
+                    originalDisplay = value;
+                }
+            });
+
+            // Prevent removal from DOM
+            const originalRemove = upgradeNotice.remove;
+            upgradeNotice.remove = function() {
+                console.log('Attempt to remove upgrade notice blocked');
+                return false;
+            };
+
+            // Prevent parent from removing it
+            const parent = upgradeNotice.parentElement;
+            if (parent) {
+                const originalParentRemove = parent.remove;
+                parent.remove = function() {
+                    console.log('Attempt to remove parent of upgrade notice blocked');
+                    return false;
+                };
+            }
+        }
+    });
+
+    // Make cancellation notice undismissable
+    document.addEventListener('DOMContentLoaded', function() {
+        const cancellationNotice = document.querySelector('.cancellation-notice');
+        if (cancellationNotice) {
+            // Remove any close buttons
+            const closeButtons = cancellationNotice.querySelectorAll('.close, .btn-close, [data-dismiss="alert"]');
+            closeButtons.forEach(btn => btn.remove());
+
+            // Prevent hiding via JavaScript
+            const originalDisplay = cancellationNotice.style.display;
+            Object.defineProperty(cancellationNotice.style, 'display', {
+                get: function() { return originalDisplay || 'block'; },
+                set: function(value) {
+                    if (value === 'none') {
+                        console.log('Attempt to hide cancellation notice blocked');
+                        return;
+                    }
+                    originalDisplay = value;
+                }
+            });
+
+            // Prevent removal from DOM
+            const originalRemove = cancellationNotice.remove;
+            cancellationNotice.remove = function() {
+                console.log('Attempt to remove cancellation notice blocked');
+                return false;
+            };
+
+            // Prevent parent from removing it
+            const parent = cancellationNotice.parentElement;
+            if (parent) {
+                const originalParentRemove = parent.remove;
+                parent.remove = function() {
+                    console.log('Attempt to remove parent of cancellation notice blocked');
+                    return false;
+                };
+            }
+        }
+    });
 
     // Initialize SweetAlert for cancellation
     document.getElementById('cancelSubscriptionBtn')?.addEventListener('click', function() {
         Swal.fire({
-            title: 'Confirm Subscription Cancellation',
-            text: "Are you sure you want to cancel your subscription? This action cannot be undone, and you will lose access to premium features.",
+            title: 'Schedule Subscription Cancellation',
+            text: "Your subscription will remain active until the end of your current billing period. You can continue using all premium features until then. Are you sure you want to schedule the cancellation?",
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#d33',
@@ -542,8 +768,8 @@
         }).then((result) => {
             if (result.isConfirmed) {
                 Swal.fire({
-                    title: 'Canceling...',
-                    text: 'Your subscription is being canceled',
+                    title: 'Scheduling Cancellation...',
+                    text: 'Your subscription cancellation is being scheduled',
                     timer: 2000,
                     timerProgressBar: true,
                     didOpen: () => {
