@@ -1,206 +1,268 @@
-@extends('layouts.app')
-
-@section('content')
-<div class="container mx-auto px-4 py-8">
-    <div class="bg-white rounded-lg shadow-lg p-6">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold text-gray-900">Free Plan Attempts Management</h1>
-        </div>
-
-        <!-- Statistics Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-            <div class="bg-blue-100 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-blue-600">{{ $stats['total_attempts'] }}</div>
-                <div class="text-sm text-blue-800">Total Attempts</div>
-            </div>
-            <div class="bg-red-100 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-red-600">{{ $stats['blocked_attempts'] }}</div>
-                <div class="text-sm text-red-800">Blocked Attempts</div>
-            </div>
-            <div class="bg-green-100 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-green-600">{{ $stats['unique_ips'] }}</div>
-                <div class="text-sm text-green-800">Unique IPs</div>
-            </div>
-            <div class="bg-yellow-100 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-yellow-600">{{ $stats['unique_emails'] }}</div>
-                <div class="text-sm text-yellow-800">Unique Emails</div>
-            </div>
-            <div class="bg-purple-100 p-4 rounded-lg">
-                <div class="text-2xl font-bold text-purple-600">{{ $stats['recent_attempts'] }}</div>
-                <div class="text-sm text-purple-800">Last 7 Days</div>
-            </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="bg-gray-50 p-4 rounded-lg mb-6">
-            <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
-                    <input type="text" name="ip" value="{{ request('ip') }}" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+@include('dashboard.includes/header')
+@include('dashboard.includes/sidebar')
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h1>Free Plan Attempts Management</h1>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input type="email" name="email" value="{{ request('email') }}" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div><!-- /.container-fluid -->
+    </section>
+    <!-- Main content -->
+    <section class="content">
+        <div class="container-fluid">
+            <!-- Statistics Cards -->
+            <div class="row g-4 mb-4">
+                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up">
+                    <div class="card dashboard-card bg-gradient-blue h-100">
+                        <div class="card-body text-center">
+                            <div class="icon mb-2"><i class="fas fa-chart-line"></i></div>
+                            <div class="card-title">Total Attempts</div>
+                            <div class="card-number">{{ $stats['total_attempts'] }}</div>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select name="blocked" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">All</option>
-                        <option value="1" {{ request('blocked') === '1' ? 'selected' : '' }}>Blocked</option>
-                        <option value="0" {{ request('blocked') === '0' ? 'selected' : '' }}>Not Blocked</option>
-                    </select>
+                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up" data-aos-delay="100">
+                    <div class="card dashboard-card bg-gradient-red h-100">
+                        <div class="card-body text-center">
+                            <div class="icon mb-2"><i class="fas fa-ban"></i></div>
+                            <div class="card-title">Blocked Attempts</div>
+                            <div class="card-number">{{ $stats['blocked_attempts'] }}</div>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Days Back</label>
-                    <select name="days" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="7" {{ request('days') == '7' ? 'selected' : '' }}>Last 7 days</option>
-                        <option value="30" {{ request('days') == '30' ? 'selected' : '' }}>Last 30 days</option>
-                        <option value="90" {{ request('days') == '90' ? 'selected' : '' }}>Last 90 days</option>
-                        <option value="" {{ !request('days') ? 'selected' : '' }}>All time</option>
-                    </select>
+                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up" data-aos-delay="200">
+                    <div class="card dashboard-card bg-gradient-green h-100">
+                        <div class="card-body text-center">
+                            <div class="icon mb-2"><i class="fas fa-network-wired"></i></div>
+                            <div class="card-title">Unique IPs</div>
+                            <div class="card-number">{{ $stats['unique_ips'] }}</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="md:col-span-4 flex gap-2">
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                        Filter
-                    </button>
-                    <a href="{{ route('admin.free-plan-attempts.index') }}" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
-                        Clear
-                    </a>
+                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up" data-aos-delay="300">
+                    <div class="card dashboard-card bg-gradient-yellow h-100">
+                        <div class="card-body text-center">
+                            <div class="icon mb-2"><i class="fas fa-calendar-week"></i></div>
+                            <div class="card-title">Last 7 Days</div>
+                            <div class="card-number">{{ $stats['recent_attempts'] }}</div>
+                        </div>
+                    </div>
                 </div>
-            </form>
-        </div>
+            </div>
 
-        <!-- Bulk Actions -->
-        <div class="mb-4 flex gap-2">
-            <button onclick="bulkAction('unblock')" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-                Unblock Selected
-            </button>
-            <button onclick="bulkAction('block')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
-                Block Selected
-            </button>
-            <button onclick="bulkAction('delete')" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
-                Delete Selected
-            </button>
-        </div>
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Free Plan Attempts</h3>
+                        </div>
 
-        <!-- Attempts Table -->
-        <div class="overflow-x-auto">
-            <table class="min-w-full bg-white border border-gray-200">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-4 py-2">
-                            <input type="checkbox" id="select-all" class="rounded">
-                        </th>
-                        <th class="px-4 py-2 text-left">ID</th>
-                        <th class="px-4 py-2 text-left">IP Address</th>
-                        <th class="px-4 py-2 text-left">Email</th>
-                        <th class="px-4 py-2 text-left">User Agent</th>
-                        <th class="px-4 py-2 text-left">Status</th>
-                        <th class="px-4 py-2 text-left">Created At</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($attempts as $attempt)
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="px-4 py-2">
-                            <input type="checkbox" name="selected_ids[]" value="{{ $attempt->id }}" class="attempt-checkbox rounded">
-                        </td>
-                        <td class="px-4 py-2">{{ $attempt->id }}</td>
-                        <td class="px-4 py-2 font-mono text-sm">{{ $attempt->ip_address }}</td>
-                        <td class="px-4 py-2">{{ $attempt->email ?? 'N/A' }}</td>
-                        <td class="px-4 py-2 text-xs text-gray-600 max-w-xs truncate" title="{{ $attempt->user_agent }}">
-                            {{ Str::limit($attempt->user_agent, 50) }}
-                        </td>
-                        <td class="px-4 py-2">
-                            @if($attempt->is_blocked)
-                                <span class="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs">Blocked</span>
-                            @else
-                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Active</span>
-                            @endif
-                        </td>
-                        <td class="px-4 py-2 text-sm text-gray-600">
-                            {{ $attempt->created_at->format('Y-m-d H:i:s') }}
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="7" class="px-4 py-8 text-center text-gray-500">
-                            No attempts found matching your criteria.
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                        @include('components.alert-messages')
 
-        <!-- Pagination -->
-        <div class="mt-6">
-            {{ $attempts->links() }}
+                        <div class="card-body">
+                            <!-- Filters -->
+                            <div class="row mb-3">
+                                <div class="col-12">
+                                    <div class="card card-outline card-primary">
+                                        <div class="card-header">
+                                            <h3 class="card-title">
+                                                <i class="fas fa-filter"></i> Filters
+                                            </h3>
+                                            <div class="card-tools">
+                                                <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                                                    <i class="fas fa-minus"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="card-body">
+                                            <form method="GET" class="row">
+                                                <div class="col-md-3">
+                                                    <div class="form-group">
+                                                        <label>IP Address:</label>
+                                                        <input type="text" name="ip" value="{{ request('ip') }}"
+                                                               class="form-control" placeholder="Enter IP address">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="form-group">
+                                                        <label>Email:</label>
+                                                        <input type="email" name="email" value="{{ request('email') }}"
+                                                               class="form-control" placeholder="Enter email">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <div class="form-group">
+                                                        <label>Status:</label>
+                                                        <select name="blocked" class="form-control">
+                                                            <option value="">All</option>
+                                                            <option value="1" {{ request('blocked') === '1' ? 'selected' : '' }}>Blocked</option>
+                                                            <option value="0" {{ request('blocked') === '0' ? 'selected' : '' }}>Not Blocked</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <div class="form-group">
+                                                        <label>Days Back:</label>
+                                                        <select name="days" class="form-control">
+                                                            <option value="7" {{ request('days') == '7' ? 'selected' : '' }}>Last 7 days</option>
+                                                            <option value="30" {{ request('days') == '30' ? 'selected' : '' }}>Last 30 days</option>
+                                                            <option value="90" {{ request('days') == '90' ? 'selected' : '' }}>Last 90 days</option>
+                                                            <option value="" {{ !request('days') ? 'selected' : '' }}>All time</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <div class="form-group">
+                                                        <label>&nbsp;</label>
+                                                        <div>
+                                                            <button type="submit" class="btn btn-primary">
+                                                                <i class="fas fa-search"></i> Filter
+                                                            </button>
+                                                            <a href="{{ route('admin.free-plan-attempts.index') }}" class="btn btn-secondary">
+                                                                <i class="fas fa-times"></i> Clear
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Attempts Table -->
+                            <div class="table-responsive">
+                                <table id="example1" class="table table-bordered table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>IP Address</th>
+                                            <th>Email</th>
+                                            <th>User Agent</th>
+                                            <th>Status</th>
+                                            <th>Created At</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($attempts as $attempt)
+                                        <tr>
+                                            <td>{{ $attempt->id }}</td>
+                                            <td><code class="text-primary">{{ $attempt->ip_address }}</code></td>
+                                            <td>{{ $attempt->email ?? '<span class="text-muted">N/A</span>' }}</td>
+                                            <td>
+                                                <span class="text-muted small" title="{{ $attempt->user_agent }}">
+                                                    {{ Str::limit($attempt->user_agent, 50) }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                @if($attempt->is_blocked)
+                                                    <span class="badge badge-danger">Blocked</span>
+                                                @else
+                                                    <span class="badge badge-success">Active</span>
+                                                @endif
+                                            </td>
+                                            <td>{{ $attempt->created_at->format('Y-m-d H:i:s') }}</td>
+                                        </tr>
+                                        @empty
+                                        <tr>
+                                            <td colspan="6" class="text-center text-muted py-4">
+                                                <i class="fas fa-inbox fa-2x mb-2"></i><br>
+                                                No attempts found matching your criteria.
+                                            </td>
+                                        </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
+    </section>
 </div>
 
-<!-- Bulk Action Forms -->
-<form id="bulk-unblock-form" method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" style="display: none;">
-    @csrf
-    <input type="hidden" name="ids" id="unblock-ids">
-</form>
+@include('dashboard.includes/footer')
 
-<form id="bulk-block-form" method="POST" action="{{ route('admin.free-plan-attempts.block') }}" style="display: none;">
-    @csrf
-    <input type="hidden" name="ids" id="block-ids">
-    <input type="hidden" name="reason" id="block-reason">
-</form>
+<!-- AOS Animate On Scroll CSS/JS -->
+<link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
 
-<form id="bulk-delete-form" method="POST" action="{{ route('admin.free-plan-attempts.destroy') }}" style="display: none;">
-    @csrf
-    @method('DELETE')
-    <input type="hidden" name="ids" id="delete-ids">
-</form>
+<!-- Dashboard Cards Styling -->
+<style>
+    .dashboard-card {
+        border: none;
+        border-radius: 1.2rem;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+        color: #fff;
+        overflow: hidden;
+        transition: transform 0.25s, box-shadow 0.25s;
+        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+        position: relative;
+    }
+    .dashboard-card .card-body {
+        padding: 2rem 1.5rem 1.5rem 1.5rem;
+    }
+    .dashboard-card .icon {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        display: inline-block;
+        transition: transform 0.3s;
+    }
+    .dashboard-card .card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        letter-spacing: 0.5px;
+    }
+    .dashboard-card .card-number {
+        font-size: 2.1rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        margin-bottom: 0;
+    }
+    .dashboard-card.bg-gradient-blue { background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%); }
+    .dashboard-card.bg-gradient-red { background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); }
+    .dashboard-card.bg-gradient-green { background: linear-gradient(135deg, #198754 0%, #20c997 100%); }
+    .dashboard-card.bg-gradient-yellow { background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); color: #222; }
+    .dashboard-card:hover {
+        transform: translateY(-6px) scale(1.03);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.13);
+        z-index: 2;
+    }
+    .dashboard-card:hover .icon {
+        transform: scale(1.18) rotate(-8deg);
+    }
+</style>
+
+<x-datatable
+    tableId="example1"
+    :language="json_encode([
+        'lengthMenu' => 'Show _MENU_ attempts per page',
+        'zeroRecords' => 'No attempts found',
+        'info' => 'Showing _START_ to _END_ of _TOTAL_ attempts',
+        'infoEmpty' => 'Showing 0 to 0 of 0 attempts',
+        'infoFiltered' => '(filtered from _MAX_ total attempts)',
+        'search' => 'Search attempts:',
+        'paginate' => [
+            'first' => 'First',
+            'last' => 'Last',
+            'next' => 'Next',
+            'previous' => 'Previous'
+        ]
+    ])"
+/>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/swal-utils.js') }}"></script>
 
 <script>
-document.getElementById('select-all').addEventListener('change', function() {
-    const checkboxes = document.querySelectorAll('.attempt-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = this.checked;
-    });
+document.addEventListener('DOMContentLoaded', function(){
+    AOS.init({duration: 900, once: true});
 });
-
-function bulkAction(action) {
-    const selectedIds = Array.from(document.querySelectorAll('.attempt-checkbox:checked'))
-        .map(checkbox => checkbox.value);
-
-    if (selectedIds.length === 0) {
-        alert('Please select at least one attempt.');
-        return;
-    }
-
-    const idsJson = JSON.stringify(selectedIds);
-
-    switch (action) {
-        case 'unblock':
-            document.getElementById('unblock-ids').value = idsJson;
-            if (confirm('Are you sure you want to unblock the selected attempts?')) {
-                document.getElementById('bulk-unblock-form').submit();
-            }
-            break;
-        case 'block':
-            const reason = prompt('Enter a reason for blocking (optional):');
-            document.getElementById('block-ids').value = idsJson;
-            document.getElementById('block-reason').value = reason || '';
-            if (confirm('Are you sure you want to block the selected attempts?')) {
-                document.getElementById('bulk-block-form').submit();
-            }
-            break;
-        case 'delete':
-            document.getElementById('delete-ids').value = idsJson;
-            if (confirm('Are you sure you want to delete the selected attempts? This action cannot be undone.')) {
-                document.getElementById('bulk-delete-form').submit();
-            }
-            break;
-    }
-}
 </script>
-@endsection 
