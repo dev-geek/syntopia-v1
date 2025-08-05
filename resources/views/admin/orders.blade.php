@@ -38,8 +38,8 @@
                   </tr>
                 </thead>
                 <tbody>
+                  @foreach($orders as $order)
                   <tr>
-                    @foreach($orders as $order)
                     <td>{{ $loop->iteration }}</td>
                     <td>{{ $order->user->name ?? 'Unknown' }}</td>
                     <td>{{$order->package}}</td>

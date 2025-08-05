@@ -46,39 +46,39 @@
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    @foreach ($users as $user)
                                     <tr>
-                                        @foreach ($users as $user)
-                                            <td>{{ $user->name }}</td>
-                                            <td>{{ $user->email }} </td>
-                                            <td>
-                                                @if ($user->hasRole('User'))
-                                                    User
-                                                @else
-                                                    No Role
-                                                @endif
-                                            </td>
-
-                                            @if ($user->status == 1)
-                                                <td>Active</td>
+                                        <td>{{ $user->name }}</td>
+                                        <td>{{ $user->email }} </td>
+                                        <td>
+                                            @if ($user->hasRole('User'))
+                                                User
                                             @else
-                                                <td>Deactive</td>
+                                                No Role
                                             @endif
-                                            @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
-                                                <td>
-                                                    <a href="{{ route('admin.manage.profile', $user->id) }}"
-                                                        class="btn btn-sm btn-primary mx-2" title="Edit">
-                                                        <i class="fas fa-edit"></i></a>
-                                                    <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
-                                                        class="delete-form" style="display:inline-block;">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="btn btn-danger btn-sm"
-                                                            title="Delete User">
-                                                            <i class="bi bi-trash"></i>
-                                                        </button>
-                                                    </form>
-                                                </td>
-                                            @endif
+                                        </td>
+
+                                        @if ($user->status == 1)
+                                            <td>Active</td>
+                                        @else
+                                            <td>Deactive</td>
+                                        @endif
+                                        @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
+                                            <td>
+                                                <a href="{{ route('admin.manage.profile', $user->id) }}"
+                                                    class="btn btn-sm btn-primary mx-2" title="Edit">
+                                                    <i class="fas fa-edit"></i></a>
+                                                <form action="{{ route('admin.users.destroy', $user) }}" method="POST"
+                                                    class="delete-form" style="display:inline-block;">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="btn btn-danger btn-sm"
+                                                        title="Delete User">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        @endif
                                     </tr>
                                     @endforeach
                                     </tfoot>
@@ -121,25 +121,7 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/swal-utils.js') }}"></script>
-<script>
-    $(function() {
-        $("#example1").DataTable({
-            "responsive": true,
-            "lengthChange": false,
-            "autoWidth": false,
-            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-        $('#example2').DataTable({
-            "paging": true,
-            "lengthChange": false,
-            "searching": false,
-            "ordering": true,
-            "info": true,
-            "autoWidth": false,
-            "responsive": true,
-        });
-    });
-</script>
+
 <script>
     document.querySelectorAll('.delete-form').forEach(form => {
         form.addEventListener('submit', function(e) {

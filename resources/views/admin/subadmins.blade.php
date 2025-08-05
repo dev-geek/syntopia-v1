@@ -44,36 +44,36 @@
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    @foreach ($users as $user)
                                     <tr>
-                                        @foreach ($users as $user)
-                                            <td>{{ $loop->iteration }}</td>
-                                            <td>{{ $user->name }}</td>
-                                            <td>{{ $user->email }} </td>
-                                            <td>
-                                                Sub Admin
+                                        <td>{{ $loop->iteration }}</td>
+                                        <td>{{ $user->name }}</td>
+                                        <td>{{ $user->email }} </td>
+                                        <td>
+                                            Sub Admin
+                                        </td>
+
+                                        @if ($user->status == 1)
+                                            <td>Active</td>
+                                        @else
+                                            <td>Deactive</td>
+                                        @endif
+                                        @if (Auth::check() && Auth::user()->hasAnyRole(['Super Admin', 'Sub Admin']))
+                                            <td class="d-flex align-items-center gap-2">
+                                                <!-- Edit Button -->
+                                                <a href="{{ route('admin.sub-admins.edit', $user->id) }}"
+                                                    class="btn btn-sm btn-primary mx-2" title="Edit">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+
+                                                <!-- Delete Button -->
+                                                <button type="button" class="btn btn-sm btn-danger"
+                                                    onclick="confirmDelete({{ $user->id }}, '{{ route('admin.sub-admins.destroy', $user->id) }}')"
+                                                    title="Delete">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
                                             </td>
-
-                                            @if ($user->status == 1)
-                                                <td>Active</td>
-                                            @else
-                                                <td>Deactive</td>
-                                            @endif
-                                            @if (Auth::check() && Auth::user()->hasAnyRole(['Super Admin', 'Sub Admin']))
-                                                <td class="d-flex align-items-center gap-2">
-                                                    <!-- Edit Button -->
-                                                    <a href="{{ route('admin.sub-admins.edit', $user->id) }}"
-                                                        class="btn btn-sm btn-primary mx-2" title="Edit">
-                                                        <i class="fas fa-edit"></i>
-                                                    </a>
-
-                                                    <!-- Delete Button -->
-                                                    <button type="button" class="btn btn-sm btn-danger"
-                                                        onclick="confirmDelete({{ $user->id }}, '{{ route('admin.sub-admins.destroy', $user->id) }}')"
-                                                        title="Delete">
-                                                        <i class="fas fa-trash-alt"></i>
-                                                    </button>
-                                                </td>
-                                            @endif
+                                        @endif
                                     </tr>
                                     @endforeach
                                     </tfoot>
@@ -114,26 +114,7 @@
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>
-<script>
-    $(function() {
-        $("#example1").DataTable({
-            "responsive": true,
-            "lengthChange": false,
-            "autoWidth": false,
-            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"],
-            "order": [],
-        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-        $('#example2').DataTable({
-            "paging": true,
-            "lengthChange": false,
-            "searching": false,
-            "ordering": true,
-            "info": true,
-            "autoWidth": false,
-            "responsive": true,
-        });
-    });
-</script>
+
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/swal-utils.js') }}"></script>
 
