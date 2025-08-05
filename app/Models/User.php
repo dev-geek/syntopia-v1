@@ -129,6 +129,26 @@ class User extends Authenticatable implements MustVerifyEmail
             ->exists();
     }
 
+    public function getCancellationInfo(): ?array
+    {
+        $cancellationOrder = $this->orders()
+            ->where('status', 'cancellation_scheduled')
+            ->latest('created_at')
+            ->first();
+
+        if (!$cancellationOrder) {
+            return null;
+        }
+
+        return [
+            'order_id' => $cancellationOrder->id,
+            'cancelled_at' => $cancellationOrder->updated_at,
+            'gateway' => $cancellationOrder->paymentGateway?->name,
+            'package' => $cancellationOrder->package?->name,
+            'effective_date' => $this->userLicence?->expires_at
+        ];
+    }
+
     public function canAccessPackage(string $packageName): bool
     {
         if (!$this->hasActiveSubscription()) {

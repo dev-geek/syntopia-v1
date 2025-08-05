@@ -54,22 +54,40 @@ class PaddleClient
 
     public function cancelSubscription(string $subscriptionId, int $billingPeriod = 1)
     {
+        $effectiveFrom = $billingPeriod === 0 ? 'immediately' : 'next_billing_period';
+
+        Log::info('Canceling Paddle subscription', [
+            'subscription_id' => $subscriptionId,
+            'effective_from' => $effectiveFrom,
+            'billing_period' => $billingPeriod
+        ]);
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->apiKey,
             'Content-Type' => 'application/json'
         ])->post("{$this->apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
-            'effective_from' => $billingPeriod === 0 ? 'immediately' : 'next_billing_period'
+            'effective_from' => $effectiveFrom
         ]);
 
         if (!$response->successful()) {
             Log::error('Paddle subscription cancellation failed', [
                 'subscription_id' => $subscriptionId,
-                'response' => $response->body()
+                'effective_from' => $effectiveFrom,
+                'response_status' => $response->status(),
+                'response_body' => $response->body()
             ]);
             return null;
         }
 
-        return $response->json();
+        $responseData = $response->json();
+
+        Log::info('Paddle subscription cancellation successful', [
+            'subscription_id' => $subscriptionId,
+            'effective_from' => $effectiveFrom,
+            'response_data' => $responseData
+        ]);
+
+        return $responseData;
     }
 
     public function getSubscription(string $subscriptionId)

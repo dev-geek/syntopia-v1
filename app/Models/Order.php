@@ -29,7 +29,6 @@ class Order extends Model
         'transaction_id',
         'status',
         'currency',
-        'subscription_id',
         'metadata',
         'order_type'
     ];

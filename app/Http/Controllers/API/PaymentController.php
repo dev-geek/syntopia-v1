@@ -1960,14 +1960,14 @@ class PaymentController extends Controller
                     'cancellation_type' => 'end_of_billing_period'
                 ]);
 
-                $response = $paddleClient->cancelSubscription($subscriptionId, false); // false = end of billing period
+                // Pass 1 for end of billing period (1 = next_billing_period, 0 = immediately)
+                $response = $paddleClient->cancelSubscription($subscriptionId, 1);
 
-                if (!$response->successful()) {
+                if (!$response) {
                     Log::error('Paddle subscription cancellation failed', [
                         'user_id' => $user->id,
                         'subscription_id' => $subscriptionId,
-                        'response_status' => $response->status(),
-                        'response_body' => $response->body()
+                        'error' => 'No response from Paddle API'
                     ]);
 
                     if ($request->wantsJson()) {
@@ -1979,11 +1979,10 @@ class PaymentController extends Controller
                     return redirect()->route('user.subscription.details')->with('error', 'Failed to cancel subscription');
                 }
 
-                $responseData = $response->json();
                 Log::info('Paddle cancellation response', [
                     'user_id' => $user->id,
                     'subscription_id' => $subscriptionId,
-                    'response_data' => $responseData,
+                    'response_data' => $response,
                     'cancellation_type' => 'end_of_billing_period'
                 ]);
 
@@ -2422,56 +2421,99 @@ class PaymentController extends Controller
                 return response()->json(['status' => 'no_subscription_id']);
             }
 
-            $user = User::where('subscription_id', $subscriptionId)->first();
-            if ($user) {
-                DB::transaction(function () use ($user, $subscriptionId) {
-                    // Delete the user's license record
-                    $userLicense = $user->userLicence;
-                    if ($userLicense) {
-                        Log::info('Deleting user license record from Paddle webhook', [
-                            'license_id' => $userLicense->id,
-                            'user_id' => $user->id,
-                            'subscription_id' => $userLicense->subscription_id
-                        ]);
-                        $userLicense->delete();
-                    }
+            Log::info('Processing Paddle subscription cancellation webhook', [
+                'subscription_id' => $subscriptionId,
+                'event_data' => $eventData
+            ]);
 
-                    // Reset user's subscription data
-                    $user->update([
-                        'is_subscribed' => false,
-                        'subscription_id' => null,
-                        'package_id' => null,
-                        'payment_gateway_id' => null,
-                        'user_license_id' => null
-                    ]);
+            // Find user by subscription_id in user_licences table first
+            $userLicense = UserLicence::where('subscription_id', $subscriptionId)->first();
+            $user = null;
 
-                    // Update order status
-                    $order = Order::where('user_id', $user->id)
-                        ->where('subscription_id', $subscriptionId)
-                        ->latest('created_at')
-                        ->first();
+            if ($userLicense) {
+                $user = $userLicense->user;
+            } else {
+                // Fallback: try to find user directly by subscription_id
+                $user = User::where('subscription_id', $subscriptionId)->first();
+            }
 
-                    if ($order) {
-                        $order->update(['status' => 'canceled']);
-                        Log::info('Updated order status to canceled from Paddle webhook', [
-                            'order_id' => $order->id,
-                            'user_id' => $user->id,
-                            'subscription_id' => $subscriptionId
-                        ]);
-                    }
-                });
-
-                Log::info('Processed subscription cancellation from Paddle webhook', [
-                    'user_id' => $user->id,
+            if (!$user) {
+                Log::warning('No user found for cancelled subscription', [
                     'subscription_id' => $subscriptionId
                 ]);
+                return response()->json(['status' => 'user_not_found']);
             }
+
+            Log::info('Found user for cancellation processing', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+                'current_is_subscribed' => $user->is_subscribed,
+                'current_package_id' => $user->package_id
+            ]);
+
+            DB::transaction(function () use ($user, $subscriptionId, $userLicense) {
+                // Delete the user's license record
+                if ($userLicense) {
+                    Log::info('Deleting user license record from Paddle webhook', [
+                        'license_id' => $userLicense->id,
+                        'user_id' => $user->id,
+                        'subscription_id' => $userLicense->subscription_id
+                    ]);
+                    $userLicense->delete();
+                }
+
+                // Reset user's subscription data
+                $user->update([
+                    'is_subscribed' => false,
+                    'subscription_id' => null,
+                    'package_id' => null,
+                    'payment_gateway_id' => null,
+                    'user_license_id' => null
+                ]);
+
+                // Update all orders with this subscription_id to canceled status
+                $orders = Order::where('user_id', $user->id)
+                    ->where('status', 'cancellation_scheduled')
+                    ->get();
+
+                foreach ($orders as $order) {
+                    $order->update(['status' => 'canceled']);
+                    Log::info('Updated order status to canceled from Paddle webhook', [
+                        'order_id' => $order->id,
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'previous_status' => 'cancellation_scheduled'
+                    ]);
+                }
+
+                // Also update any orders with the specific subscription_id
+                $specificOrders = Order::where('user_id', $user->id)
+                    ->where('metadata->subscription_id', $subscriptionId)
+                    ->where('status', '!=', 'canceled')
+                    ->get();
+
+                foreach ($specificOrders as $order) {
+                    $order->update(['status' => 'canceled']);
+                    Log::info('Updated specific order status to canceled from Paddle webhook', [
+                        'order_id' => $order->id,
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId
+                    ]);
+                }
+            });
+
+            Log::info('Successfully processed subscription cancellation from Paddle webhook', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+                'cancellation_type' => 'end_of_billing_period'
+            ]);
 
             return response()->json(['status' => 'processed']);
         } catch (\Exception $e) {
             Log::error('Error handling Paddle cancellation webhook', [
                 'error' => $e->getMessage(),
-                'event_data' => $eventData
+                'event_data' => $eventData,
+                'trace' => $e->getTraceAsString()
             ]);
             return response()->json(['error' => 'Processing failed'], 500);
         }
