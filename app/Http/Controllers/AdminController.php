@@ -46,7 +46,7 @@ class AdminController extends Controller
             ]);
         }
 
-        // Attempt login
+                // Attempt login
         if (!Auth::attempt($credentials)) {
             throw ValidationException::withMessages([
                 'password' => ['Password is incorrect.'],

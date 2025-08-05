@@ -38,11 +38,6 @@
         </div>
         <div class="input-group mb-3">
           <input id="password" type="password" placeholder="Password"class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
-          <div class="input-group-append">
-            <div class="input-group-text">
-              <span class="fas fa-lock"></span>
-            </div>
-          </div>
         </div>
         @error('password')
                                 <span class="invalid-feedback" role="alert">
