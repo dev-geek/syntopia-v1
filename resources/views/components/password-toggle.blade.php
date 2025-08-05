@@ -16,13 +16,25 @@
     </button>
 </div>
 
-@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const passwordField = document.getElementById('{{ $id }}');
-    if (passwordField) {
-        PasswordToggle.addToField(passwordField);
+    const toggleBtn = passwordField?.parentElement?.querySelector('.password-toggle-btn');
+
+    if (passwordField && toggleBtn) {
+        toggleBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordField.setAttribute('type', type);
+
+            const icon = toggleBtn.querySelector('i');
+            if (icon) {
+                icon.className = type === 'text' ? 'fas fa-eye-slash' : 'fas fa-eye';
+            }
+
+            toggleBtn.setAttribute('aria-label', type === 'text' ? 'Hide password' : 'Show password');
+            toggleBtn.setAttribute('title', type === 'text' ? 'Hide password' : 'Show password');
+        });
     }
 });
 </script>
-@endpush

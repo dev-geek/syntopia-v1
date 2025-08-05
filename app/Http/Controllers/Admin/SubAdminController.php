@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\PasswordBindingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -18,32 +17,22 @@ class SubAdminController extends Controller
         return view('admin.subadmins.create');
     }
 
-    public function store(Request $request, PasswordBindingService $passwordBindingService)
+    public function store(Request $request)
     {
         try {
             $validated = $request->validate([
                 'name'     => 'required|string|max:255',
                 'email'    => 'required|string|email|max:255|unique:users',
                 'password' => 'required|string|min:6|confirmed',
-                'status' => 'boolean',
+                'status'   => 'boolean',
             ]);
 
-            // Call password binding API before creating the user
-            $apiResponse = $passwordBindingService->bindPassword(
-                (new User())->forceFill(['email' => $validated['email']]),
-                $validated['password']
-            );
-
-            if (!$apiResponse['success']) {
-                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
-            }
-
             $user = User::create([
-                'name'     => $validated['name'],
-                'email'    => $validated['email'],
-                'password' => $validated['password'],
+                'name'               => $validated['name'],
+                'email'              => $validated['email'],
+                'password'           => Hash::make($validated['password']),
                 'subscriber_password' => $validated['password'],
-                'status' => $validated['status'],
+                'status'             => $validated['status'],
             ]);
 
             $user->assignRole('Sub Admin');
@@ -54,6 +43,7 @@ class SubAdminController extends Controller
             return back()->withInput()->with('error', 'Failed to create Sub Admin. Try again.');
         }
     }
+
 
     public function edit($id)
     {
@@ -68,12 +58,10 @@ class SubAdminController extends Controller
             }
 
             return view('admin.subadmins.edit', compact('subadmin'));
-
         } catch (ModelNotFoundException $e) {
             return redirect()
                 ->route('admin.subadmins')
                 ->with('error', 'Subadmin not found.');
-
         } catch (\Exception $e) {
             Log::error('Error editing subadmin: ' . $e->getMessage());
 

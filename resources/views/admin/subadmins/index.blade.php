@@ -92,6 +92,7 @@
                             <table id="example1" class="table table-bordered table-striped">
                                 <thead>
                                     <tr>
+                                        <th>ID</th>
                                         <th>Name</th>
                                         <th>Email</th>
                                         <th>Role</th>
@@ -106,6 +107,7 @@
                                 <tbody>
                                     <tr>
                                         @foreach ($users as $user)
+                                            <td>{{ $loop->iteration }}</td>
                                             <td>{{ $user->name }}</td>
                                             <td>{{ $user->email }} </td>
                                             <td>

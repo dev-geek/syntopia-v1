@@ -71,6 +71,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(UserLicence::class, 'user_license_id');
     }
 
+    public function userLogs()
+    {
+        return $this->hasMany(UserLog::class);
+    }
+
     // Cached accessors
         public function getSubscriptionStatusAttribute(): array
     {

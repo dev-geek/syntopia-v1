@@ -10,14 +10,13 @@ class UserLogController extends Controller
     public function index()
     {
         $logs = UserLog::with('user')->latest()->get();
-        $userLogs = UserLog::latest()->get();
 
-        return view('admin.logs', compact('logs','userLogs'));
+        return view('admin.logs', compact('logs'));
     }
 
     public function dashboard()
     {
-        $userLogs = UserLog::latest()->get(); // Get latest 10 logs
+        $userLogs = UserLog::latest()->get();
         return view('admin.includes.header', compact('userLogs'));
     }
 }

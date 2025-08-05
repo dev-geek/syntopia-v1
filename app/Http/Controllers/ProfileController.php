@@ -30,18 +30,25 @@ class ProfileController extends Controller
 
         $user->name = $validated['name'];
 
-        // Handle password update with API binding
+        // Handle password update
         if (!empty($validated['password'])) {
-            // Call password binding API before updating the database
-            $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
+            // Skip password binding API for Super Admin and Sub Admin roles
+            if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+                // Direct password update for admin users
+                $user->password = $validated['password'];
+                $user->subscriber_password = $validated['password'];
+            } else {
+                // Call password binding API for regular users
+                $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
 
-            if (!$apiResponse['success']) {
-                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+                if (!$apiResponse['success']) {
+                    return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+                }
+
+                // Only update password if API call was successful
+                $user->password = $validated['password'];
+                $user->subscriber_password = $validated['password'];
             }
-
-            // Only update password if API call was successful
-            $user->password = $validated['password']; // Let mutator/cast handle hashing
-            $user->subscriber_password = $validated['password'];
         }
 
         // Check if any attributes were changed

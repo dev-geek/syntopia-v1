@@ -14,7 +14,7 @@
 ])
 
 <script>
-$(function() {
+$(document).ready(function() {
     const defaultLanguage = {
         "lengthMenu": "Show _MENU_ entries per page",
         "zeroRecords": "No records found",
@@ -43,10 +43,26 @@ $(function() {
         "searching": {{ $searching ? 'true' : 'false' }},
         "ordering": {{ $ordering ? 'true' : 'false' }},
         "info": {{ $info ? 'true' : 'false' }},
-        "language": {!! $language ?: json_encode($defaultLanguage) !!},
-        "buttons": {!! $buttons !!}
+        "language": {!! $language ?: json_encode($defaultLanguage) !!}
     };
 
-    $("#{{ $tableId }}").DataTable(config).buttons().container().appendTo('#{{ $tableId }}_wrapper .col-md-6:eq(0)');
+    // Add buttons configuration only if buttons are provided and not empty
+    const buttonsArray = {!! $buttons !!};
+    if (buttonsArray && Array.isArray(buttonsArray) && buttonsArray.length > 0) {
+        config.buttons = buttonsArray;
+        config.dom = 'Bfrtip';
+    }
+
+    try {
+        const table = $("#{{ $tableId }}").DataTable(config);
+
+        // Initialize buttons if they exist
+        if (config.buttons && config.buttons.length > 0) {
+            table.buttons().container().appendTo('#{{ $tableId }}_wrapper .col-md-6:eq(0)');
+        }
+    } catch (error) {
+        console.error('DataTable initialization error:', error);
+        console.error('Config:', config);
+    }
 });
 </script>

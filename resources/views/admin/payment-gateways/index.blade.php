@@ -28,7 +28,7 @@
                         @include('components.alert-messages')
 
                         <div class="card-body">
-                            <table id="example1" class="table table-bordered table-striped">
+                            <table id="payment-gateways-table" class="table table-bordered table-striped">
                                 <thead>
                                     <tr>
                                         <th>ID</th>
@@ -56,7 +56,6 @@
                                                     </div>
                                                 </form>
                                             </td>
-
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -78,64 +77,38 @@
 
 @include('dashboard.includes/footer')
 
-<x-datatable
-    tableId="example1"
-    :language="json_encode([
-        'lengthMenu' => 'Show _MENU_ payment gateways per page',
-        'zeroRecords' => 'No payment gateways found',
-        'info' => 'Showing _START_ to _END_ of _TOTAL_ payment gateways',
-        'infoEmpty' => 'Showing 0 to 0 of 0 payment gateways',
-        'infoFiltered' => '(filtered from _MAX_ total payment gateways)',
-        'search' => 'Search payment gateways:',
-        'paginate' => [
-            'first' => 'First',
-            'last' => 'Last',
-            'next' => 'Next',
-            'previous' => 'Previous'
-        ]
-    ])"
-/>
-
-<!-- DataTable Scripts -->
 <script>
-    $(function() {
-        $("#example1").DataTable({
-            "responsive": true,
-            "lengthChange": false,
-            "autoWidth": false,
-            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"],
-            "order": []
-        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-    });
+$(function() {
+    console.log('Initializing DataTable...');
 
-    // Toggle Status
-    $('.toggle-status').on('change', function() {
-        let gatewayId = $(this).data('id');
-
-        $.ajax({
-            url: '{{ route('admin.payment-gateways.toggleStatus') }}',
-            method: 'POST',
-            data: {
-                _token: '{{ csrf_token() }}',
-                id: gatewayId
-            },
-            success: function(res) {
-                if (res.success) {
-                    $('.toggle-status').not('[data-id="' + gatewayId + '"]').prop('checked', false);
-                    $('.form-check-label').each(function() {
-                        $(this).text($(this).siblings('.toggle-status').is(':checked') ?
-                            'Active' : 'In Active');
-                    });
-                } else {
-                    Swal.fire({icon: 'error', title: 'Failed', text: 'Failed to update status'});
-                }
-            },
-            error: function() {
-                Swal.fire({icon: 'error', title: 'Error', text: 'Error occurred'});
+    $("#payment-gateways-table").DataTable({
+        "responsive": true,
+        "lengthChange": true,
+        "autoWidth": false,
+        "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"],
+        "pageLength": 10,
+        "lengthMenu": [5, 10, 25, 50],
+        "order": [[0, "asc"]],
+        "language": {
+            "lengthMenu": "Show _MENU_ payment gateways per page",
+            "zeroRecords": "No payment gateways found",
+            "info": "Showing _START_ to _END_ of _TOTAL_ payment gateways",
+            "infoEmpty": "Showing 0 to 0 of 0 payment gateways",
+            "infoFiltered": "(filtered from _MAX_ total payment gateways)",
+            "search": "Search payment gateways:",
+            "paginate": {
+                "first": "First",
+                "last": "Last",
+                "next": "Next",
+                "previous": "Previous"
             }
-        });
-    });
+        }
+    }).buttons().container().appendTo('#payment-gateways-table_wrapper .col-md-6:eq(0)');
+
+    console.log('DataTable initialized successfully');
+});
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 </body>

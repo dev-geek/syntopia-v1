@@ -7,7 +7,7 @@
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-                    {{-- <h1>Users</h1>--}}
+                    <h1>User Logs ({{ $logs->count() }} total)</h1>
                 </div>
             </div>
         </div><!-- /.container-fluid -->
@@ -23,9 +23,10 @@
                         </div>
                         <!-- /.card-header -->
                         <div class="card-body">
-                            <table id="example1" class="table table-bordered table-striped">
+                            <table id="example1" class="table table-bordered table-striped dataTable">
                                 <thead>
                                     <tr>
+                                        <th>ID</th>
                                         <th>User</th>
                                         <th>Activity</th>
                                         <th>IP Address</th>
@@ -34,16 +35,20 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach($logs as $log)
+                                    @forelse($logs as $log)
                                     <tr>
+                                        <td>{{ $loop->iteration }}</td>
                                         <td>{{ $log->user->name ?? 'Unknown' }}</td>
                                         <td>{{ $log->activity }}</td>
                                         <td>{{ $log->ip_address }}</td>
-                                        <td>{{ $log->user_agent }}</td>
+                                        <td>{{ Str::limit($log->user_agent, 50) }}</td>
                                         <td>{{ $log->created_at->setTimezone('Asia/Karachi')->format('j F Y, H:i') }}</td>
-
                                     </tr>
-                                    @endforeach
+                                    @empty
+                                    <tr>
+                                        <td colspan="5" class="text-center">No logs found</td>
+                                    </tr>
+                                    @endforelse
                                 </tbody>
                             </table>
                         </div>
@@ -62,45 +67,65 @@
 <!-- /.content-wrapper -->
 @include('dashboard.includes/footer')
 
-<x-datatable
-    tableId="example1"
-    :language="json_encode([
-        'lengthMenu' => 'Show _MENU_ logs per page',
-        'zeroRecords' => 'No logs found',
-        'info' => 'Showing _START_ to _END_ of _TOTAL_ logs',
-        'infoEmpty' => 'Showing 0 to 0 of 0 logs',
-        'infoFiltered' => '(filtered from _MAX_ total logs)',
-        'search' => 'Search logs:',
-        'paginate' => [
-            'first' => 'First',
-            'last' => 'Last',
-            'next' => 'Next',
-            'previous' => 'Previous'
-        ]
-    ])"
-/>
+<script>
+$(document).ready(function() {
+    console.log('Initializing DataTable directly...');
+
+    try {
+        $('#example1').DataTable({
+            "responsive": true,
+            "lengthChange": true,
+            "autoWidth": false,
+            "pageLength": 10,
+            "lengthMenu": [5, 10, 25, 50],
+            "order": [[0, "desc"]],
+            "searching": true,
+            "ordering": true,
+            "info": true,
+            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"],
+            "dom": 'Bfrtip',
+            "language": {
+                "lengthMenu": "Show _MENU_ logs per page",
+                "zeroRecords": "No logs found",
+                "info": "Showing _START_ to _END_ of _TOTAL_ logs",
+                "infoEmpty": "Showing 0 to 0 of 0 logs",
+                "infoFiltered": "(filtered from _MAX_ total logs)",
+                "search": "Search logs:",
+                "paginate": {
+                    "first": "First",
+                    "last": "Last",
+                    "next": "Next",
+                    "previous": "Previous"
+                }
+            }
+        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
+
+        console.log('DataTable initialized successfully');
+    } catch (error) {
+        console.error('DataTable initialization failed:', error);
+    }
+});
+
+// Debug script to check DataTable initialization
+$(document).ready(function() {
+    console.log('Document ready');
+    console.log('jQuery version:', $.fn.jquery);
+    console.log('DataTable plugin available:', typeof $.fn.DataTable !== 'undefined');
+    console.log('Table element exists:', $('#example1').length);
+    console.log('Table rows:', $('#example1 tbody tr').length);
+
+    // Check if DataTable is already initialized
+    if ($.fn.DataTable.isDataTable('#example1')) {
+        console.log('DataTable is already initialized');
+    } else {
+        console.log('DataTable is not initialized yet');
+    }
+});
+</script>
+
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>
-<script>
-    $(function() {
-        $("#example1").DataTable({
-            "responsive": true,
-            "lengthChange": false,
-            "autoWidth": false,
-            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-        $('#example2').DataTable({
-            "paging": true,
-            "lengthChange": false,
-            "searching": false,
-            "ordering": true,
-            "info": true,
-            "autoWidth": false,
-            "responsive": true,
-        });
-    });
-</script>
 </body>
 
 </html>
