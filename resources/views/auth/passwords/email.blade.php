@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <title>Reset Password</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+    <link rel="shortcut icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+
     <style>
         body {
             background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;

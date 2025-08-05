@@ -15,6 +15,11 @@
             frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
             media-src 'self' data: https://sbl.onfastspring.com https://store.payproglobal.com;">
     <title>Syntopia Pricing</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+    <link rel="shortcut icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 

@@ -9,6 +9,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <title>Login Page</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+    <link rel="shortcut icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+
     <!-- SweetAlert2 -->
     <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script defer src="{{ asset('js/swal-utils.js') }}"></script>

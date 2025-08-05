@@ -16,8 +16,18 @@
         50% { transform: translateY(0); }
         70% { transform: translateY(-4px); }
     }
+    .sidebar-logo {
+        max-width: 150px;
+        height: auto;
+        margin-bottom: 20px;
+    }
 </style>
 <div class="sidebar-content p-3">
+    <!-- Syntopia Logo -->
+    <div class="d-flex justify-content-center mb-3">
+        <img src="{{ asset('syntopia-logo.webp') }}" alt="Syntopia" class="sidebar-logo">
+    </div>
+
     <div class="d-flex flex-column align-items-center mb-4">
         <div class="fw-bold text-center">{{ Auth::user()->name }}</div>
         <div class="text-muted small text-center">{{ Auth::user()->email }}</div>

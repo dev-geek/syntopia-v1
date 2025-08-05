@@ -1,6 +1,6 @@
 @php
-    use App\Models\UserLog;
-    $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
+use App\Models\UserLog;
+$userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
 @endphp
 
 <!DOCTYPE html>
@@ -10,6 +10,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin Dashboard</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+    <link rel="shortcut icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
 
     <!-- Google Font: Source Sans Pro -->
     <link rel="stylesheet"
@@ -742,6 +746,135 @@
         .btn-set-password i {
             font-size: 1.1rem;
         }
+
+        /* Header Notification Styles */
+        .header-notification-container {
+            margin: 0 0.5rem;
+        }
+
+        .header-notification-box {
+            background: linear-gradient(135deg, #fff5f5 0%, #fef7f0 100%);
+            border: 1px solid #fed7aa;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(254, 215, 170, 0.3);
+            overflow: hidden;
+            position: relative;
+            max-width: 300px;
+        }
+
+        .header-notification-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #f59e0b, #f97316, #ea580c);
+        }
+
+        .header-notification-content {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            gap: 0.75rem;
+        }
+
+        .header-notification-icon {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #f59e0b, #f97316);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3);
+        }
+
+        .header-notification-icon i {
+            color: white;
+            font-size: 0.875rem;
+        }
+
+        .header-notification-text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .header-notification-message {
+            color: #a16207;
+            font-size: 0.8rem;
+            line-height: 1.3;
+            font-weight: 500;
+        }
+
+        /* Responsive Design for Header Notification */
+        @media (max-width: 768px) {
+            .header-notification-container {
+                margin: 0 0.25rem;
+            }
+
+            .header-notification-box {
+                max-width: 250px;
+            }
+
+            .header-notification-content {
+                padding: 0.5rem;
+                gap: 0.5rem;
+            }
+
+            .header-notification-icon {
+                width: 28px;
+                height: 28px;
+            }
+
+            .header-notification-icon i {
+                font-size: 0.75rem;
+            }
+
+            .header-notification-message {
+                font-size: 0.75rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .header-notification-box {
+                max-width: 200px;
+            }
+
+            .header-notification-message {
+                font-size: 0.7rem;
+            }
+        }
+
+        /* Animation for Header Notification */
+        .header-notification-box {
+            animation: slideInRight 0.4s ease-out;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Hover effects for Header Notification */
+        .header-notification-box:hover {
+            box-shadow: 0 4px 12px rgba(254, 215, 170, 0.4);
+            transform: translateY(-1px);
+            transition: all 0.3s ease;
+        }
+
+        .header-notification-icon:hover {
+            transform: scale(1.05);
+            transition: transform 0.2s ease;
+        }
     </style>
 
 </head>
@@ -759,88 +892,107 @@
                     </button>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i
-                            class="fas fa-bars"></i></a>
+                    <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
                 </li>
             </ul>
 
-            {{-- <!-- SEARCH FORM --> --}}
+            {{--
+            <!-- SEARCH FORM --> --}}
             {{-- <form class="form-inline ml-3"> --}}
-            {{-- <div class="input-group input-group-sm"> --}}
-            {{-- <input class="form-control form-control-navbar" type="search" placeholder="Search" --}}
-            {{-- aria-label="Search"> --}}
-            {{-- <div class="input-group-append"> --}}
-            {{-- <button class="btn btn-navbar" type="submit"> --}}
-            {{-- <i class="fas fa-search"></i> --}}
-            {{-- </button> --}}
-            {{-- </div> --}}
-            {{-- </div> --}}
-            {{-- </form> --}}
+                {{-- <div class="input-group input-group-sm"> --}}
+                    {{-- <input class="form-control form-control-navbar" type="search" placeholder="Search" --}} {{--
+                        aria-label="Search"> --}}
+                    {{-- <div class="input-group-append"> --}}
+                        {{-- <button class="btn btn-navbar" type="submit"> --}}
+                            {{-- <i class="fas fa-search"></i> --}}
+                            {{-- </button> --}}
+                        {{-- </div> --}}
+                    {{-- </div> --}}
+                {{-- </form> --}}
 
             <!-- Right navbar links -->
             <ul class="navbar-nav ml-auto">
                 @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
-                    <li class="nav-item">
-                        <a href="#" class="btn btn-primary header-software-btn" id="accessSoftwareBtn"
-                            onclick="checkPasswordAndAccess()">
-                            <i class="bi bi-box-arrow-up-right"></i>
-                            <span class="d-none d-md-inline">ACCESS THE SOFTWARE</span>
-                        </a>
-                    </li>
+                @include('dashboard.includes.login-to-software-notification')
+                <li class="nav-item">
+                    <a href="#" class="btn btn-primary header-software-btn" id="accessSoftwareBtn"
+                        onclick="checkPasswordAndAccess()">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                        <span class="d-none d-md-inline">ACCESS THE SOFTWARE</span>
+                    </a>
+                </li>
+
+                @if (!Auth::user()->hasValidSubscriberPassword())
+                <li class="nav-item">
+                    <div class="header-notification-container">
+                        <div class="header-notification-box">
+                            <div class="header-notification-content">
+                                <div class="header-notification-icon">
+                                    <i class="fas fa-shield-alt"></i>
+                                </div>
+                                <div class="header-notification-text">
+                                    <span class="header-notification-message">Please login to the software using your
+                                        email and password.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+                @endif
                 @endif
 
 
 
                 @if (!Auth::user()->hasValidSubscriberPassword())
-                    {{-- Custom modal overlay for password setup --}}
-                    <div id="passwordModalOverlay" class="password-modal-overlay" style="display: none;">
-                        <div class="password-modal-container">
-                            <div class="password-modal-box">
-                                <div class="password-modal-header">
-                                    <h5 class="password-modal-title">
-                                        <i class="fas fa-shield-alt me-2"></i>
-                                        Set Your Password
-                                    </h5>
-                                </div>
-                                <div class="password-modal-body">
-                                    <p>You haven't set a password yet. Please set a password to continue.</p>
-                                    <button type="button" class="btn-set-password">
-                                        <i class="fas fa-key"></i>
-                                        Set Password
-                                    </button>
-                                </div>
+                {{-- Custom modal overlay for password setup --}}
+                <div id="passwordModalOverlay" class="password-modal-overlay" style="display: none;">
+                    <div class="password-modal-container">
+                        <div class="password-modal-box">
+                            <div class="password-modal-header">
+                                <h5 class="password-modal-title">
+                                    <i class="fas fa-shield-alt me-2"></i>
+                                    Set Your Password
+                                </h5>
+                            </div>
+                            <div class="password-modal-body">
+                                <p>You haven't set a password yet. Please set a password to continue.</p>
+                                <button type="button" class="btn-set-password">
+                                    <i class="fas fa-key"></i>
+                                    Set Password
+                                </button>
                             </div>
                         </div>
                     </div>
+                </div>
                 @endif
 
                 @if (!Auth::user()->hasRole('Sub Admin'))
-                    <li class="nav-item dropdown">
-                        <a class="nav-link position-relative header-bell @if ($userLogs->count()) has-notifications @endif"
-                            data-toggle="dropdown" href="#">
-                            <i class="far fa-bell"></i>
-                            @if ($userLogs->count())
-                                <span class="badge navbar-badge">{{ $userLogs->count() }}</span>
-                            @endif
-                        </a>
-                        <div class="dropdown-menu notifications-dropdown dropdown-menu-lg dropdown-menu-right">
-                            <div class="dropdown-header">{{ $userLogs->count() }} Notifications</div>
-                            <div class="dropdown-divider m-0"></div>
-                            @foreach ($userLogs->take(5) as $log)
-                                <div class="notification-item">
-                                    <span class="notification-icon"><i class="fas fa-user"></i></span>
-                                    <div class="notification-content">
-                                        <div class="notification-activity">{{ $log->activity }}</div>
-                                        <div class="notification-time">
-                                            {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>
-                                    </div>
-                                </div>
-                                <div class="dropdown-divider m-0"></div>
-                            @endforeach
-                            <a href="{{ route('admin.users-logs') }}" class="dropdown-footer notifications-footer">See
-                                All Notifications</a>
+                <li class="nav-item dropdown">
+                    <a class="nav-link position-relative header-bell @if ($userLogs->count()) has-notifications @endif"
+                        data-toggle="dropdown" href="#">
+                        <i class="far fa-bell"></i>
+                        @if ($userLogs->count())
+                        <span class="badge navbar-badge">{{ $userLogs->count() }}</span>
+                        @endif
+                    </a>
+                    <div class="dropdown-menu notifications-dropdown dropdown-menu-lg dropdown-menu-right">
+                        <div class="dropdown-header">{{ $userLogs->count() }} Notifications</div>
+                        <div class="dropdown-divider m-0"></div>
+                        @foreach ($userLogs->take(5) as $log)
+                        <div class="notification-item">
+                            <span class="notification-icon"><i class="fas fa-user"></i></span>
+                            <div class="notification-content">
+                                <div class="notification-activity">{{ $log->activity }}</div>
+                                <div class="notification-time">
+                                    {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>
+                            </div>
                         </div>
-                    </li>
+                        <div class="dropdown-divider m-0"></div>
+                        @endforeach
+                        <a href="{{ route('admin.users-logs') }}" class="dropdown-footer notifications-footer">See
+                            All Notifications</a>
+                    </div>
+                </li>
                 @endif
                 <!-- User Dropdown -->
                 <li class="nav-item dropdown header-user-dropdown">
@@ -852,15 +1004,15 @@
                         <div class="dropdown-header">User Menu</div>
                         <div class="dropdown-divider m-0"></div>
                         @if (auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))
-                            <a href="{{ route('admin.profile') }}" class="dropdown-item">
-                                <i class="fas fa-user-edit"></i>
-                                <span>Edit Profile</span>
-                            </a>
+                        <a href="{{ route('admin.profile') }}" class="dropdown-item">
+                            <i class="fas fa-user-edit"></i>
+                            <span>Edit Profile</span>
+                        </a>
                         @else
-                            <a href="{{ route('user.profile') }}" class="dropdown-item">
-                                <i class="fas fa-user-edit"></i>
-                                <span>Edit Profile</span>
-                            </a>
+                        <a href="{{ route('user.profile') }}" class="dropdown-item">
+                            <i class="fas fa-user-edit"></i>
+                            <span>Edit Profile</span>
+                        </a>
                         @endif
                         <div class="dropdown-divider m-0"></div>
                         <a href="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])? 'admin.logout': 'logout') }}"

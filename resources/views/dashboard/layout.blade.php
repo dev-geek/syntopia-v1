@@ -19,9 +19,6 @@
                 @include('dashboard.includes.cards')
             @endhasanyrole
 
-
-            @include('dashboard.includes.login-to-software-notification')
-
             {{-- Show to role User --}}
             @role('User')
                 @if (!Auth::user()->hasValidSubscriberPassword())

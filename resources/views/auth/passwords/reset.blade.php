@@ -9,6 +9,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
     <title>Update Password</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+    <link rel="shortcut icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+
     <style>
         body {
             background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;

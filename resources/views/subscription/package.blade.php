@@ -6,7 +6,7 @@
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
   <!-- Content Header (Page header) -->
- 
+
 
   <!-- Main content -->
   <section class="content">
@@ -15,9 +15,9 @@
         <div class="col-12">
 
         <!-- Display success message if any -->
-        
-            
-       
+
+
+
         <div class="overview-wrapper">
           <div class="container">
             <h2 class="overview-title">PLAN - {{ strtoupper($latest_order_package) }}
@@ -38,10 +38,10 @@
               @elseif($latest_order_package == 'Business')
               <div class="total-right">Total 3 People</div>
               <div class="progress-bar"><div class="progress-fill"></div></div>
-              @endif 
-             
+              @endif
+
               </div>
-      
+
               <div class="overview-card">
                 <h4>Livestream rooms created</h4>
                 <div class="stat-line"><span>Used</span><span class="value" style="color:#facc15">2</span><span>Pieces</span></div>
@@ -54,11 +54,11 @@
                 Total 3 Pieces
                 @elseif($latest_order_package == 'Business')
                 Total 1 Pieces
-                @endif 
+                @endif
                   </div>
                 <div class="progress-bar"><div class="progress-fill yellow" style="width: 66%;"></div></div>
               </div>
-      
+
               <div class="overview-card">
                 <h4>Livestream accounts</h4>
                 <div class="stat-line"><span>Used</span><span class="value">1</span><span>Pieces</span></div>
@@ -75,25 +75,25 @@
                   </div>
                 <div class="progress-bar"><div class="progress-fill"></div></div>
               </div>
-      
+
               <div class="overview-card">
                 <h4>Streaming duration</h4>
                 <div class="stat-line"><span>Current</span><span class="value">0</span><span>Minutes</span></div>
                 <div class="total-right">
                   @if($latest_order_package == 'Free')
-                  Total 10 Minutes
+                  Total 120 Minutes
                 @elseif($latest_order_package == 'Starter')
                 Total 60 Hours
                 @elseif($latest_order_package == 'Pro')
                 Total 120 Hours
                 @elseif($latest_order_package == 'Business')
                 Unlimited
-                @endif  
-                  
+                @endif
+
                 </div>
                 <div class="progress-bar"><div class="progress-fill gray" style="width: 0%;"></div></div>
               </div>
-      
+
               <div class="overview-card">
                 <h4>Resource storage</h4>
                 <div class="stat-line"><span>Used</span><span class="value">0</span><span>GB</span></div>
@@ -106,7 +106,7 @@
                 Total 5 GB
                 @elseif($latest_order_package == 'Business')
                 Total 5 GB
-                @endif   
+                @endif
                 </div>
                 <div class="progress-bar"><div class="progress-fill gray" style="width: 0%;"></div></div>
                 <div class="legend">
@@ -115,7 +115,7 @@
                   <span><span class="dot audio"></span>Audio</span>
                 </div>
               </div>
-      
+
               <div class="overview-card">
                 <h4>AI creation</h4>
                 <div class="stat-line"><span>Used</span><span class="value">0</span><span>Times</span></div>
@@ -128,12 +128,12 @@
                 Total 30 Times
                 @elseif($latest_order_package == 'Business')
                 Total 90 Times
-                @endif 
-                  
+                @endif
+
                   </div>
                 <div class="progress-bar"><div class="progress-fill gray" style="width: 0%;"></div></div>
               </div>
-      
+
               <div class="overview-card">
                 <h4>AI rewriting</h4>
                 <div class="stat-line"><span>Used</span><span class="value">0</span><span>Times</span></div>
@@ -146,12 +146,12 @@
                 Total 30 Times
                 @elseif($latest_order_package == 'Business')
                 Total 90 Times
-                @endif  
-                  
+                @endif
+
                   </div>
                 <div class="progress-bar"><div class="progress-fill gray" style="width: 0%;"></div></div>
               </div>
-      
+
               <div class="overview-card">
                 <h4>Video synthesis duration</h4>
                 <div class="stat-line"><span>Used</span><span class="value">0</span><span>Minutes</span></div>
@@ -164,18 +164,18 @@
                 Total 20 Minutes
                 @elseif($latest_order_package == 'Business')
                 Total 60 Minutes
-                @endif 
+                @endif
                   </div>
                 <div class="progress-bar"><div class="progress-fill gray" style="width: 0%;"></div></div>
               </div>
             </div>
           </div>
         </div>
-  
 
 
-                   
-             
+
+
+
             </div>
             <!-- /.card-body -->
           </div>
@@ -196,7 +196,7 @@
 
 <!-- /.control-sidebar -->
 </div>
- 
+
 </body>
 
 </html>

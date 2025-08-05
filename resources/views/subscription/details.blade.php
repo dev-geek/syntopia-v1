@@ -324,7 +324,7 @@
                     <div class="card subscription-card">
                         <div class="card-header">
 
-                            <div class="float-right">
+                                                            <div class="float-right">
                                 @if ($hasActiveSubscription && $canUpgrade)
                                 <a class="btn btn-success"
                                         href="{{ route('subscription', ['type' => 'upgrade']) }}">
@@ -359,10 +359,6 @@
                                             <i class="fas fa-times mr-1"></i>Cancel Subscription
                                         </button>
                                     @endif
-                                @elseif (!$hasActiveSubscription)
-                                    <a class="btn btn-warning" href="{{ route('subscription', ['type' => 'new']) }}">
-                                        <i class="fas fa-shopping-cart mr-1"></i>Buy Subscription
-                                    </a>
                                 @endif
                             </div>
                         </div>
@@ -400,7 +396,9 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6">
+
+                                {{-- First Row: Package and License Information --}}
+                                <div class="col-lg-6 col-md-12 mb-4">
                                     <div class="info-card">
                                         <h3 class="card-title">
                                             <i class="fas fa-box mr-2"></i>Package Information
@@ -464,51 +462,10 @@
                                             </div>
                                         </div>
                                     </div>
-                                    @if ($user->userLicence)
-                                        <div class="info-card">
-                                            <h3 class="card-title">
-                                                <i class="fas fa-calendar-alt mr-2"></i>License Period
-                                            </h3>
-                                            <div class="row">
-                                                <div class="col-12">
-                                                    @if ($user->userLicence->activated_at)
-                                                        <p class="text-muted mb-2"><strong>Activated Date:</strong></p>
-                                                        <p class="mb-2">
-                                                            <i class="fas fa-play-circle text-success mr-1"></i>
-                                                            {{ $user->userLicence->activated_at->format('F j, Y') }}
-                                                        </p>
-                                                    @endif
-                                                    @if ($calculatedEndDate)
-                                                        <p class="text-muted mb-2"><strong>End Date:</strong></p>
-                                                        <p class="mb-2 {{ $isExpired ? 'text-danger' : '' }}">
-                                                            <i class="fas fa-stop-circle text-danger mr-1"></i>
-                                                            {{ $calculatedEndDate->format('F j, Y') }}
-                                                            @if ($isExpired)
-                                                                <span class="badge badge-danger ml-2">Expired</span>
-                                                            @elseif ($calculatedEndDate->diffInDays(now()) <= 7)
-                                                                <span class="badge badge-warning ml-2">Expires Soon</span>
-                                                            @endif
-                                                        </p>
-                                                        @if (!$isExpired && $calculatedEndDate)
-                                                            <p class="text-muted mb-2"><strong>Days Remaining:</strong></p>
-                                                            <p class="mb-2">
-                                                                <i class="fas fa-clock text-info mr-1"></i>
-                                                                {{ $calculatedEndDate->diffInDays(now()) }} days
-                                                            </p>
-                                                        @endif
-                                                    @else
-                                                        <p class="text-muted mb-2"><strong>End Date:</strong></p>
-                                                        <p class="mb-2">
-                                                            <i class="fas fa-question-circle text-muted mr-1"></i>
-                                                            Not available
-                                                        </p>
-                                                    @endif
-                                                </div>
-                                            </div>
-                                        </div>
-                                    @endif
                                 </div>
-                                <div class="col-md-6">
+
+                                {{-- License Information Section --}}
+                                <div class="col-lg-6 col-md-12 mb-4">
                                     @if ($user->userLicence && $user->userLicence->license_key)
                                         <div class="info-card">
                                             <h3 class="card-title">
@@ -533,23 +490,59 @@
                                             </div>
                                         </div>
                                     @endif
+                                </div>
 
-                                    {{-- Action Cards based on subscription status --}}
-                                    @if (!$hasActiveSubscription)
-                                        <div class="card action-card bg-warning text-white mb-3">
-                                            <div class="card-header">
-                                                <h3 class="card-title">
-                                                    <i class="fas fa-shopping-cart"></i> Get Started
-                                                </h3>
-                                            </div>
-                                            <div class="card-body">
-                                                <p>Choose from our available subscription plans to get started.</p>
-                                                <a href="{{ route('home') }}" class="btn btn-light">
-                                                    <i class="fas fa-eye"></i> View Plans
-                                                </a>
+                                {{-- Second Row: License Period and Action Cards --}}
+                                @if ($user->userLicence)
+                                <div class="col-lg-6 col-md-12 mb-4">
+                                    <div class="info-card">
+                                        <h3 class="card-title">
+                                            <i class="fas fa-calendar-alt mr-2"></i>License Period
+                                        </h3>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                @if ($user->userLicence->activated_at)
+                                                    <p class="text-muted mb-2"><strong>Activated Date:</strong></p>
+                                                    <p class="mb-2">
+                                                        <i class="fas fa-play-circle text-success mr-1"></i>
+                                                        {{ $user->userLicence->activated_at->format('F j, Y') }}
+                                                    </p>
+                                                @endif
+                                                @if ($calculatedEndDate)
+                                                    <p class="text-muted mb-2"><strong>End Date:</strong></p>
+                                                    <p class="mb-2 {{ $isExpired ? 'text-danger' : '' }}">
+                                                        <i class="fas fa-stop-circle text-danger mr-1"></i>
+                                                        {{ $calculatedEndDate->format('F j, Y') }}
+                                                        @if ($isExpired)
+                                                            <span class="badge badge-danger ml-2">Expired</span>
+                                                        @elseif ($calculatedEndDate->diffInDays(now()) <= 7)
+                                                            <span class="badge badge-warning ml-2">Expires Soon</span>
+                                                        @endif
+                                                    </p>
+                                                    @if (!$isExpired && $calculatedEndDate)
+                                                        <p class="text-muted mb-2"><strong>Days Remaining:</strong></p>
+                                                        <p class="mb-2">
+                                                            <i class="fas fa-clock text-info mr-1"></i>
+                                                            {{ $calculatedEndDate->diffInDays(now()) }} days
+                                                        </p>
+                                                    @endif
+                                                @else
+                                                    <p class="text-muted mb-2"><strong>End Date:</strong></p>
+                                                    <p class="mb-2">
+                                                        <i class="fas fa-question-circle text-muted mr-1"></i>
+                                                        Not available
+                                                    </p>
+                                                @endif
                                             </div>
                                         </div>
-                                    @elseif ($hasActiveSubscription && strtolower($currentPackage) === 'free')
+                                    </div>
+                                </div>
+                                @endif
+
+                                {{-- Action Cards Section --}}
+                                <div class="col-lg-{{ $user->userLicence ? '6' : '12' }} col-md-12 mb-4">
+                                    {{-- Action Cards based on subscription status --}}
+                                    @if ($hasActiveSubscription && strtolower($currentPackage) === 'free')
                                         <div class="card action-card bg-info text-white mb-3">
                                             <div class="card-header">
                                                 <h3 class="card-title">
@@ -561,6 +554,25 @@
                                                 <a href="{{ route('home') }}" class="btn btn-light">
                                                     <i class="fas fa-star"></i> View Premium Plans
                                                 </a>
+                                            </div>
+                                        </div>
+                                    @elseif ($hasActiveSubscription && $canUpgrade)
+                                        <div class="card action-card bg-success text-white mb-3">
+                                            <div class="card-header">
+                                                <h3 class="card-title">
+                                                    <i class="fas fa-arrow-up"></i> Manage Subscription
+                                                </h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <p>Upgrade, downgrade, or manage your subscription.</p>
+                                                <div class="btn-group-vertical w-100">
+                                                    <a href="{{ route('subscription', ['type' => 'upgrade']) }}" class="btn btn-light mb-2">
+                                                        <i class="fas fa-arrow-up"></i> Upgrade
+                                                    </a>
+                                                    <a href="{{ route('subscription', ['type' => 'downgrade']) }}" class="btn btn-light">
+                                                        <i class="fas fa-arrow-down"></i> Downgrade
+                                                    </a>
+                                                </div>
                                             </div>
                                         </div>
                                     @endif
