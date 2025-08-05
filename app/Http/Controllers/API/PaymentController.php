@@ -2165,8 +2165,12 @@ class PaymentController extends Controller
                     'transaction_id' => $transactionId,
                     'order_id' => $pendingOrder->id,
                     'user_id' => $userId,
-                    'package' => $packageName
+                    'package' => $packageName,
+                    'order_type' => $pendingOrder->order_type
                 ]);
+
+                // Check if this is an upgrade order
+                $isUpgrade = ($customData['upgrade_type'] ?? '') === 'subscription_upgrade' || $pendingOrder->order_type === 'upgrade';
 
                 // Update the order status
                 $pendingOrder->update(['status' => 'completed']);
@@ -2209,7 +2213,8 @@ class PaymentController extends Controller
                             'package' => $packageName,
                             'license_id' => $license->id,
                             'transaction_id' => $transactionId,
-                            'subscription_id' => $subscriptionId
+                            'subscription_id' => $subscriptionId,
+                            'is_upgrade' => $isUpgrade
                         ]);
                     } else {
                         Log::error('Failed to create license for Paddle order', [
@@ -2772,23 +2777,46 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId
             ]);
 
-            // Always schedule upgrade at expiration for Paddle
-            Log::info('Paddle upgrades are always scheduled at expiration', [
-                'user_id' => $user->id,
-                'package_name' => $packageData->name
-            ]);
+            // Check if this is an immediate upgrade or upgrade at expiration
+            $upgradeAtExpiration = request()->input('upgrade_at_expiration', false);
 
-            $result = $this->upgradePaddleSubscriptionAtExpiration($user, $packageData, $subscriptionId);
+            if ($upgradeAtExpiration) {
+                // Use the method that schedules upgrade at expiration
+                $result = $this->upgradePaddleSubscriptionAtExpiration($user, $packageData, $subscriptionId);
 
-            if ($result) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Upgrade scheduled to take effect at your next billing date',
-                    'upgrade_type' => 'at_expiration'
-                ]);
+                if ($result) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Upgrade scheduled to take effect at your next billing date',
+                        'upgrade_type' => 'at_expiration'
+                    ]);
+                }
+
+                return response()->json(['error' => 'Failed to schedule upgrade'], 500);
             }
 
-            return response()->json(['error' => 'Failed to schedule upgrade'], 500);
+            // Immediate upgrade flow
+            $checkoutUrl = $this->createPaddleUpgradeOrder($user, $packageData, $subscriptionId);
+
+            if (!$checkoutUrl) {
+                Log::error('Failed to create Paddle upgrade order', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return response()->json(['error' => 'Failed to create upgrade order'], 500);
+            }
+
+            Log::info('Paddle upgrade order created successfully', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'checkout_url' => $checkoutUrl
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $checkoutUrl,
+                'message' => 'Upgrade order created successfully'
+            ]);
         } catch (\Exception $e) {
             Log::error('Paddle upgrade error', [
                 'error' => $e->getMessage(),
@@ -3179,7 +3207,7 @@ class PaymentController extends Controller
                 'transaction_id' => $transactionId
             ]);
 
-                        return true;
+            return true;
         } catch (\Exception $e) {
             Log::error('Paddle upgrade at expiration error', [
                 'error' => $e->getMessage(),
@@ -3189,6 +3217,100 @@ class PaymentController extends Controller
                 'transaction_id' => $transactionId ?? null
             ]);
             return false;
+        }
+    }
+
+    private function createPaddleUpgradeOrder($user, $packageData, $subscriptionId)
+    {
+        try {
+            // Generate a temporary transaction ID for the upgrade order
+            $tempTransactionId = 'PADDLE-UPGRADE-' . Str::random(10);
+
+            // Create a new order for the upgrade
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'order_type' => 'upgrade',
+                'transaction_id' => $tempTransactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'upgrade_to' => $packageData->name,
+                    'upgrade_type' => 'subscription_upgrade',
+                    'temp_transaction_id' => true,
+                    'subscription_id' => $subscriptionId
+                ]
+            ]);
+
+            // Generate Paddle checkout URL for upgrade
+            $checkoutUrl = $this->generatePaddleUpgradeUrl($order, $packageData, $subscriptionId);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to create Paddle upgrade order', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
+        }
+    }
+
+    private function generatePaddleUpgradeUrl($order, $packageData, $subscriptionId)
+    {
+        try {
+            // Get the new price ID for the package
+            $paddleClient = new \App\Services\PaddleClient();
+            $product = $paddleClient->findProductByName($packageData->name);
+
+            if (!$product) {
+                Log::error('Paddle product not found for upgrade', [
+                    'package' => $packageData->name
+                ]);
+                return null;
+            }
+
+            $price = $paddleClient->findActivePriceForProduct($product['id']);
+            if (!$price) {
+                Log::error('No active prices found for upgrade', [
+                    'product_id' => $product['id']
+                ]);
+                return null;
+            }
+
+            // Get user from order
+            $user = $order->user;
+
+            // Generate Paddle checkout URL for upgrade
+            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
+            $baseUrl = $environment === 'production'
+                ? 'https://checkout.paddle.com'
+                : 'https://sandbox-checkout.paddle.com';
+
+            $checkoutUrl = "{$baseUrl}/pay/{$price['id']}?" . http_build_query([
+                'customer_id' => $user->paddle_customer_id ?? '',
+                'subscription_id' => $subscriptionId,
+                'order_id' => $order->id,
+                'passthrough' => json_encode([
+                    'user_id' => $user->id,
+                    'package' => $packageData->name,
+                    'package_id' => $packageData->id,
+                    'order_id' => $order->id,
+                    'upgrade_type' => 'subscription_upgrade'
+                ])
+            ]);
+
+            return $checkoutUrl;
+        } catch (\Exception $e) {
+            Log::error('Failed to generate Paddle upgrade URL', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+                'package_name' => $packageData->name
+            ]);
+            return null;
         }
     }
 

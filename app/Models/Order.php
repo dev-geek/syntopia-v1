@@ -30,7 +30,8 @@ class Order extends Model
         'status',
         'currency',
         'subscription_id',
-        'metadata'
+        'metadata',
+        'order_type'
     ];
 
     /**
