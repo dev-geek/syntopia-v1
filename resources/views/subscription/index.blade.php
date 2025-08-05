@@ -616,6 +616,50 @@
                 }
             });
 
+            // Monitor downgrade popup for URL changes
+            function monitorDowngradePopup(popup) {
+                let popupCheckInterval = setInterval(() => {
+                    try {
+                        if (popup.closed) {
+                            clearInterval(popupCheckInterval);
+                            console.log('Downgrade popup closed');
+
+                            // Check if we have a success flag
+                            const successUrl = sessionStorage.getItem('downgradeSuccessUrl');
+                            if (successUrl) {
+                                console.log('Redirecting to success URL:', successUrl);
+                                window.location.href = successUrl;
+                            } else {
+                                showInfo('Downgrade Cancelled', 'Your downgrade was cancelled or incomplete.');
+                            }
+
+                            // Clean up
+                            sessionStorage.removeItem('downgradeSuccessUrl');
+                            return;
+                        }
+
+                        // Try to check the popup URL for success indicators
+                        try {
+                            const popupUrl = popup.location.href;
+                            if (popupUrl && (popupUrl.includes('/payments/success') || popupUrl.includes('/thankyou') || popupUrl.includes('success'))) {
+                                console.log('Downgrade success page detected');
+
+                                // Set success flag
+                                sessionStorage.setItem('downgradeSuccessUrl', popupUrl);
+
+                                clearInterval(popupCheckInterval);
+                                setTimeout(() => popup.close(), 1000);
+                            }
+                        } catch (e) {
+                            // Cross-origin error expected, we'll rely on popup closure
+                        }
+                    } catch (error) {
+                        console.error('Downgrade popup monitoring error:', error);
+                        clearInterval(popupCheckInterval);
+                    }
+                }, 500);
+            }
+
             // Monitor PayProGlobal popup for URL changes
             function monitorPayProGlobalPopup(popup) {
                 payProGlobalPopup = popup;
@@ -1462,14 +1506,16 @@
                 if (action === 'upgrade') {
                     apiUrl = `/api/payments/upgrade/${packageName}`;
                 } else if (action === 'downgrade') {
-                    apiUrl =
-                        `/api/payments/payproglobal/checkout/${packageName}`; // Adjust if downgrade uses a different gateway
+                    // Use the downgrade endpoint for all gateways
+                    apiUrl = `/api/payments/downgrade`;
                 } else {
                     apiUrl =
                         `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
                 }
 
-                const requestBody = {
+                const requestBody = action === 'downgrade' ? {
+                    package: packageName
+                } : {
                     package: packageName,
                     is_upgrade: action === 'upgrade',
                     is_downgrade: action === 'downgrade'
@@ -1505,7 +1551,31 @@
                         // Hide spinner before opening payment popup
                         hideSpinner();
 
-                        if (selectedGateway === 'FastSpring') {
+                        if (action === 'downgrade') {
+                            // For downgrades, handle based on gateway
+                            if (selectedGateway === 'Paddle') {
+                                console.log('Executing Paddle downgrade checkout with transaction ID from response...');
+                                // Use the transaction ID from the downgrade response directly
+                                if (data.transaction_id) {
+                                    openPaddleCheckout(data.transaction_id, action);
+                                } else {
+                                    // Fallback to the old processPaddle method if no transaction_id
+                                    processPaddle(packageName, action);
+                                }
+                            } else {
+                                // For other gateways, open checkout URL in popup
+                                console.log('Opening downgrade checkout URL:', data.checkout_url);
+                                const downgradePopup = window.open(data.checkout_url, 'downgrade_checkout', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+
+                                if (!downgradePopup) {
+                                    showError('Popup Blocked', 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.');
+                                    return;
+                                }
+
+                                // Monitor the downgrade popup
+                                monitorDowngradePopup(downgradePopup);
+                            }
+                        } else if (selectedGateway === 'FastSpring') {
                             processFastSpring(packageName, action);
                         } else if (selectedGateway === 'Paddle') {
                             console.log('Executing Paddle checkout with transaction ID from upgrade response...');
@@ -1946,6 +2016,7 @@
                 sessionStorage.removeItem('currentPaddleAction');
                 sessionStorage.removeItem('currentPaddleTransactionId');
                 sessionStorage.removeItem('autoPopupTriggered');
+                sessionStorage.removeItem('downgradeSuccessUrl');
             });
         });
 

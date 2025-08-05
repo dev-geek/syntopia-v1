@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use App\Models\{Package, User, PaymentGateways, Order, UserLicence};
 use App\Services\LicenseService;
 use App\Services\LicenseApiService;
+use App\Services\PaddleClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -1069,14 +1070,8 @@ class PaymentController extends Controller
                     $package = Package::find($pendingOrder->package_id);
 
                     if ($user && $package) {
-                        // Update user's package and subscription status
-                        $user->update([
-                            'package_id' => $package->id,
-                            'is_subscribed' => true
-                        ]);
-
-                                            // Get subscription_id from transaction data if available
-                    $subscriptionId = $transactionData['subscription_id'] ?? ($pendingOrder->metadata['subscription_id'] ?? null) ?? null;
+                        // Get subscription_id from transaction data if available
+                        $subscriptionId = $transactionData['subscription_id'] ?? ($pendingOrder->metadata['subscription_id'] ?? null) ?? null;
 
                         // For Paddle, if no subscription_id is available, generate one based on transaction
                         if (!$subscriptionId) {
@@ -1087,6 +1082,14 @@ class PaymentController extends Controller
                                 'generated_subscription_id' => $subscriptionId
                             ]);
                         }
+
+                        // Update user's package, subscription status, and payment gateway
+                        $user->update([
+                            'package_id' => $package->id,
+                            'is_subscribed' => true,
+                            'payment_gateway_id' => $pendingOrder->payment_gateway_id,
+                            'subscription_id' => $subscriptionId
+                        ]);
 
                         // Create or update license
                         $license = $this->licenseService->createAndActivateLicense(
@@ -1525,12 +1528,14 @@ class PaymentController extends Controller
                         // This is an upgrade that was scheduled for expiration
                         $order->update(['status' => 'completed']);
 
-                        // Update user's package
+                        // Update user's package and payment gateway
                         $user = $order->user;
                         if ($user) {
                             $user->update([
                                 'package_id' => $order->package_id,
-                                'is_subscribed' => true
+                                'is_subscribed' => true,
+                                'payment_gateway_id' => $order->payment_gateway_id,
+                                'subscription_id' => $payload['subscription'] ?? null
                             ]);
 
                             // Update license
@@ -2180,12 +2185,6 @@ class PaymentController extends Controller
                 $package = Package::where('name', $packageName)->first();
 
                 if ($user && $package) {
-                    // Update user's package and subscription status
-                    $user->update([
-                        'package_id' => $package->id,
-                        'is_subscribed' => true
-                    ]);
-
                     // Get subscription_id from transaction data if available
                     $subscriptionId = $eventData['subscription_id'] ?? ($pendingOrder->metadata['subscription_id'] ?? null) ?? null;
 
@@ -2198,6 +2197,14 @@ class PaymentController extends Controller
                             'generated_subscription_id' => $subscriptionId
                         ]);
                     }
+
+                    // Update user's package, subscription status, and payment gateway
+                    $user->update([
+                        'package_id' => $package->id,
+                        'is_subscribed' => true,
+                        'payment_gateway_id' => $pendingOrder->payment_gateway_id,
+                        'subscription_id' => $subscriptionId
+                    ]);
 
                     // Create or update license
                     $license = $this->licenseService->createAndActivateLicense(
@@ -3731,6 +3738,18 @@ class PaymentController extends Controller
 
             // Handle downgrade based on gateway
             if ($gateway->name === 'Paddle') {
+                // Additional validation for Paddle downgrades
+                if (!$user->paddle_customer_id) {
+                    // Try to create or retrieve Paddle customer ID
+                    $paddleCustomerId = $this->ensurePaddleCustomerId($user);
+                    if (!$paddleCustomerId) {
+                        return response()->json([
+                            'error' => 'Paddle Customer ID Missing',
+                            'message' => 'Your Paddle customer information is missing. Please contact support to resolve this issue.',
+                            'action' => 'contact_support'
+                        ], 400);
+                    }
+                }
                 return $this->handlePaddleDowngrade($user, $packageData, $subscriptionId);
             } elseif ($gateway->name === 'FastSpring') {
                 return $this->handleFastSpringDowngrade($user, $packageData, $subscriptionId);
@@ -3759,67 +3778,89 @@ class PaymentController extends Controller
     private function handlePaddleDowngrade($user, $packageData, $subscriptionId)
     {
         try {
-            $apiKey = config('payment.gateways.Paddle.api_key');
-            $environment = config('payment.gateways.Paddle.environment', 'sandbox');
-            $apiBaseUrl = $environment === 'production'
-                ? 'https://api.paddle.com'
-                : 'https://sandbox-api.paddle.com';
+            Log::info('Starting Paddle downgrade process', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'subscription_id' => $subscriptionId,
+                'paddle_customer_id' => $user->paddle_customer_id
+            ]);
 
-            if (empty($apiKey)) {
-                Log::error('Paddle API key missing for downgrade');
-                return response()->json(['error' => 'Payment configuration error'], 500);
-            }
+            // Use PaddleClient service to get product and price information
+            $paddleClient = new PaddleClient();
+            Log::info('Fetching Paddle product for downgrade', ['package_name' => $packageData->name]);
 
-            // Get the new price ID for the package
-            $productsResponse = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json'
-            ])->get("{$apiBaseUrl}/products", ['include' => 'prices']);
+            $product = $paddleClient->findProductByName($packageData->name);
 
-            if (!$productsResponse->successful()) {
-                Log::error('Paddle products fetch failed for downgrade', ['status' => $productsResponse->status()]);
-                return response()->json(['error' => 'Product fetch failed'], 500);
-            }
-
-            $products = $productsResponse->json()['data'];
-            $matchingProduct = collect($products)->firstWhere('name', $packageData->name);
-
-            if (!$matchingProduct) {
+            if (!$product) {
                 Log::error('Paddle product not found for downgrade', ['package' => $packageData->name]);
                 return response()->json(['error' => 'Unavailable package'], 400);
             }
 
-            $price = collect($matchingProduct['prices'])->firstWhere('status', 'active');
+            Log::info('Paddle product found for downgrade', [
+                'product_id' => $product['id'],
+                'product_name' => $product['name']
+            ]);
+
+            Log::info('Fetching active price for product', ['product_id' => $product['id']]);
+            $price = $paddleClient->findActivePriceForProduct($product['id']);
             if (!$price) {
-                Log::error('No active prices found for downgrade', ['product_id' => $matchingProduct['id']]);
+                Log::error('No active prices found for downgrade', ['product_id' => $product['id']]);
                 return response()->json(['error' => 'No active price'], 400);
             }
 
+            Log::info('Active price found for downgrade', [
+                'price_id' => $price['id'],
+                'price_amount' => $price['unit_price']['amount'] ?? 'unknown'
+            ]);
+
             // For Paddle downgrades, we need to create a checkout session
-            // This will redirect to Paddle's downgrade flow
+            // This will create a popup checkout for the downgrade
+            Log::info('Creating Paddle downgrade checkout', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'price_id' => $price['id'],
+                'subscription_id' => $subscriptionId
+            ]);
+
             $checkoutUrl = $this->createPaddleDowngradeCheckout($user, $packageData, $subscriptionId, $price['id']);
 
             if (!$checkoutUrl) {
                 Log::error('Failed to create Paddle downgrade checkout', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name
+                    'package_name' => $packageData->name,
+                    'price_id' => $price['id']
                 ]);
                 return response()->json(['error' => 'Failed to create downgrade checkout'], 500);
             }
 
+            // Extract transaction ID from the checkout URL or use the order's transaction ID
+            $order = Order::where('user_id', $user->id)
+                ->where('order_type', 'downgrade')
+                ->where('package_id', $packageData->id)
+                ->latest()
+                ->first();
+
+            $transactionId = $order ? $order->transaction_id : null;
+
             Log::info('Paddle downgrade checkout created successfully', [
                 'user_id' => $user->id,
                 'package_name' => $packageData->name,
-                'checkout_url' => $checkoutUrl
+                'checkout_url' => $checkoutUrl,
+                'transaction_id' => $transactionId
             ]);
 
             return response()->json([
                 'success' => true,
+                'transaction_id' => $transactionId,
                 'checkout_url' => $checkoutUrl,
                 'message' => 'Downgrade checkout created successfully'
             ]);
         } catch (\Exception $e) {
-            Log::error('Paddle downgrade error', ['error' => $e->getMessage()]);
+            Log::error('Paddle downgrade error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'package_name' => $packageData->name
+            ]);
             return response()->json(['error' => 'Downgrade failed'], 500);
         }
     }
@@ -3827,34 +3868,101 @@ class PaymentController extends Controller
     private function createPaddleDowngradeCheckout($user, $packageData, $subscriptionId, $priceId)
     {
         try {
+            Log::info('Creating Paddle downgrade checkout', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'subscription_id' => $subscriptionId,
+                'price_id' => $priceId
+            ]);
+
             $apiKey = config('payment.gateways.Paddle.api_key');
             $environment = config('payment.gateways.Paddle.environment', 'sandbox');
             $apiBaseUrl = $environment === 'production'
                 ? 'https://api.paddle.com'
                 : 'https://sandbox-api.paddle.com';
 
+            if (empty($apiKey)) {
+                Log::error('Paddle API key missing for downgrade checkout');
+                return null;
+            }
+
+            // Generate a temporary transaction ID for the downgrade order
+            $tempTransactionId = 'PADDLE-DOWNGRADE-' . Str::random(10);
+
+            // Create a new order for the downgrade
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'amount' => $packageData->price,
+                'currency' => 'USD',
+                'status' => 'pending',
+                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
+                'order_type' => 'downgrade',
+                'transaction_id' => $tempTransactionId,
+                'metadata' => [
+                    'original_package' => $user->package->name ?? 'Unknown',
+                    'downgrade_to' => $packageData->name,
+                    'downgrade_type' => 'subscription_downgrade',
+                    'temp_transaction_id' => true,
+                    'price_id' => $priceId,
+                    'subscription_id' => $subscriptionId
+                ]
+            ]);
+
+            // Ensure user has a Paddle customer ID
+            if (!$user->paddle_customer_id) {
+                Log::error('Paddle customer ID missing for downgrade checkout', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                $order->delete();
+                return null;
+            }
+
+            $requestData = [
+                'items' => [['price_id' => $priceId, 'quantity' => 1]],
+                'customer_id' => $user->paddle_customer_id,
+                'currency_code' => 'USD',
+                'custom_data' => [
+                    'user_id' => (string) $user->id,
+                    'package_id' => (string) $packageData->id,
+                    'package' => $packageData->name,
+                    'order_id' => (string) $order->id,
+                    'action' => 'downgrade'
+                ],
+                'proration_billing_mode' => 'prorated_immediately',
+                'checkout' => [
+                    'settings' => ['display_mode' => 'overlay'],
+                    'success_url' => route('payments.success', [
+                        'gateway' => 'paddle',
+                        'transaction_id' => '{transaction_id}',
+                        'downgrade' => 'true',
+                        'order_id' => $order->id
+                    ]),
+                    'cancel_url' => route('payments.popup-cancel')
+                ]
+            ];
+
             // Create a checkout session for the downgrade
+            Log::info('Making Paddle API request for downgrade checkout', [
+                'api_url' => "{$apiBaseUrl}/transactions",
+                'request_data' => $requestData
+            ]);
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json'
-            ])->post("{$apiBaseUrl}/transactions", [
-                'items' => [
-                    [
-                        'price_id' => $priceId,
-                        'quantity' => 1
-                    ]
-                ],
-                'subscription_id' => $subscriptionId,
-                'proration_billing_mode' => 'prorated_immediately',
-                'success_url' => url('/payments/success?gateway=paddle&downgrade=true'),
-                'cancel_url' => url('/subscription?error=downgrade_cancelled')
-            ]);
+            ])->post("{$apiBaseUrl}/transactions", $requestData);
 
             if (!$response->successful()) {
                 Log::error('Paddle downgrade checkout creation failed', [
                     'response' => $response->body(),
-                    'status' => $response->status()
+                    'status' => $response->status(),
+                    'order_id' => $order->id
                 ]);
+
+                // Clean up the order we created
+                $order->delete();
                 return null;
             }
 
@@ -3863,34 +3971,42 @@ class PaymentController extends Controller
 
             if (!$checkoutUrl) {
                 Log::error('No checkout URL in Paddle downgrade response', [
-                    'response' => $data
+                    'response' => $data,
+                    'order_id' => $order->id
                 ]);
+
+                // Clean up the order we created
+                $order->delete();
                 return null;
             }
 
-            // Create order record for tracking
-            $transactionId = $data['data']['id'] ?? null;
-            if (!$transactionId) {
-                $transactionId = 'PADDLE-DOWNGRADE-' . Str::random(10);
+            // Update order with real transaction ID and checkout URL
+            $realTransactionId = $data['data']['id'] ?? null;
+            if ($realTransactionId) {
+                $order->update([
+                    'transaction_id' => $realTransactionId,
+                    'metadata' => array_merge($order->metadata ?? [], [
+                        'paddle_transaction_id' => $realTransactionId,
+                        'checkout_url' => $checkoutUrl,
+                        'temp_transaction_id' => false
+                    ])
+                ]);
+            } else {
+                // Update order with checkout URL
+                $order->update([
+                    'metadata' => array_merge($order->metadata ?? [], [
+                        'checkout_url' => $checkoutUrl
+                    ])
+                ]);
             }
 
-            Order::create([
+            Log::info('Paddle downgrade checkout created successfully', [
                 'user_id' => $user->id,
-                'package_id' => $packageData->id,
-                'amount' => $packageData->price,
-                'currency' => 'USD',
-                'status' => 'pending',
-                'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
-                'order_type' => 'downgrade',
+                'package_name' => $packageData->name,
                 'subscription_id' => $subscriptionId,
-                'transaction_id' => $transactionId,
-                'metadata' => [
-                    'original_package' => $user->package->name ?? 'Unknown',
-                    'downgrade_to' => $packageData->name,
-                    'downgrade_type' => 'subscription_downgrade',
-                    'paddle_checkout_id' => $data['data']['id'] ?? null,
-                    'temp_transaction_id' => !$data['data']['id']
-                ]
+                'transaction_id' => $realTransactionId ?? $tempTransactionId,
+                'order_id' => $order->id,
+                'checkout_url' => $checkoutUrl
             ]);
 
             return $checkoutUrl;

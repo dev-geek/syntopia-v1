@@ -8,10 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 class PaymentGateways extends Model
 {
     use HasFactory;
-    protected $guarded = [
-        'user_id',
+
+    protected $table = 'payment_gateways';
+
+    protected $fillable = [
         'name',
-        'status'
+        'is_active'
     ];
 
     public function users()
