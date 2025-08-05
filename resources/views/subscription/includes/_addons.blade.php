@@ -9,7 +9,7 @@
                 <p class="section-subtitle">Want to go live as your own AI avatar on TikTok, YouTube, or your site? You'll need two customizations to match your appearance and voice:</p>
 
                 <div class="addons-grid-wrapper">
-                    <div class="addons-grid">
+                    <div class="addons-grid addons-centered">
                         <!-- Avatar Customization -->
                         <div class="addon-card">
                             <h3>We create your AI avatar (your face, hairstyle, and outfit) so you can go live as you.</h3>
@@ -44,7 +44,7 @@
             @else
                 <h2 class="section-title">Customized Addons</h2>
                 <div class="addons-grid-wrapper">
-                    <div class="addons-grid">
+                    <div class="addons-grid addons-centered">
                         <!-- Avatar Customization -->
                         <div class="addon-card">
                             <h3>Avatar Customization</h3>
@@ -81,3 +81,96 @@
             @endif
         </div>
     </div>
+
+<style>
+.addons-wrapper {
+    width: 100%;
+    padding: 0px;
+    border-bottom: 1px solid #EFE7FB;
+}
+
+.addons-grid-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-top: 40px;
+}
+
+.addons-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 30px;
+    max-width: 800px;
+    width: 100%;
+}
+
+.addons-centered {
+    justify-content: center;
+    margin: 0 auto;
+}
+
+.addon-card {
+    border: 1px solid #EFE7FB;
+    border-radius: 10px;
+    padding: 25px;
+    background: linear-gradient(180deg, white 0%, #F2F2F7 100%);
+    color: black;
+    text-align: center;
+}
+
+.addon-card h3 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    line-height: 1.3;
+}
+
+.addon-price {
+    font-size: 32px;
+    font-weight: 700;
+    color: #5b0dd5;
+    margin-bottom: 25px;
+}
+
+.addon-card .btn {
+    margin: 25px 0;
+    font-size: 16px;
+    padding: 15px 0;
+}
+
+.addon-card .included-title {
+    color: #5b0dd5;
+    font-weight: 600;
+    font-size: 16px;
+    margin-top: 25px;
+    margin-bottom: 15px;
+}
+
+.addon-card .features {
+    text-align: left;
+}
+
+.addon-card .features li {
+    font-size: 15px;
+    margin: 10px 0;
+}
+
+@media (max-width: 768px) {
+    .addons-grid {
+        grid-template-columns: 1fr;
+        max-width: 500px;
+        gap: 20px;
+    }
+
+    .addon-card {
+        padding: 20px;
+    }
+
+    .addon-card h3 {
+        font-size: 20px;
+    }
+
+    .addon-price {
+        font-size: 28px;
+    }
+}
+</style>
