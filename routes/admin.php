@@ -50,6 +50,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:Super Admin|Su
     Route::get('/add-users', [AdminController::class, 'addusers'])->name('add-users');
     Route::post('/add-user-excel', [AdminController::class, 'addExcelUsers'])->name('add-user-excel');
     Route::post('store-user', [AdminController::class, 'storeUser'])->name('store.user');
+
+    // Free Plan Attempts Management
+    Route::get('/free-plan-attempts', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'index'])->name('free-plan-attempts.index');
+    Route::post('/free-plan-attempts/unblock', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'unblock'])->name('free-plan-attempts.unblock');
+    Route::post('/free-plan-attempts/block', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'block'])->name('free-plan-attempts.block');
+    Route::delete('/free-plan-attempts', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'destroy'])->name('free-plan-attempts.destroy');
 });
 
 // Regular user dashboard route

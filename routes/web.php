@@ -28,7 +28,7 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login/custom', [LoginController::class, 'customLogin'])->name('login.post');
     Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
-    Route::post('/register', [RegisterController::class, 'register'])->name('register.user');
+    Route::post('/register', [RegisterController::class, 'register'])->name('register.user')->middleware('prevent.free.plan.abuse');
     Route::get('/admin-login', [AdminController::class, 'login'])->name('admin-login');
     Route::post('/admin-login', [AdminController::class, 'adminLogin'])->name('admin.login');
     Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');

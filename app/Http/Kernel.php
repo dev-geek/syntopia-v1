@@ -62,6 +62,7 @@ class Kernel extends HttpKernel
         'check.login' => \App\Http\Middleware\RedirectIfNotAuthenticated::class,
         'webhook.ip' => \App\Http\Middleware\WebhookIPFilter::class,
         'dynamic.throttle' => \App\Http\Middleware\DynamicRateLimit::class,
+        'prevent.free.plan.abuse' => \App\Http\Middleware\PreventFreePlanAbuse::class,
 
 
         // Custom Middlewares
