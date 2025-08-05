@@ -39,9 +39,14 @@
               <span class="fas fa-envelope"></span>
             </div>
           </div>
+          @error('email')
+            <span class="invalid-feedback" role="alert">
+                <strong>{{ $message }}</strong>
+            </span>
+          @enderror
         </div>
         <div class="input-group mb-3">
-          <input id="password" type="password" placeholder="Password"class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
+          <input id="password" type="password" placeholder="Password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
         </div>
         @error('password')
                                 <span class="invalid-feedback" role="alert">

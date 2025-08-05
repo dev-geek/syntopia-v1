@@ -26,6 +26,9 @@ class UserSeeder extends Seeder
             ]
         );
 
+        // Force update password to ensure it's correct
+        $user->update(['password' => Hash::make('admin@syntopia.io')]);
+
         $user->assignRole('Super Admin');
     }
 }
