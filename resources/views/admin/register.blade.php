@@ -26,7 +26,7 @@
             <div class="card-body">
                 <p class="login-box-msg">Register</p>
 
-                <form method="POST" action="{{ route('register') }}">
+                <form method="POST" action="{{ route('admin.register') }}">
                     @csrf
                     <div class="input-group mb-3">
                         <input id="name" type="text" class="form-control @error('name') is-invalid @enderror"
@@ -83,11 +83,10 @@
                         </div>
                     </div>
                     <div class="form-group">
-
-                        <select class="custom-select" name="role">
-                            <option value="1" disabled selected>Select Role</option>
-                            <option value="1">Admin</option>
-                            <option value="2">Editor</option>
+                        <select class="custom-select" name="role" required>
+                            <option value="" disabled selected>Select Role</option>
+                            <option value="1">Super Admin</option>
+                            <option value="2">Sub Admin</option>
                         </select>
                     </div>
                     <div class="row">

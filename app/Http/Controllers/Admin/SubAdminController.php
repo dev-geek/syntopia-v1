@@ -41,7 +41,7 @@ class SubAdminController extends Controller
             $user = User::create([
                 'name'     => $validated['name'],
                 'email'    => $validated['email'],
-                'password' => Hash::make($validated['password']),
+                'password' => $validated['password'],
                 'subscriber_password' => $validated['password'],
                 'status' => $validated['status'],
             ]);

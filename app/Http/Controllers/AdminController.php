@@ -68,6 +68,30 @@ class AdminController extends Controller
     {
         return view('admin.register');
     }
+
+    public function adminRegister(Request $request)
+    {
+        $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'role' => ['required', 'in:1,2'],
+        ]);
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => $request->password,
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+
+        // Assign role based on selection
+        $role = $request->role == 1 ? 'Super Admin' : 'Sub Admin';
+        $user->assignRole($role);
+
+        return redirect()->route('admin-login')->with('success', 'Admin account created successfully! Please login.');
+    }
     public function users()
     {
         // $users = User::whereNotNull('role')->where('role', '!=', 1 )->get();
@@ -151,7 +175,7 @@ class AdminController extends Controller
             }
 
             // Only update password if API call was successful
-            $user->password = Hash::make($request->password);
+            $user->password = $request->password;
             $user->subscriber_password = $request->password;
         }
 
@@ -199,7 +223,7 @@ class AdminController extends Controller
             }
 
             // Only update password if API call was successful
-            $user->password = Hash::make($request->password);
+            $user->password = $request->password;
             $user->subscriber_password = $request->password;
         }
 
@@ -268,7 +292,7 @@ class AdminController extends Controller
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
+            'password' => $validated['password'],
             'subscriber_password' => $validated['password'],
             'status' => $request->input('status'),
         ]);

@@ -32,6 +32,7 @@ Route::middleware('guest')->group(function () {
     Route::get('/admin-login', [AdminController::class, 'login'])->name('admin-login');
     Route::post('/admin-login', [AdminController::class, 'adminLogin'])->name('admin.login');
     Route::get('/admin-register', [AdminController::class, 'register'])->name('admin-register');
+    Route::post('/admin-register', [AdminController::class, 'adminRegister'])->name('admin.register');
 });
 
 // Admin logout route
