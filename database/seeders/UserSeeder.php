@@ -12,23 +12,48 @@ class UserSeeder extends Seeder
 {
     public function run()
     {
-        // Ensure no duplicate entry
-        $user = User::updateOrCreate(
-            ['email' => 'admin@syntopia.io'], // Check if user already exists
-            [
+        // First, try to find the user
+        $user = User::where('email', 'admin@syntopia.io')->first();
+        
+        // If user doesn't exist, create with hashed password
+        if (!$user) {
+            $userId = DB::table('users')->insertGetId([
                 'name' => 'Super Admin',
                 'email' => 'admin@syntopia.io',
                 'password' => Hash::make('admin@syntopia.io'),
                 'status' => 1,
                 'city' => 'Lahore',
                 'pet' => 'Dog',
-                'email_verified_at' => Carbon::now(), // Set email verified date
-            ]
-        );
+                'email_verified_at' => Carbon::now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            $user = User::find($userId);
+        } else {
+            // Update existing user with direct DB query to avoid model events
+            DB::table('users')
+                ->where('id', $user->id)
+                ->update([
+                    'password' => Hash::make('admin@syntopia.io'),
+                    'status' => 1,
+                    'email_verified_at' => Carbon::now(),
+                    'updated_at' => now(),
+                ]);
+            $user->refresh();
+        }
 
-        // Force update password to ensure it's correct
-        $user->update(['password' => Hash::make('admin@syntopia.io')]);
-
-        $user->assignRole('Super Admin');
+        // Ensure the role is assigned
+        if (!$user->hasRole('Super Admin')) {
+            $user->assignRole('Super Admin');
+        }
+        
+        // Verify password was set correctly
+        $check = Hash::check('admin@syntopia.io', $user->password);
+        
+        $this->command->info('Admin user has been set up.');
+        $this->command->info('Email: admin@syntopia.io');
+        $this->command->info('Password: admin@syntopia.io');
+        $this->command->info('Password check: ' . ($check ? 'PASSED' : 'FAILED'));
     }
 }

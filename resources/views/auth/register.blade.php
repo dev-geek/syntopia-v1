@@ -17,6 +17,9 @@
     <!-- SweetAlert2 -->
     <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script defer src="{{ asset('js/swal-utils.js') }}"></script>
+    <!-- FingerprintJS -->
+    <script defer src="{{ asset('js/fingerprint.js') }}"></script>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
          body {
             background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
@@ -135,8 +138,9 @@
             <p class="email-text">You're setting up an account for {{ request()->get('email') }}</p>
             @include('components.alert-messages')
             <!-- Signup Form -->
-            <form method="POST" action="{{ route('register') }}">
+            <form id="registerForm" method="POST" action="{{ route('register') }}">
             @csrf
+            <input type="hidden" name="fingerprint_id" id="fingerprintId">
                 <input type="hidden" name="email" value="{{ request()->get('email') }}">
 
                 <div class="row">

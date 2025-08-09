@@ -16,15 +16,18 @@ class FreePlanAttempt extends Model
         'ip_address',
         'user_agent',
         'device_fingerprint',
+        'fingerprint_id',
         'email',
         'is_blocked',
         'blocked_at',
         'block_reason',
+        'data',
     ];
 
     protected $casts = [
         'is_blocked' => 'boolean',
         'blocked_at' => 'datetime',
+        'data' => 'array',
     ];
 
     public function scopeBlocked($query)
@@ -50,6 +53,11 @@ class FreePlanAttempt extends Model
     public function scopeByEmail($query, $email)
     {
         return $query->where('email', $email);
+    }
+
+    public function scopeByFingerprintId($query, $fingerprintId)
+    {
+        return $query->where('fingerprint_id', $fingerprintId);
     }
 
     public function scopeRecent($query, $days = 30)

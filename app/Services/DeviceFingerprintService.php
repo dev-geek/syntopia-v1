@@ -4,29 +4,82 @@ namespace App\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Jaybizzle\CrawlerDetect\CrawlerDetect;
 
 class DeviceFingerprintService
 {
+    protected $crawlerDetect;
+
+    public function __construct()
+    {
+        $this->crawlerDetect = new CrawlerDetect();
+    }
+
     public function generateFingerprint(Request $request): string
     {
+        // Basic components that are always available
         $components = [
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'accept_language' => $request->header('Accept-Language'),
             'accept_encoding' => $request->header('Accept-Encoding'),
-            'accept' => $request->header('Accept'),
-            'connection' => $request->header('Connection'),
-            'upgrade_insecure_requests' => $request->header('Upgrade-Insecure-Requests'),
-            'sec_fetch_dest' => $request->header('Sec-Fetch-Dest'),
-            'sec_fetch_mode' => $request->header('Sec-Fetch-Mode'),
-            'sec_fetch_site' => $request->header('Sec-Fetch-Site'),
-            'sec_fetch_user' => $request->header('Sec-Fetch-User'),
+            'platform' => $this->getPlatform($request),
+            'timezone' => $request->input('timezone', ''),
+            'screen_resolution' => $request->input('screen_resolution', ''),
+            'color_depth' => $request->input('color_depth', ''),
+            'pixel_ratio' => $request->input('pixel_ratio', ''),
+            'hardware_concurrency' => $request->input('hardware_concurrency', ''),
+            'device_memory' => $request->input('device_memory', ''),
+            'webgl_vendor' => $request->input('webgl_vendor', ''),
+            'webgl_renderer' => $request->input('webgl_renderer', ''),
+            'webgl_fp' => $request->input('webgl_fp', ''),
+            'canvas_fp' => $request->input('canvas_fp', ''),
+            'audio_fp' => $request->input('audio_fp', ''),
+            'fonts' => $request->input('fonts', ''),
+            'session_id' => $request->session()->getId(),
+            'fingerprint_id' => $request->cookie('fp_id', ''),
         ];
 
-        // Create a hash from the components
-        $fingerprint = Hash::make(implode('|', array_filter($components)));
+        // Add additional headers that can help with fingerprinting
+        $headers = [
+            'Accept', 'Accept-Charset', 'Accept-Datetime', 'Accept-Encoding',
+            'Accept-Language', 'Cache-Control', 'Connection', 'DNT',
+            'Pragma', 'Referer', 'Upgrade-Insecure-Requests', 'User-Agent'
+        ];
+
+        foreach ($headers as $header) {
+            $components['header_' . strtolower($header)] = $request->header($header, '');
+        }
+
+        // Sort components consistently
+        ksort($components);
+
+        // Generate a stable fingerprint
+        $fingerprintString = json_encode($components);
         
-        return $fingerprint;
+        // Use SHA-256 for better collision resistance
+        return hash('sha256', $fingerprintString);
+    }
+
+    protected function getPlatform(Request $request): string
+    {
+        $userAgent = $request->userAgent() ?: '';
+        $platform = 'Unknown';
+
+        if (preg_match('/windows|win32|win64|wow64|win98|win95|win16/i', $userAgent)) {
+            $platform = 'Windows';
+        } elseif (preg_match('/macintosh|mac os x|mac_powerpc/i', $userAgent)) {
+            $platform = 'Mac';
+        } elseif (preg_match('/linux|ubuntu|debian|fedora|redhat|centos/i', $userAgent)) {
+            $platform = 'Linux';
+        } elseif (preg_match('/android/i', $userAgent)) {
+            $platform = 'Android';
+        } elseif (preg_match('/iphone|ipad|ipod/i', $userAgent)) {
+            $platform = 'iOS';
+        }
+
+        return $platform;
     }
 
     public function isBlocked(Request $request): bool
@@ -34,6 +87,12 @@ class DeviceFingerprintService
         $ip = $request->ip();
         $fingerprint = $this->generateFingerprint($request);
         $email = $request->input('email');
+        $fingerprintId = $request->cookie('fp_id', '');
+
+        // Check for known bots/crawlers
+        if ($this->crawlerDetect->isCrawler($request->userAgent())) {
+            return true;
+        }
 
         // Check if IP is blocked
         $ipBlocked = \App\Models\FreePlanAttempt::byIp($ip)
@@ -51,6 +110,17 @@ class DeviceFingerprintService
 
         if ($fingerprintBlocked) {
             return true;
+        }
+
+        // Check fingerprint ID from cookie
+        if ($fingerprintId) {
+            $fpIdBlocked = \App\Models\FreePlanAttempt::where('fingerprint_id', $fingerprintId)
+                ->blocked()
+                ->exists();
+
+            if ($fpIdBlocked) {
+                return true;
+            }
         }
 
         // Check if email is blocked

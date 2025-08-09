@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Services\MailService;
+use App\Services\DeviceFingerprintService;
+use App\Models\FreePlanAttempt;
 
 class RegisterController extends Controller
 {
@@ -64,9 +66,12 @@ class RegisterController extends Controller
      *
      * @return void
      */
-    public function __construct()
+    protected $deviceFingerprintService;
+
+    public function __construct(DeviceFingerprintService $deviceFingerprintService)
     {
         $this->middleware('guest');
+        $this->deviceFingerprintService = $deviceFingerprintService;
     }
 
     /**
@@ -75,9 +80,31 @@ class RegisterController extends Controller
      * @param  array  $data
      * @return \Illuminate\Contracts\Validation\Validator
      */
-    protected function validator(array $data)
+    protected function validator(array $data, Request $request = null)
     {
         Log::info('Registration attempt', $data);
+
+        // Check for device fingerprint abuse
+        if ($request) {
+            $isBlocked = $this->deviceFingerprintService->isBlocked($request);
+            $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
+                $request, 
+                config('free_plan_abuse.max_attempts', 3),
+                config('free_plan_abuse.tracking_period_days', 30)
+            );
+
+            if ($isBlocked || $hasRecentAttempts) {
+                Log::warning('Registration blocked due to fingerprint abuse', [
+                    'ip' => $request->ip(),
+                    'email' => $data['email'] ?? null,
+                    'fingerprint_id' => $data['fingerprint_id'] ?? null,
+                    'is_blocked' => $isBlocked,
+                    'has_recent_attempts' => $hasRecentAttempts
+                ]);
+
+                abort(403, 'Registration is not allowed from this device. Please contact support if you believe this is an error.');
+            }
+        }
 
         $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
@@ -180,6 +207,31 @@ class RegisterController extends Controller
             return redirect()->back()
                 ->withErrors(['email' => 'Email address cannot be modified. Please use the email from the login page.'])
                 ->withInput();
+        }
+
+        // Validate the request including fingerprint data
+        $validator = $this->validator($request->all(), $request);
+        
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        // Record the fingerprint attempt
+        try {
+            $fingerprintData = $request->only(['fingerprint_id', 'timezone', 'screen_resolution', 'color_depth']);
+            $fingerprintData['ip_address'] = $request->ip();
+            $fingerprintData['user_agent'] = $request->userAgent();
+            $fingerprintData['email'] = $request->input('email');
+            
+            FreePlanAttempt::create($fingerprintData);
+        } catch (\Exception $e) {
+            Log::error('Failed to record fingerprint attempt: ' . $e->getMessage(), [
+                'exception' => $e,
+                'ip' => $request->ip(),
+                'email' => $request->input('email')
+            ]);
         }
 
         $validator = Validator::make($request->all(), [

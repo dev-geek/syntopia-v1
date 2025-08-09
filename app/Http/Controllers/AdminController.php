@@ -23,46 +23,51 @@ class AdminController extends Controller
 
     public function adminLogin(Request $request)
     {
-        $request->validate([
+        // Validate the request
+        $validated = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required'],
+        ], [
+            'email.required' => 'Email address is required',
+            'email.email' => 'Please enter a valid email address',
+            'password.required' => 'Password is required',
         ]);
-
-        $credentials = $request->only('email', 'password');
 
         // Check if user exists
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
-            throw ValidationException::withMessages([
-                'email' => ['User does not exist.'],
-            ]);
+            return back()->withErrors([
+                'email' => 'The provided credentials do not match our records.',
+            ])->withInput($request->except('password'));
         }
 
         // Check if user has admin role
         if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
-            throw ValidationException::withMessages([
-                'email' => ['Access denied. Admin privileges required.'],
-            ]);
-        }
-
-                // Attempt login
-        if (!Auth::attempt($credentials)) {
-            throw ValidationException::withMessages([
-                'password' => ['Password is incorrect.'],
-            ]);
+            return back()->withErrors([
+                'email' => 'Access denied. Admin privileges required.',
+            ])->withInput($request->except('password'));
         }
 
         // Check if account is active
         if ($user->status == 0) {
-            Auth::logout();
-            throw ValidationException::withMessages([
-                'email' => ['Your account is deactivated. Please contact support.'],
-            ]);
+            return back()->withErrors([
+                'email' => 'Your account is deactivated. Please contact support.',
+            ])->withInput($request->except('password'));
         }
 
+        // Attempt login
+        if (!Auth::attempt($validated)) {
+            return back()->withErrors([
+                'password' => 'The provided password is incorrect.',
+            ])->withInput($request->except('password'));
+        }
+
+        // Regenerate the session
+        $request->session()->regenerate();
+
         // Redirect to admin dashboard
-        return redirect()->route('admin.dashboard');
+        return redirect()->intended(route('admin.dashboard'));
     }
     public function register()
     {

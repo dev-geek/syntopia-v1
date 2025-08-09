@@ -138,8 +138,19 @@ class LoginController extends Controller
     /**
      * Show the application's login form.
      */
-    public function showLoginForm()
+    public function showLoginForm(Request $request)
     {
+        // Check if there's an email in the session from a previous login attempt
+        $email = $request->session()->get('email');
+        
+        // If email exists and belongs to a Super Admin, redirect to admin login
+        if ($email) {
+            $user = User::where('email', $email)->first();
+            if ($user && $user->hasRole('Super Admin')) {
+                return redirect()->route('admin-login');
+            }
+        }
+        
         return view('auth.login');
     }
 
@@ -170,9 +181,16 @@ class LoginController extends Controller
             'password' => ['required'],
         ]);
 
-        // Always store email in session
-        session(['email' => $request->email]);
+        // Check if the email belongs to a Super Admin
+        $user = User::where('email', $request->email)->first();
+        if ($user && $user->hasRole('Super Admin')) {
+            // Store email in session and redirect to admin login
+            session(['email' => $request->email]);
+            return redirect()->route('admin-login');
+        }
 
+        // For non-Super Admin users, proceed with normal login
+        session(['email' => $request->email]);
         $credentials = $request->only('email', 'password');
 
         // Check if user exists

@@ -38,6 +38,109 @@ Route::middleware('guest')->group(function () {
 // Admin logout route
 Route::post('/admin-logout', [LoginController::class, 'logout'])->name('admin.logout');
 
+// Check admin password hash - REMOVE IN PRODUCTION
+Route::get('/debug/check-admin-hash', function() {
+    try {
+        $user = \App\Models\User::where('email', 'admin@syntopia.io')->first();
+        
+        if (!$user) {
+            return response()->json(['error' => 'Admin user not found'], 404);
+        }
+        
+        $password = 'admin@syntopia.io';
+        $isValid = \Illuminate\Support\Facades\Hash::check($password, $user->password);
+        
+        return response()->json([
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'password_hash' => $user->password,
+            'password_match' => $isValid ? 'YES' : 'NO',
+            'hash_info' => [
+                'algorithm' => password_get_info($user->password)['algoName'] ?? 'unknown',
+                'options' => password_get_info($user->password)['options'] ?? []
+            ],
+            'current_hash_of_test_password' => \Illuminate\Support\Facades\Hash::make($password),
+            'status' => $user->status,
+            'is_verified' => (bool)$user->email_verified_at,
+            'has_admin_role' => $user->hasRole('Super Admin')
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+});
+
+// Temporary admin password reset - REMOVE IN PRODUCTION
+Route::get('/debug/reset-admin-password', function() {
+    try {
+        $user = \App\Models\User::where('email', 'admin@syntopia.io')->first();
+        
+        if (!$user) {
+            $user = \App\Models\User::create([
+                'name' => 'Super Admin',
+                'email' => 'admin@syntopia.io',
+                'password' => 'admin@syntopia.io', // Will be hashed by model's setPasswordAttribute
+                'status' => 1,
+                'email_verified_at' => now(),
+                'city' => 'Lahore',
+                'pet' => 'Dog'
+            ]);
+            $user->assignRole('Super Admin');
+        }
+        
+        // Force reset password
+        $user->password = 'admin@syntopia.io';
+        $user->save();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Admin password has been reset to: admin@syntopia.io',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'status' => $user->status,
+                'has_admin_role' => $user->hasRole('Super Admin'),
+                'email_verified' => (bool)$user->email_verified_at
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ], 500);
+    }
+});
+
+// Temporary debug route - REMOVE IN PRODUCTION
+Route::get('/debug/admin-check', function() {
+    try {
+        $user = \App\Models\User::where('email', 'like', '%admin%')
+            ->orWhereHas('roles', function($q) { 
+                $q->whereIn('name', ['Super Admin', 'Sub Admin']); 
+            })
+            ->first();
+            
+        if ($user) {
+            return response()->json([
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'status' => $user->status,
+                'has_admin_role' => $user->hasRole(['Super Admin', 'Sub Admin']),
+                'password_set' => !empty($user->password),
+                'email_verified' => (bool)$user->email_verified_at
+            ]);
+        }
+        return response()->json(['error' => 'No admin user found'], 404);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
+
 // Admin Password Reset Routes
 Route::prefix('admin')->group(function () {
     Route::get('/forgotpassword', [AdminController::class, 'AdminForgotPassword'])->name('admin.forgotpassword');
