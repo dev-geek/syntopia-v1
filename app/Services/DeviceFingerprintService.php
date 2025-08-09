@@ -5,15 +5,11 @@ namespace App\Services;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Jaybizzle\CrawlerDetect\CrawlerDetect;
-
 class DeviceFingerprintService
 {
-    protected $crawlerDetect;
-
     public function __construct()
     {
-        $this->crawlerDetect = new CrawlerDetect();
+        // No dependencies needed
     }
 
     public function generateFingerprint(Request $request): string
@@ -89,11 +85,7 @@ class DeviceFingerprintService
         $email = $request->input('email');
         $fingerprintId = $request->cookie('fp_id', '');
 
-        // Check for known bots/crawlers
-        if ($this->crawlerDetect->isCrawler($request->userAgent())) {
-            return true;
-        }
-
+        // Bot detection is disabled
         // Check if IP is blocked
         $ipBlocked = \App\Models\FreePlanAttempt::byIp($ip)
             ->blocked()
