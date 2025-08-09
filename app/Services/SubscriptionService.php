@@ -26,13 +26,13 @@ class SubscriptionService
         };
     }
 
-    public function upgradeSubscription(User $user, string $newPackage)
+    public function upgradeSubscription(User $user, string $newPackage, string $prorationBillingMode = null)
     {
         $currentGateway = $user->paymentGateway->name;
         $client = $this->getGatewayClient($currentGateway);
 
         try {
-            DB::transaction(function () use ($user, $newPackage, $client) {
+            return DB::transaction(function () use ($user, $newPackage, $client, $prorationBillingMode, $currentGateway) {
                 $newPackageModel = Package::where('name', $newPackage)->firstOrFail();
 
                 if ($newPackageModel->price <= $user->package->price) {
@@ -41,8 +41,13 @@ class SubscriptionService
 
                 $result = $client->upgradeSubscription(
                     $user->payment_gateway_id,
-                    $newPackageModel->getGatewayProductId($currentGateway)
+                    $newPackageModel->getGatewayProductId($currentGateway),
+                    $prorationBillingMode
                 );
+
+                if (!$result) {
+                    throw new \Exception('Failed to process upgrade with payment gateway');
+                }
 
                 $user->update([
                     'package_id' => $newPackageModel->id
@@ -51,7 +56,8 @@ class SubscriptionService
                 return [
                     'success' => true,
                     'proration' => $result['proration'] ?? null,
-                    'new_package' => $newPackageModel->name
+                    'new_package' => $newPackageModel->name,
+                    'scheduled' => $result['scheduled_change'] ?? null
                 ];
             });
         } catch (\Exception $e) {
@@ -60,13 +66,13 @@ class SubscriptionService
         }
     }
 
-    public function downgradeSubscription(User $user, string $newPackage)
+    public function downgradeSubscription(User $user, string $newPackage, string $prorationBillingMode = null)
     {
         $currentGateway = $user->paymentGateway->name;
         $client = $this->getGatewayClient($currentGateway);
 
         try {
-            DB::transaction(function () use ($user, $newPackage, $client) {
+            return DB::transaction(function () use ($user, $newPackage, $client, $prorationBillingMode, $currentGateway) {
                 $newPackageModel = Package::where('name', $newPackage)->firstOrFail();
 
                 if ($newPackageModel->price >= $user->package->price) {
@@ -75,8 +81,13 @@ class SubscriptionService
 
                 $result = $client->downgradeSubscription(
                     $user->payment_gateway_id,
-                    $newPackageModel->getGatewayProductId($currentGateway)
+                    $newPackageModel->getGatewayProductId($currentGateway),
+                    $prorationBillingMode
                 );
+
+                if (!$result) {
+                    throw new \Exception('Failed to process downgrade with payment gateway');
+                }
 
                 $user->update([
                     'package_id' => $newPackageModel->id
@@ -84,7 +95,9 @@ class SubscriptionService
 
                 return [
                     'success' => true,
-                    'new_package' => $newPackageModel->name
+                    'proration' => $result['proration'] ?? null,
+                    'new_package' => $newPackageModel->name,
+                    'scheduled' => $result['scheduled_change'] ?? null
                 ];
             });
         } catch (\Exception $e) {
@@ -93,23 +106,40 @@ class SubscriptionService
         }
     }
 
-    public function cancelSubscription(User $user)
+    public function cancelSubscription(User $user, int $billingPeriod = 1)
     {
         $currentGateway = $user->paymentGateway->name;
         $client = $this->getGatewayClient($currentGateway);
 
         try {
-            DB::transaction(function () use ($user, $client) {
-                $client->cancelSubscription($user->payment_gateway_id);
+            return DB::transaction(function () use ($user, $client, $billingPeriod) {
+                $result = $client->cancelSubscription(
+                    $user->payment_gateway_id,
+                    $billingPeriod
+                );
 
-                $user->update([
-                    'is_subscribed' => false
-                ]);
+                if (!$result) {
+                    throw new \Exception('Failed to process cancellation with payment gateway');
+                }
 
-                return ['success' => true];
+                // Only update subscription status immediately if cancellation is immediate
+                if ($billingPeriod === 0) {
+                    $user->update([
+                        'is_subscribed' => false
+                    ]);
+                }
+
+                return [
+                    'success' => true,
+                    'effective_date' => $result['effective_from'] ?? null,
+                    'scheduled' => $billingPeriod !== 0
+                ];
             });
         } catch (\Exception $e) {
-            Log::error("Cancellation failed for user {$user->id}", ['error' => $e->getMessage()]);
+            Log::error("Cancellation failed for user {$user->id}", [
+                'error' => $e->getMessage(),
+                'billing_period' => $billingPeriod
+            ]);
             throw $e;
         }
     }

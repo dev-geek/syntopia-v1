@@ -47,9 +47,32 @@ class PaddleClient
         return $response->json();
     }
 
-    public function downgradeSubscription(string $subscriptionId, string $newPriceId)
+    public function downgradeSubscription(string $subscriptionId, string $newPriceId, string $prorationBillingMode = null)
     {
-        return $this->upgradeSubscription($subscriptionId, $newPriceId);
+        // For downgrades, we'll use the same logic as upgrades but with a different log message
+        $payload = [
+            'items' => [['price_id' => $newPriceId, 'quantity' => 1]]
+        ];
+
+        if ($prorationBillingMode) {
+            $payload['proration_billing_mode'] = $prorationBillingMode;
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Content-Type' => 'application/json'
+        ])->patch("{$this->apiBaseUrl}/subscriptions/{$subscriptionId}", $payload);
+
+        if (!$response->successful()) {
+            Log::error('Paddle subscription downgrade failed', [
+                'subscription_id' => $subscriptionId,
+                'new_price_id' => $newPriceId,
+                'response' => $response->body()
+            ]);
+            return null;
+        }
+
+        return $response->json();
     }
 
     public function cancelSubscription(string $subscriptionId, int $billingPeriod = 1)

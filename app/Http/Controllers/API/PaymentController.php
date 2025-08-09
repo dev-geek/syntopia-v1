@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Models\{Package, User, PaymentGateways, Order, UserLicence};
+use App\Services\FastSpringClient;
 use App\Services\LicenseService;
 use App\Services\LicenseApiService;
 use App\Services\PaddleClient;
@@ -2684,8 +2685,6 @@ class PaymentController extends Controller
         Log::info('[upgradeToPackage] called', ['package' => $package, 'user_id' => Auth::id()]);
         Log::info('Package upgrade requested', ['package' => $package, 'user_id' => Auth::id()]);
 
-
-
         try {
             $processedPackage = $this->processPackageName($package);
             $validation = $this->validatePackageAndGetUser($processedPackage);
@@ -2696,7 +2695,6 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Check if user has an active subscription first
             if (!$user->is_subscribed) {
                 return response()->json([
                     'error' => 'Subscription Required',
@@ -2705,7 +2703,6 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            // Get the current active license to get the subscription_id
             $currentLicense = $user->userLicence;
             if (!$currentLicense || !$currentLicense->subscription_id) {
                 return response()->json([
@@ -2727,16 +2724,13 @@ class PaymentController extends Controller
                 'user_paddle_customer_id' => $user->paddle_customer_id,
                 'user_is_subscribed' => $user->is_subscribed
             ]);
-
-            // Determine the payment gateway from the license or user record
+            
             $gateway = null;
-
-            // First try to get gateway from user's payment_gateway_id
+            
             if ($user->payment_gateway_id) {
                 $gateway = $user->paymentGateway;
             }
 
-            // If no gateway found, try to determine from subscription_id pattern
             if (!$gateway && $subscriptionId) {
                 if (str_starts_with($subscriptionId, 'PADDLE-') || str_starts_with($subscriptionId, 'sub_')) {
                     $gateway = PaymentGateways::where('name', 'Paddle')->first();
@@ -2747,7 +2741,6 @@ class PaymentController extends Controller
                 }
             }
 
-            // If still no gateway found, check if user has paddle_customer_id
             if (!$gateway && $user->paddle_customer_id) {
                 $gateway = PaymentGateways::where('name', 'Paddle')->first();
             }
@@ -2772,11 +2765,8 @@ class PaymentController extends Controller
                 'gateway_id' => $gateway->id
             ]);
 
-            // Handle upgrade based on gateway
             if ($gateway->name === 'Paddle') {
-                // Additional validation for Paddle upgrades
                 if (!$user->paddle_customer_id) {
-                    // Try to create or retrieve Paddle customer ID
                     $paddleCustomerId = $this->ensurePaddleCustomerId($user);
                     if (!$paddleCustomerId) {
                         return response()->json([
@@ -2826,11 +2816,9 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId
             ]);
 
-            // Check if this is an immediate upgrade or upgrade at expiration
             $upgradeAtExpiration = request()->input('upgrade_at_expiration', false);
 
             if ($upgradeAtExpiration) {
-                // Use the method that schedules upgrade at expiration
                 $result = $this->upgradePaddleSubscriptionAtExpiration($user, $packageData, $subscriptionId);
 
                 if ($result) {
@@ -3794,7 +3782,11 @@ class PaymentController extends Controller
                 }
                 return $this->handlePaddleDowngrade($user, $packageData, $subscriptionId);
             } elseif ($gateway->name === 'FastSpring') {
-                return $this->handleFastSpringDowngrade($user, $packageData, $subscriptionId);
+                $fastSpringClient = new FastSpringClient(
+                    config('payment.gateways.FastSpring.username'),
+                    config('payment.gateways.FastSpring.password')
+                );
+                return $fastSpringClient->downgradeSubscription($user, $subscriptionId, $packageData->name);
             } elseif ($gateway->name === 'Pay Pro Global') {
                 return $this->handlePayProGlobalDowngrade($user, $packageData, $subscriptionId);
             } else {
@@ -4071,28 +4063,38 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId
             ]);
 
-            // For FastSpring downgrades, we need to create a new order
-            // This will redirect to FastSpring's downgrade flow
-            $checkoutUrl = $this->createFastSpringDowngradeOrder($user, $packageData, $subscriptionId);
-
-            if (!$checkoutUrl) {
-                Log::error('Failed to create FastSpring downgrade order', [
+            // For FastSpring downgrades, we use the FastSpring popup flow
+            $fastSpringClient = new FastSpringClient(
+                config('payment.gateways.FastSpring.username'),
+                config('payment.gateways.FastSpring.password')
+            );
+            
+            $result = $fastSpringClient->downgradeSubscription($user, $subscriptionId, $packageData->name);
+            
+            if (!$result['success']) {
+                Log::error('Failed to prepare FastSpring downgrade', [
                     'user_id' => $user->id,
-                    'package_name' => $packageData->name
+                    'package_name' => $packageData->name,
+                    'error' => $result['message'] ?? 'Unknown error'
                 ]);
-                return response()->json(['error' => 'Failed to create downgrade order'], 500);
+                return response()->json(['error' => $result['message'] ?? 'Failed to prepare downgrade'], 500);
             }
 
-            Log::info('FastSpring downgrade order created successfully', [
+            Log::info('FastSpring downgrade prepared successfully', [
                 'user_id' => $user->id,
                 'package_name' => $packageData->name,
-                'checkout_url' => $checkoutUrl
+                'subscription_id' => $subscriptionId
             ]);
 
+            // Return a dummy checkout URL since the frontend expects one
+            // The actual FastSpring popup will be handled by the frontend
             return response()->json([
                 'success' => true,
-                'checkout_url' => $checkoutUrl,
-                'message' => 'Downgrade order created successfully'
+                'checkout_url' => 'javascript:void(0)', // Dummy URL to satisfy frontend
+                'requires_popup' => true,
+                'package_name' => $packageData->name,
+                'action' => 'downgrade',
+                'message' => 'Preparing downgrade checkout...'
             ]);
         } catch (\Exception $e) {
             Log::error('FastSpring downgrade error', [

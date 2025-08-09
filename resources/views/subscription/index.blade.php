@@ -1543,10 +1543,9 @@
                         return response.json();
                     })
                     .then(data => {
-                        if (!data.success || !data.checkout_url) {
-                            throw new Error(data.error || 'No checkout URL received');
+                        if (!data.success) {
+                            throw new Error(data.error || 'Request failed');
                         }
-                        console.log('Checkout URL received:', data.checkout_url);
 
                         // Hide spinner before opening payment popup
                         hideSpinner();
@@ -1562,8 +1561,12 @@
                                     // Fallback to the old processPaddle method if no transaction_id
                                     processPaddle(packageName, action);
                                 }
-                            } else {
-                                // For other gateways, open checkout URL in popup
+                            } else if (selectedGateway === 'FastSpring' && data.requires_popup) {
+                                // Handle FastSpring downgrade with popup
+                                console.log('Processing FastSpring downgrade with popup');
+                                processFastSpring(packageName, action);
+                            } else if (data.checkout_url) {
+                                // For other gateways with a checkout URL, open in popup
                                 console.log('Opening downgrade checkout URL:', data.checkout_url);
                                 const downgradePopup = window.open(data.checkout_url, 'downgrade_checkout', 'width=1200,height=800,scrollbars=yes,resizable=yes');
 
@@ -1574,6 +1577,8 @@
 
                                 // Monitor the downgrade popup
                                 monitorDowngradePopup(downgradePopup);
+                            } else {
+                                throw new Error('No valid checkout method provided');
                             }
                         } else if (selectedGateway === 'FastSpring') {
                             processFastSpring(packageName, action);
