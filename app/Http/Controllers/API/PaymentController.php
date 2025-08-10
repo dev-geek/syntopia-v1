@@ -180,7 +180,7 @@ class PaymentController extends Controller
                 ]);
             }
 
-                        // For upgrades and downgrades, we should handle them directly in paddleCheckout
+            // For upgrades and downgrades, we should handle them directly in paddleCheckout
             if ($isUpgrade || $isDowngrade) {
                 Log::info('Handling upgrade/downgrade directly in paddleCheckout', [
                     'user_id' => $user->id,
@@ -1100,7 +1100,7 @@ class PaymentController extends Controller
                             $pendingOrder->payment_gateway_id
                         );
 
-                                                if ($license) {
+                        if ($license) {
                             // Check if this is an upgrade transaction
                             $isUpgrade = ($customData['action'] ?? '') === 'upgrade' || $pendingOrder->order_type === 'upgrade';
 
@@ -1127,14 +1127,14 @@ class PaymentController extends Controller
                             ]);
                             return redirect()->route('home')->with('error', 'Subscription completed but license creation failed');
                         }
-                } else {
-                    Log::error('User or package not found', [
-                        'user_id' => $userId,
-                        'package_id' => $pendingOrder->package_id,
-                        'transaction_id' => $transactionId
-                    ]);
-                    return redirect()->route('home')->with('error', 'Order processing failed');
-                }
+                    } else {
+                        Log::error('User or package not found', [
+                            'user_id' => $userId,
+                            'package_id' => $pendingOrder->package_id,
+                            'transaction_id' => $transactionId
+                        ]);
+                        return redirect()->route('home')->with('error', 'Order processing failed');
+                    }
                 } else {
                     // Process as regular payment (new subscription)
                     $packageName = $customData['package'] ?? null;
@@ -1186,7 +1186,7 @@ class PaymentController extends Controller
                 $order = Order::where('transaction_id', $orderId)->first();
                 if ($order && $order->status === 'completed') {
                     Log::info('Order already completed', ['order_id' => $orderId]);
-                                            return redirect()->route('user.subscription.details')->with('success', "Subscription to {$packageName} bought successfully!");
+                    return redirect()->route('user.subscription.details')->with('success', "Subscription to {$packageName} bought successfully!");
                 }
 
                 // Try orderId as reference first, then as id
