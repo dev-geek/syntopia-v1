@@ -540,7 +540,10 @@ class SubscriptionController extends Controller
         }
 
         $gateways = collect($targetGateway ? [$targetGateway] : []);
-        $packages = Package::select('name', 'price', 'duration', 'features')->get();
+        // Exclude one-time add-ons from plan listing
+        $packages = Package::select('name', 'price', 'duration', 'features')
+            ->whereNotIn('name', ['Avatar Customization', 'Voice Customization'])
+            ->get();
 
         // Get current user's package
         $currentUserPackage = $user->package;
@@ -561,6 +564,35 @@ class SubscriptionController extends Controller
                 $packageAvailability[$package->name] = true;
             }
         }
+
+        // Resolve active add-ons for the current user
+        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization', 'Voice Customization'])
+            ->pluck('id')
+            ->toArray();
+        $completedAddonOrders = \App\Models\Order::with('package')
+            ->where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->where(function($q) use ($addonPackageIds) {
+                $q->where('order_type', 'addon')
+                  ->orWhereNotNull('metadata->addon')
+                  ->orWhereIn('package_id', $addonPackageIds)
+                  ->orWhere('metadata', 'like', '%"addon"%');
+            })
+            ->get();
+
+        $activeAddonSlugs = [];
+        foreach ($completedAddonOrders as $order) {
+            $name = $order->package->name ?? null;
+            if ($name === 'Avatar Customization') {
+                $activeAddonSlugs[] = 'avatar_customization';
+            } elseif ($name === 'Voice Customization') {
+                $activeAddonSlugs[] = 'voice_customization';
+            } elseif (is_array($order->metadata) && !empty($order->metadata['addon'])) {
+                $activeAddonSlugs[] = strtolower(str_replace('-', '_', $order->metadata['addon']));
+            }
+        }
+        $activeAddonSlugs = array_values(array_unique($activeAddonSlugs));
+        $hasActiveAddon = count($activeAddonSlugs) > 0;
 
         return view('subscription.index', [
             'payment_gateways' => $gateways,
@@ -583,7 +615,9 @@ class SubscriptionController extends Controller
             'purchaseHistory' => $this->getUserPurchaseHistory($user),
             'selectedPaymentGateway' => $targetGateway ? $targetGateway->name : null,
             'isUsingOriginalGateway' => $user->isReturningCustomer() && $user->paymentGateway && $targetGateway && $user->paymentGateway->id === $targetGateway->id,
-            'isUsingAdminGateway' => !$user->isReturningCustomer() || !$user->paymentGateway || ($targetGateway && $user->paymentGateway && $user->paymentGateway->id !== $targetGateway->id)
+            'isUsingAdminGateway' => !$user->isReturningCustomer() || !$user->paymentGateway || ($targetGateway && $user->paymentGateway && $user->paymentGateway->id !== $targetGateway->id),
+            'activeAddonSlugs' => $activeAddonSlugs,
+            'hasActiveAddon' => $hasActiveAddon,
         ]);
     }
 }

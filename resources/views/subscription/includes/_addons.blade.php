@@ -13,9 +13,16 @@
                     <div class="addons-grid addons-centered">
                         <!-- Avatar Customization -->
                         <div class="addon-card">
-                            <h3>Avatar Customization</h3>
+                            <h3>
+                                Avatar Customization
+                                @if(!empty($activeAddonSlugs) && in_array('avatar_customization', $activeAddonSlugs))
+                                    <span class="badge badge-success" style="margin-left:8px;">Active</span>
+                                @endif
+                            </h3>
                             <p class="addon-price">$2800</p>
-                            <button class="btn dark">Get Started</button>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>
+                                Get Started
+                            </button>
                             <p class="included-title">What's required from you:</p>
                             <ul class="features">
                                 <li><span class="icon"></span> 7 min of training video recorded</li>
@@ -28,9 +35,16 @@
 
                         <!-- Voice Customization -->
                         <div class="addon-card">
-                            <h3>Voice Customization</h3>
+                            <h3>
+                                Voice Customization
+                                @if(!empty($activeAddonSlugs) && in_array('voice_customization', $activeAddonSlugs))
+                                    <span class="badge badge-success" style="margin-left:8px;">Active</span>
+                                @endif
+                            </h3>
                             <p class="addon-price">$2200</p>
-                            <button class="btn dark">Get Started</button>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>
+                                Get Started
+                            </button>
                             <p class="included-title">What's required from you:</p>
                             <ul class="features">
                                 <li><span class="icon"></span> 7 min of valid audio recorded</li>
@@ -48,9 +62,14 @@
                     <div class="addons-grid addons-centered">
                         <!-- Avatar Customization -->
                         <div class="addon-card">
-                            <h3>Avatar Customization</h3>
+                            <h3>
+                                Avatar Customization
+                                @if(!empty($activeAddonSlugs) && in_array('avatar_customization', $activeAddonSlugs))
+                                    <span class="badge badge-success" style="margin-left:8px;">Active</span>
+                                @endif
+                            </h3>
                             <p class="addon-price">$2800</p>
-                            <button class="btn dark">Get Started</button>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>Get Started</button>
                             <p class="included-title">What's included</p>
                             <ul class="features">
                                 <li><span class="icon"></span> 30+ min of training video recorded</li>
@@ -65,9 +84,14 @@
 
                         <!-- Voice Customization -->
                         <div class="addon-card">
-                            <h3>Voice Customization</h3>
+                            <h3>
+                                Voice Customization
+                                @if(!empty($activeAddonSlugs) && in_array('voice_customization', $activeAddonSlugs))
+                                    <span class="badge badge-success" style="margin-left:8px;">Active</span>
+                                @endif
+                            </h3>
                             <p class="addon-price">$2200</p>
-                            <button class="btn dark">Get Started</button>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>Get Started</button>
                             <p class="included-title">What's included</p>
                             <ul class="features">
                                 <li><span class="icon"></span> 30+ min of valid audio recorded</li>
@@ -153,6 +177,19 @@
 .addon-card .features li {
     font-size: 15px;
     margin: 10px 0;
+}
+
+/* Simple badge styles for Active indicator */
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.badge-success {
+    background: #22c55e;
+    color: #fff;
 }
 
 @media (max-width: 768px) {
