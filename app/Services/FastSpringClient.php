@@ -15,6 +15,12 @@ class FastSpringClient
     private $username;
     private $password;
 
+    private function resolvePackageIdByName(string $name): ?int
+    {
+        $package = Package::where('name', $name)->first();
+        return $package?->id;
+    }
+
     public function __construct(string $username, string $password)
     {
         $this->username = $username;
@@ -40,7 +46,7 @@ class FastSpringClient
 
     /**
      * Prepare for FastSpring popup checkout for downgrade
-     * 
+     *
      * @param User $user The user requesting the downgrade
      * @param string $subscriptionId The FastSpring subscription ID
      * @param string $newProductId The ID of the product to downgrade to
@@ -59,11 +65,12 @@ class FastSpringClient
                 'payment_gateway_id' => PaymentGateways::where('name', 'FastSpring')->first()->id ?? null,
                 'status' => 'pending',
                 'order_type' => 'downgrade',
-                'payload' => [
+                'metadata' => [
                     'subscription_id' => $subscriptionId,
-                    'original_package' => $user->package->name ?? null,
-                    'new_package' => $newProductId,
-                    'user_id' => $user->id
+                    'original_package' => ($user->userLicence && $user->userLicence->package) ? $user->userLicence->package->name : ($user->package->name ?? 'Unknown'),
+                    'downgrade_to' => Package::where('id', $this->resolvePackageIdByName($newProductId))->value('name') ?? $newProductId,
+                    'downgrade_type' => 'subscription_downgrade',
+                    'temp_transaction_id' => true
                 ]
             ]);
 

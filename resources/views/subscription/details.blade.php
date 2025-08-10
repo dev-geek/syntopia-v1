@@ -42,6 +42,26 @@
         font-weight: 600;
     }
 
+    /* Ensure long status badges wrap inside their container */
+    .status-badge {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        max-width: 100%;
+        white-space: normal;
+        word-break: break-word;
+        line-height: 1.25;
+    }
+
+    .status-badge i {
+        flex: 0 0 auto;
+        align-self: center;
+        line-height: 1;
+        vertical-align: middle;
+        transform: translateY(1px);
+    }
+
     .badge-success {
         background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
         color: #fff;
@@ -259,8 +279,10 @@
     <!-- Main content -->
     <section class="content">
         <div class="container-fluid">
-            {{-- Pending Upgrade Notice --}}
-            @if($hasPendingUpgrade && $pendingUpgradeDetails)
+
+
+            {{-- Scheduled Downgrade Notice --}}
+            @if($hasPendingDowngrade && $pendingDowngradeDetails)
             <div class="row">
                 <div class="col-12">
                     <div class="alert alert-info upgrade-notice" style="background: linear-gradient(135deg, #17a2b8 0%, #20c997 100%); border: none; color: white; border-radius: 1rem; box-shadow: 0 4px 24px rgba(23, 162, 184, 0.15); position: relative;">
@@ -271,17 +293,14 @@
                             <div class="flex-grow-1">
                                 <h5 class="alert-heading mb-2" style="color: white; font-weight: 700;">
                                     <i class="fas fa-info-circle mr-2"></i>
-                                    Upgrade Scheduled
+                                    Downgrade Scheduled
                                 </h5>
                                 <p class="mb-2" style="color: white; font-size: 1.1rem; line-height: 1.5;">
-                                    Your subscription has been successfully upgraded to <strong>{{ $pendingUpgradeDetails['target_package'] }}</strong> on {{ $pendingUpgradeDetails['created_at']->format('F j, Y') }}.
+                                    Your subscription will downgrade to <strong>{{ $pendingDowngradeDetails['target_package'] ?? 'the selected plan' }}</strong> at the end of your current billing cycle.
                                 </p>
                                 <p class="mb-0" style="color: rgba(255,255,255,0.9); font-size: 1rem;">
                                     <i class="fas fa-exclamation-triangle mr-2"></i>
-                                    <strong>Important:</strong> Your upgraded subscription will become active only after your current plan expires on {{ $calculatedEndDate ? $calculatedEndDate->format('F j, Y') : 'the end of your billing cycle' }}.
-                                    @if($calculatedEndDate)
-                                    <br><small style="color: rgba(255,255,255,0.8);">({{ $calculatedEndDate->diffInDays(now()) }} days remaining)</small>
-                                    @endif
+                                    <strong>Important:</strong> Your current plan remains active until expiration{{ $calculatedEndDate ? ' on ' . $calculatedEndDate->format('F j, Y') : '' }}.
                                 </p>
                             </div>
                         </div>
@@ -405,30 +424,32 @@
                                         </h3>
                                         <div class="row">
                                             <div class="col-12">
-                                                <p class="text-muted mb-2"><strong>Current Package:</strong></p>
+                                                @php
+                                                    $displayCurrentPackage = $currentPackage;
+                                                    if ($hasPendingDowngrade) {
+                                                        if (!empty($pendingDowngradeDetails['original_package'])) {
+                                                            $displayCurrentPackage = $pendingDowngradeDetails['original_package'];
+                                                        } elseif ($user->userLicence && $user->userLicence->package) {
+                                                            $displayCurrentPackage = $user->userLicence->package->name;
+                                                        }
+                                                    }
+                                                @endphp
+
+                                                <p class="text-muted mb-2"><strong>Current Plan:</strong></p>
                                                 <p class="mb-2">
-                                                    {{ $currentPackage ?? 'No Package' }}
-                                                    @if ($currentPackage && strtolower($currentPackage) === 'free')
+                                                    {{ $displayCurrentPackage ?? 'No Package' }}
+                                                    @if ($displayCurrentPackage && strtolower($displayCurrentPackage) === 'free')
                                                     <span class="badge badge-secondary ml-2">Free Plan</span>
                                                     @endif
-                                                    @if ($hasPendingUpgrade)
-                                                    <span class="badge badge-info ml-2">
-                                                        <i class="fas fa-clock"></i> Active Until Expiration
-                                                    </span>
-                                                    @endif
                                                 </p>
-                                                @if ($hasPendingUpgrade && $pendingUpgradeDetails)
-                                                <p class="text-muted mb-2"><strong>Upgrading To:</strong></p>
+                                                @if ($hasPendingDowngrade && !empty($pendingDowngradeDetails['target_package']))
+                                                <p class="text-muted mb-2"><strong>Plan after downgrade:</strong></p>
                                                 <p class="mb-2">
-                                                    <span class="badge badge-success px-3 py-2">
-                                                        <i class="fas fa-arrow-up mr-1"></i>
-                                                        {{ $pendingUpgradeDetails['target_package'] }}
-                                                    </span>
-                                                    <span class="badge badge-warning ml-2">
-                                                        <i class="fas fa-clock"></i> Pending
-                                                    </span>
+                                                    {{ $pendingDowngradeDetails['target_package'] }}
+                                                    <span class="badge badge-info ml-2"><i class="fas fa-arrow-down mr-1"></i> Downgrading</span>
                                                 </p>
                                                 @endif
+
                                                 <p class="text-muted mb-2"><strong>Status:</strong></p>
                                                 @if ($hasActiveSubscription)
                                                 @if ($hasScheduledCancellation)
@@ -445,17 +466,31 @@
                                                         <strong>Your subscription remains fully active!</strong> You can continue using all premium features until {{ $calculatedEndDate ? $calculatedEndDate->format('F j, Y') : 'the end of your billing cycle' }}.
                                                     </p>
                                                 </div>
+                                                @elseif ($hasPendingDowngrade)
+                                                <div>
+                                                    <span class="badge badge-success px-3 py-2 status-badge">
+                                                        <i class="fas fa-check-circle"></i> Active Until Expiration
+                                                    </span>
+                                                    <br>
+                                                    <span class="badge badge-info px-3 py-2 mt-2 status-badge">
+                                                        <i class="fas fa-arrow-down"></i> Downgrade to {{ $pendingDowngradeDetails['target_package'] ?? 'next plan' }} Scheduled
+                                                    </span>
+                                                    <p class="text-muted mt-2 small">
+                                                        <i class="fas fa-info-circle"></i>
+                                                        Your plan will change to {{ $pendingDowngradeDetails['target_package'] ?? 'the selected plan' }} at period end{{ $calculatedEndDate ? ' on ' . $calculatedEndDate->format('F j, Y') : '' }}.
+                                                    </p>
+                                                </div>
                                                 @else
                                                 <span class="badge badge-success px-3 py-2">
                                                     <i class="fas fa-check-circle"></i> Active
                                                 </span>
                                                 @endif
                                                 @elseif ($isExpired)
-                                                <span class="badge badge-danger px-3 py-2">
+                                                 <span class="badge badge-danger px-3 py-2 status-badge">
                                                     <i class="fas fa-times-circle"></i> Expired
                                                 </span>
                                                 @else
-                                                <span class="badge badge-warning px-3 py-2">
+                                                 <span class="badge badge-warning px-3 py-2 status-badge">
                                                     <i class="fas fa-exclamation-circle"></i> Inactive
                                                 </span>
                                                 @endif

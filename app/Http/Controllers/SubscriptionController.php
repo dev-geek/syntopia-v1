@@ -310,14 +310,52 @@ class SubscriptionController extends Controller
         $hasPendingUpgrade = $pendingUpgrade !== null;
         $pendingUpgradeDetails = null;
 
-        // Determine the current package
-        // If there's a pending upgrade, the current package should be the original one (from the license)
-        // If no pending upgrade, use the user's assigned package
-        if ($hasPendingUpgrade && $activeLicense && $activeLicense->package) {
-            // Use the package from the active license (original package)
+        // Check for pending downgrade orders
+        $pendingDowngrade = Order::where('user_id', $user->id)
+            ->where('order_type', 'downgrade')
+            ->whereIn('status', ['pending', 'pending_downgrade'])
+            ->where('created_at', '>=', now()->subDays(30))
+            ->latest()
+            ->first();
+        $hasPendingDowngrade = $pendingDowngrade !== null;
+        $pendingDowngradeDetails = null;
+
+        // Determine the current package (gateway-agnostic)
+        // Prefer the active license package whenever available
+        if ($activeLicense && $activeLicense->package) {
             $package = $activeLicense->package;
+        } elseif ($hasPendingDowngrade) {
+            if ($activeLicense && $activeLicense->package) {
+                $package = $activeLicense->package;
+            } else {
+                // Resolve original package using order metadata -> payload -> last completed order -> user package
+                $originalPackageName = null;
+                if ($pendingDowngrade) {
+                    if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package'])) {
+                        $originalPackageName = $pendingDowngrade->metadata['original_package'];
+                    } elseif (isset($pendingDowngrade->payload['original_package'])) {
+                        $originalPackageName = $pendingDowngrade->payload['original_package'];
+                    }
+                }
+
+                if (!$originalPackageName) {
+                    $lastCompletedOrder = Order::where('user_id', $user->id)
+                        ->where('status', 'completed')
+                        ->where('created_at', '<=', $pendingDowngrade->created_at)
+                        ->latest()
+                        ->first();
+                    if ($lastCompletedOrder && $lastCompletedOrder->package) {
+                        $originalPackageName = $lastCompletedOrder->package->name;
+                    }
+                }
+
+                if ($originalPackageName) {
+                    $package = Package::where('name', $originalPackageName)->first() ?: $user->package;
+                } else {
+                    $package = $user->package;
+                }
+            }
         } else {
-            // Use the user's assigned package
             $package = $user->package;
         }
 
@@ -343,6 +381,55 @@ class SubscriptionController extends Controller
             ];
         }
 
+        if ($hasPendingDowngrade) {
+            $originalPackageName = null;
+            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package'])) {
+                $originalPackageName = $pendingDowngrade->metadata['original_package'];
+            } elseif (isset($pendingDowngrade->payload['original_package'])) {
+                $originalPackageName = $pendingDowngrade->payload['original_package'];
+            }
+            if (!$originalPackageName) {
+                $lastCompletedOrder = Order::where('user_id', $user->id)
+                    ->where('status', 'completed')
+                    ->where('created_at', '<=', $pendingDowngrade->created_at)
+                    ->latest()
+                    ->first();
+                if ($lastCompletedOrder && $lastCompletedOrder->package) {
+                    $originalPackageName = $lastCompletedOrder->package->name;
+                }
+            }
+
+            $pendingDowngradeDetails = [
+                'target_package' => $pendingDowngrade->package->name ?? 'Unknown',
+                'original_package' => $originalPackageName,
+                'created_at' => $pendingDowngrade->created_at,
+                'downgrade_type' => 'subscription_downgrade'
+            ];
+        }
+
+        // Debug logging for diagnosis
+        try {
+            Log::info('Subscription details resolution', [
+                'user_id' => $user->id,
+                'user_package' => $user->package?->name,
+                'active_license_package' => $activeLicense?->package?->name,
+                'active_license_expires_at' => $activeLicense?->expires_at?->toDateTimeString(),
+                'has_pending_upgrade' => $hasPendingUpgrade,
+                'has_pending_downgrade' => $hasPendingDowngrade,
+                'pending_downgrade_order' => $pendingDowngrade ? [
+                    'id' => $pendingDowngrade->id,
+                    'status' => $pendingDowngrade->status,
+                    'order_type' => $pendingDowngrade->order_type,
+                    'package' => $pendingDowngrade->package?->name,
+                    'metadata' => $pendingDowngrade->metadata ?? null,
+                ] : null,
+                'resolved_current_package' => $package?->name,
+                'pending_downgrade_details' => $pendingDowngradeDetails,
+            ]);
+        } catch (\Throwable $e) {
+            // Ignore logging errors
+        }
+
         return view('subscription.details', [
             'currentPackage' => $package ? $package->name : null,
             'user' => $user,
@@ -352,7 +439,9 @@ class SubscriptionController extends Controller
             'canUpgrade' => $canUpgrade,
             'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false,
             'hasPendingUpgrade' => $hasPendingUpgrade,
-            'pendingUpgradeDetails' => $pendingUpgradeDetails
+            'pendingUpgradeDetails' => $pendingUpgradeDetails,
+            'hasPendingDowngrade' => $hasPendingDowngrade,
+            'pendingDowngradeDetails' => $pendingDowngradeDetails
         ]);
     }
 

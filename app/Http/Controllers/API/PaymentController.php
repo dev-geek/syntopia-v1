@@ -2349,57 +2349,7 @@ class PaymentController extends Controller
                     }
                 }
 
-                // Check for scheduled upgrades that should take effect
-                $scheduledUpgradeOrder = Order::where('metadata->subscription_id', $subscriptionId)
-                    ->where('status', 'pending_upgrade')
-                    ->where('order_type', 'upgrade_at_expiration')
-                    ->first();
-
-                if ($scheduledUpgradeOrder) {
-                    Log::info('Found scheduled upgrade order that should take effect', [
-                        'subscription_id' => $subscriptionId,
-                        'order_id' => $scheduledUpgradeOrder->id,
-                        'user_id' => $userId
-                    ]);
-
-                    // Update the order status
-                    $scheduledUpgradeOrder->update(['status' => 'completed']);
-
-                    // Get the package
-                    $package = Package::find($scheduledUpgradeOrder->package_id);
-
-                    if ($package) {
-                        // Update user's package and subscription status
-                        $user->update([
-                            'package_id' => $package->id,
-                            'is_subscribed' => true
-                        ]);
-
-                        // Create or update license for the scheduled upgrade
-                        $license = $this->licenseService->createAndActivateLicense(
-                            $user,
-                            $package,
-                            $subscriptionId,
-                            $scheduledUpgradeOrder->payment_gateway_id
-                        );
-
-                        if ($license) {
-                            Log::info('License created successfully for Paddle scheduled upgrade', [
-                                'user_id' => $userId,
-                                'package' => $package->name,
-                                'license_id' => $license->id,
-                                'subscription_id' => $subscriptionId,
-                                'upgrade_type' => 'scheduled_at_expiration'
-                            ]);
-                        } else {
-                            Log::error('Failed to create license for Paddle scheduled upgrade', [
-                                'user_id' => $userId,
-                                'package' => $package->name,
-                                'subscription_id' => $subscriptionId
-                            ]);
-                        }
-                    }
-                }
+                // Remove scheduled upgrade handling: upgrades take effect immediately
             }
 
             return response()->json(['status' => 'processed']);
@@ -2724,9 +2674,9 @@ class PaymentController extends Controller
                 'user_paddle_customer_id' => $user->paddle_customer_id,
                 'user_is_subscribed' => $user->is_subscribed
             ]);
-            
+
             $gateway = null;
-            
+
             if ($user->payment_gateway_id) {
                 $gateway = $user->paymentGateway;
             }
@@ -2781,8 +2731,7 @@ class PaymentController extends Controller
                 return $this->handleFastSpringUpgrade(
                     $user,
                     $packageData,
-                    $subscriptionId,
-                    $request->input('upgrade_at_expiration', false)
+                    $subscriptionId
                 );
             } elseif ($gateway->name === 'Pay Pro Global') {
                 return $this->handlePayProGlobalUpgrade($user, $packageData, $subscriptionId);
@@ -2815,22 +2764,6 @@ class PaymentController extends Controller
                 'package_name' => $packageData->name,
                 'subscription_id' => $subscriptionId
             ]);
-
-            $upgradeAtExpiration = request()->input('upgrade_at_expiration', false);
-
-            if ($upgradeAtExpiration) {
-                $result = $this->upgradePaddleSubscriptionAtExpiration($user, $packageData, $subscriptionId);
-
-                if ($result) {
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Upgrade scheduled to take effect at your next billing date',
-                        'upgrade_type' => 'at_expiration'
-                    ]);
-                }
-
-                return response()->json(['error' => 'Failed to schedule upgrade'], 500);
-            }
 
             // Immediate upgrade flow
             $checkoutUrl = $this->createPaddleUpgradeOrder($user, $packageData, $subscriptionId);
@@ -2869,87 +2802,7 @@ class PaymentController extends Controller
         }
     }
 
-    private function upgradeFastSpringSubscriptionAtExpiration($user, $packageData, $subscriptionId)
-    {
-        try {
-            // Get current subscription details to find expiration date
-            $subscriptionResponse = Http::withBasicAuth(
-                config('payment.gateways.FastSpring.username'),
-                config('payment.gateways.FastSpring.password')
-            )->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
-
-            if (!$subscriptionResponse->successful()) {
-                Log::error('Failed to fetch FastSpring subscription details', [
-                    'subscription_id' => $subscriptionId,
-                    'response' => $subscriptionResponse->body()
-                ]);
-                return false;
-            }
-
-            $subscription = $subscriptionResponse->json();
-            $nextChargeDate = $subscription['nextChargeDate'] ?? null;
-
-            if (!$nextChargeDate) {
-                Log::error('No next charge date found in subscription', [
-                    'subscription_id' => $subscriptionId,
-                    'subscription_data' => $subscription
-                ]);
-                return false;
-            }
-
-            // Prepare the upgrade request to happen at expiration
-            $response = Http::withBasicAuth(
-                config('payment.gateways.FastSpring.username'),
-                config('payment.gateways.FastSpring.password')
-            )->post('https://api.fastspring.com/subscriptions', [
-                'subscriptions' => [
-                    [
-                        'subscription' => $subscriptionId,
-                        'product' => $packageData->name, // New product path
-                        'quantity' => 1,
-                        'next' => $nextChargeDate, // Upgrade happens at next charge date
-                        'prorate' => false // No proration since we're waiting for expiration
-                    ]
-                ]
-            ]);
-
-            if (!$response->successful()) {
-                Log::error('FastSpring subscription upgrade failed', [
-                    'subscription_id' => $subscriptionId,
-                    'response' => $response->body()
-                ]);
-                return false;
-            }
-
-            // Create a pending order to track the upgrade
-            Order::create([
-                'user_id' => $user->id,
-                'package_id' => $packageData->id,
-                'amount' => $packageData->price,
-                'currency' => 'USD',
-                'status' => 'pending_upgrade',
-                'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
-                'order_type' => 'upgrade',
-                'transaction_id' => 'FS-UPGRADE-' . Str::random(10),
-                'metadata' => [
-                    'original_package' => $user->package->name ?? 'Unknown',
-                    'upgrade_to' => $packageData->name,
-                    'upgrade_type' => 'at_expiration',
-                    'next_charge_date' => $nextChargeDate,
-                    'subscription_id' => $subscriptionId
-                ]
-            ]);
-
-            return true;
-        } catch (\Exception $e) {
-            Log::error('FastSpring upgrade at expiration error', [
-                'error' => $e->getMessage(),
-                'user_id' => $user->id ?? null,
-                'subscription_id' => $subscriptionId
-            ]);
-            return false;
-        }
-    }
+    // Removed upgradeFastSpringSubscriptionAtExpiration: upgrades take effect immediately
 
     private function upgradePaddleSubscriptionAtExpiration($user, $packageData, $subscriptionId)
     {
@@ -3359,24 +3212,6 @@ class PaymentController extends Controller
                 'package_name' => $packageData->name,
                 'subscription_id' => $subscriptionId
             ]);
-
-            // Check if this is an immediate upgrade or upgrade at expiration
-            $upgradeAtExpiration = request()->input('upgrade_at_expiration', false);
-
-            if ($upgradeAtExpiration) {
-                // Use the new method that schedules upgrade at expiration
-                $result = $this->upgradeFastSpringSubscriptionAtExpiration($user, $packageData, $subscriptionId);
-
-                if ($result) {
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Upgrade scheduled to take effect at your next billing date',
-                        'upgrade_type' => 'at_expiration'
-                    ]);
-                }
-
-                return response()->json(['error' => 'Failed to schedule upgrade'], 500);
-            }
 
             // Original immediate upgrade flow remains as fallback
             $checkoutUrl = $this->createFastSpringUpgradeOrder($user, $packageData, $subscriptionId);
@@ -3934,7 +3769,7 @@ class PaymentController extends Controller
                 'order_type' => 'downgrade',
                 'transaction_id' => $tempTransactionId,
                 'metadata' => [
-                    'original_package' => $user->package->name ?? 'Unknown',
+                    'original_package' => ($user->userLicence && $user->userLicence->package) ? $user->userLicence->package->name : ($user->package->name ?? 'Unknown'),
                     'downgrade_to' => $packageData->name,
                     'downgrade_type' => 'subscription_downgrade',
                     'temp_transaction_id' => true,
@@ -4068,9 +3903,9 @@ class PaymentController extends Controller
                 config('payment.gateways.FastSpring.username'),
                 config('payment.gateways.FastSpring.password')
             );
-            
+
             $result = $fastSpringClient->downgradeSubscription($user, $subscriptionId, $packageData->name);
-            
+
             if (!$result['success']) {
                 Log::error('Failed to prepare FastSpring downgrade', [
                     'user_id' => $user->id,
