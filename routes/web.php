@@ -143,11 +143,21 @@ Route::get('/debug/admin-check', function() {
 
 // Admin Password Reset Routes
 Route::prefix('admin')->group(function () {
-    Route::get('/forgotpassword', [AdminController::class, 'AdminForgotPassword'])->name('admin.forgotpassword');
-    Route::get('/password/reset', [AdminForgotPasswordController::class, 'showLinkRequestForm'])->name('admin.password.request');
-    Route::post('/password/email', [AdminForgotPasswordController::class, 'sendResetLinkEmail'])->name('admin.password.email');
-    Route::post('/password/reset', [AdminResetPasswordController::class, 'reset'])->name('admin.password.update');
-    Route::get('/password/reset/{token}', [AdminResetPasswordController::class, 'showResetForm'])->name('admin.password.reset');
+    // Admin Password Reset Routes
+    Route::get('/forgotpassword', [\App\Http\Controllers\Auth\AdminForgotPasswordController::class, 'showLinkRequestForm'])
+        ->name('admin.password.request');
+        
+    Route::post('/password/check-email', [\App\Http\Controllers\Auth\AdminForgotPasswordController::class, 'checkEmail'])
+        ->name('admin.password.check-email');
+        
+    Route::post('/password/email', [\App\Http\Controllers\Auth\AdminForgotPasswordController::class, 'sendResetLinkEmail'])
+        ->name('admin.password.email');
+        
+    Route::get('/password/reset/{token}', [\App\Http\Controllers\Auth\AdminResetPasswordController::class, 'showResetForm'])
+        ->name('admin.password.reset');
+        
+    Route::post('/password/reset', [\App\Http\Controllers\Auth\AdminResetPasswordController::class, 'reset'])
+        ->name('admin.password.update');
 });
 
 // Social Authentication Routes

@@ -6,8 +6,8 @@
   <title>Log in</title>
 
   <!-- Favicon -->
-  <link rel="icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
-  <link rel="shortcut icon" type="image/webp" href="{{ asset('syntopia-logo.webp') }}">
+  <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
+  <link rel="shortcut icon" type="image/png" href="{{ asset('favicon.png') }}">
 
   <!-- Google Font: Source Sans Pro -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
@@ -72,7 +72,7 @@
         <div class="row">
           <div class="col-8">
             <div class="icheck-primary">
-            <a href="{{ route('admin.forgotpassword') }}">Forgot Password?</a>
+            <a href="{{ route('admin.password.request') }}">Forgot Password?</a>
 
             </div>
           </div>

@@ -107,7 +107,6 @@ class RegisterController extends Controller
         }
 
         $validator = Validator::make($data, [
-            'name' => ['required', 'string', 'max:255'],
             'email' => [
                 'required',
                 'string',
@@ -122,8 +121,8 @@ class RegisterController extends Controller
                 'max:30',
                 'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[A-Za-z0-9,.<>{}~!@#$%^&_]{8,30}$/'
             ],
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
             'status' => ['nullable', 'integer'],
             'subscriber_password' => ['nullable', 'string'],
         ], [
@@ -146,7 +145,9 @@ class RegisterController extends Controller
     protected function create(array $data)
     {
         $user = User::create([
-            'name' => $data['name'],
+            'name' => trim($data['first_name'] . ' ' . $data['last_name']),
+            'first_name' => $data['first_name'],
+            'last_name' => $data['last_name'],
             'email' => $data['email'],
             'password' => $data['password'], // Let the mutator handle hashing
             'status' => 0,
