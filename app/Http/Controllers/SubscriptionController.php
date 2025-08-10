@@ -430,6 +430,29 @@ class SubscriptionController extends Controller
             // Ignore logging errors
         }
 
+        // Resolve add-on package IDs to include orders linked by package_id
+        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization', 'Voice Customization'])
+            ->pluck('id')
+            ->toArray();
+
+        // Debug: count purchased add-ons
+        try {
+            $debugPurchasedAddonsCount = \App\Models\Order::where('user_id', $user->id)
+                ->where('status', 'completed')
+                ->where(function($q) use ($addonPackageIds) {
+                    $q->where('order_type', 'addon')
+                      ->orWhereNotNull('metadata->addon')
+                      ->orWhereIn('package_id', $addonPackageIds)
+                      ->orWhere('metadata', 'like', '%"addon"%');
+                })
+                ->count();
+            \Illuminate\Support\Facades\Log::info('[SubscriptionDetails] Purchased addons resolved', [
+                'user_id' => $user->id,
+                'count' => $debugPurchasedAddonsCount,
+                'addon_package_ids' => $addonPackageIds
+            ]);
+        } catch (\Throwable $e) {}
+
         return view('subscription.details', [
             'currentPackage' => $package ? $package->name : null,
             'user' => $user,
@@ -441,7 +464,18 @@ class SubscriptionController extends Controller
             'hasPendingUpgrade' => $hasPendingUpgrade,
             'pendingUpgradeDetails' => $pendingUpgradeDetails,
             'hasPendingDowngrade' => $hasPendingDowngrade,
-            'pendingDowngradeDetails' => $pendingDowngradeDetails
+            'pendingDowngradeDetails' => $pendingDowngradeDetails,
+            'purchasedAddons' => \App\Models\Order::with('package')
+                ->where('user_id', $user->id)
+                ->where('status', 'completed')
+                ->where(function($q) use ($addonPackageIds) {
+                    $q->where('order_type', 'addon')
+                      ->orWhereNotNull('metadata->addon')
+                      ->orWhereIn('package_id', $addonPackageIds)
+                      ->orWhere('metadata', 'like', '%"addon"%');
+                })
+                ->latest()
+                ->get(),
         ]);
     }
 

@@ -225,4 +225,17 @@
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
 </body>
+
+<script>
+    // Persist add-on request for post-login flow
+    (function() {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const adon = params.get('adon');
+            if (adon) {
+                sessionStorage.setItem('pendingAddon', adon);
+            }
+        } catch (e) {}
+    })();
+    </script>
 </html>

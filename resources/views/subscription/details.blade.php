@@ -311,6 +311,43 @@
                         </div>
                     </div>
                 </div>
+
+
+            @endif
+
+            @if(isset($purchasedAddons) && $purchasedAddons->count())
+                <div class="row">
+                    <div class="col-12">
+                        <div class="info-card">
+                            <h3 class="card-title">
+                                <i class="fas fa-puzzle-piece mr-2"></i>Active Add-ons
+                            </h3>
+                            <div class="row">
+                                <div class="col-12">
+                                    <ul class="list-group">
+                                        @foreach($purchasedAddons as $addonOrder)
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <strong>{{ $addonOrder->package->name ?? (is_array($addonOrder->metadata) && isset($addonOrder->metadata['addon']) ? ucwords(str_replace(['_', '-'], ' ', $addonOrder->metadata['addon'])) : 'Add-on') }}</strong>
+                                                    <br>
+                                                    <small class="text-muted">Purchased on {{ $addonOrder->created_at->format('F j, Y') }}</small>
+                                                </div>
+                                                <div class="text-right">
+                                                    <span class="badge badge-success px-3 py-2">Active</span>
+                                                    <span class="badge badge-info px-3 py-2 ml-1">No expiry</span>
+                                                    @if(!empty($addonOrder->amount))
+                                                        <br>
+                                                        <small class="text-muted">Paid ${{ number_format($addonOrder->amount, 2) }} {{ $addonOrder->currency }}</small>
+                                                    @endif
+                                                </div>
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             @endif
 
             {{-- Scheduled Cancellation Notice --}}
@@ -454,6 +491,7 @@
                                                         <span class="badge badge-secondary ml-2">Free Plan</span>
                                                     @endif
                                                 </p>
+
                                                 @if ($hasPendingDowngrade && !empty($pendingDowngradeDetails['target_package']))
                                                     <p class="text-muted mb-2"><strong>Plan after downgrade:</strong>
                                                     </p>

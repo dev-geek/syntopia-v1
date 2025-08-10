@@ -1278,6 +1278,172 @@ class PaymentController extends Controller
         }
     }
 
+    public function handleAddonSuccess(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return redirect()->route('login')->with('error', 'Please log in to complete your add-on purchase');
+            }
+
+            $orderId = $request->input('orderId');
+            $addon = $request->input('addon');
+
+            Log::info('[handleAddonSuccess] called', [
+                'user_id' => $user->id,
+                'orderId' => $orderId,
+                'addon' => $addon,
+                'params' => $request->all(),
+            ]);
+
+            if (!$orderId || !$addon) {
+                Log::error('Addon success missing parameters', [
+                    'orderId' => $orderId,
+                    'addon' => $addon,
+                ]);
+                return redirect()->route('subscription')->with('error', 'Invalid add-on payment parameters');
+            }
+
+            $response = Http::withBasicAuth(
+                config('payment.gateways.FastSpring.username'),
+                config('payment.gateways.FastSpring.password')
+            )->get("https://api.fastspring.com/orders/{$orderId}");
+
+            if (!$response->successful()) {
+                Log::error('FastSpring order verification failed for add-on', [
+                    'order_id' => $orderId,
+                    'response' => $response->body(),
+                ]);
+                return redirect()->route('subscription')->with('error', 'Add-on order verification failed');
+            }
+
+            $orderJson = $response->json();
+            $orderData = $orderJson['orders'][0] ?? $orderJson;
+
+            if (!($orderData['completed'] ?? false)) {
+                Log::error('FastSpring add-on order not completed', [
+                    'order_id' => $orderId,
+                    'orderData' => $orderData,
+                ]);
+                return redirect()->route('subscription')->with('error', 'Add-on payment not completed');
+            }
+
+            // Robust amount parsing from FastSpring order
+            $amount = 0.0;
+            if (isset($orderData['total']) && is_numeric($orderData['total'])) {
+                $amount = (float)$orderData['total'];
+            } elseif (isset($orderData['items'][0]['subtotal']) && is_numeric($orderData['items'][0]['subtotal'])) {
+                $amount = (float)$orderData['items'][0]['subtotal'];
+            } elseif (isset($orderData['totalDisplay'])) {
+                $amount = (float)preg_replace('/[^\d.]/', '', (string)$orderData['totalDisplay']);
+            }
+            $currency = $orderData['currency']
+                ?? ($orderData['items'][0]['currency'] ?? 'USD');
+
+            // Resolve package_id from addon slug
+            $addonKey = strtolower((string)$addon);
+            $addonName = match ($addonKey) {
+                'avatar_customization', 'avatar-customization' => 'Avatar Customization',
+                'voice_customization', 'voice-customization' => 'Voice Customization',
+                default => null,
+            };
+            $packageId = $addonName ? (\App\Models\Package::where('name', $addonName)->value('id')) : null;
+
+            Log::info('Parsed FastSpring add-on order values', [
+                'order_id' => $orderId,
+                'addon' => $addon,
+                'resolved_package' => $addonName,
+                'package_id' => $packageId,
+                'amount' => $amount,
+                'currency' => $currency,
+            ]);
+            $paymentGatewayId = $this->getPaymentGatewayId('fastspring');
+
+            // Create or update the order record for the add-on
+            $existing = Order::where('transaction_id', $orderId)->first();
+            if ($existing) {
+                // Update existing if it was created earlier as pending
+                $existing->update([
+                    'status' => 'completed',
+                    'amount' => $amount > 0 ? $amount : $existing->amount,
+                    'currency' => $currency,
+                    'order_type' => 'addon',
+                    'payment_gateway_id' => $paymentGatewayId,
+                    'package_id' => $packageId ?? $existing->package_id,
+                    'metadata' => array_merge(($existing->metadata ?? []), [
+                        'addon' => $addon,
+                        'fastspring_order' => $orderData,
+                    ]),
+                ]);
+                $order = $existing;
+            } else {
+                $order = Order::create([
+                    'user_id' => $user->id,
+                    'package_id' => $packageId,
+                    'payment_gateway_id' => $paymentGatewayId,
+                    'amount' => $amount,
+                    'transaction_id' => $orderId,
+                    'status' => 'completed',
+                    'currency' => $currency,
+                    'order_type' => 'addon',
+                    'metadata' => [
+                        'addon' => $addon,
+                        'fastspring_order' => $orderData,
+                    ],
+                ]);
+            }
+
+            Log::info('Add-on order stored successfully', [
+                'order_db_id' => $order->id,
+                'user_id' => $user->id,
+                'addon' => $addon,
+            ]);
+
+            // TODO: Trigger actual fulfillment workflow for the add-on
+            // For example: dispatch(new FulfillAddonJob($user->id, $addon, $order->id));
+
+            return redirect()->route('user.dashboard')->with('success', 'Your add-on purchase has been recorded. We will reach out shortly.');
+        } catch (\Exception $e) {
+            Log::error('Add-on success processing failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return redirect()->route('subscription')->with('error', 'Failed to process add-on purchase');
+        }
+    }
+
+    public function addonDebugLog(Request $request)
+    {
+        try {
+            $message = $request->input('message', '');
+            $context = $request->input('context', []);
+            $level = strtolower($request->input('level', 'info'));
+
+            $logPayload = array_merge([
+                'ip' => $request->ip(),
+                'user_id' => Auth::id(),
+                'user_agent' => $request->header('User-Agent'),
+                'url' => $request->header('Referer'),
+            ], is_array($context) ? $context : []);
+
+            switch ($level) {
+                case 'warning':
+                    Log::warning('[AddonDebug] ' . $message, $logPayload);
+                    break;
+                case 'error':
+                    Log::error('[AddonDebug] ' . $message, $logPayload);
+                    break;
+                default:
+                    Log::info('[AddonDebug] ' . $message, $logPayload);
+            }
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('[AddonDebug] Failed to log', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false], 500);
+        }
+    }
+
     private function processPayment($paymentData, $gateway)
     {
         return DB::transaction(function () use ($paymentData, $gateway) {

@@ -96,6 +96,27 @@ class PackageSeeder extends Seeder
                     'Tailored support & solutions',
                 ]),
             ],
+            // Add-on products (one-time purchases)
+            [
+                'name' => 'Avatar Customization',
+                'price' => 2800,
+                'duration' => 'one-time',
+                'features' => json_encode([
+                    'Create a hyperrealistic AI avatar matching your face, hairstyle, and outfit',
+                    'Includes recording guidelines',
+                    'One-time setup; no recurring fees',
+                ]),
+            ],
+            [
+                'name' => 'Voice Customization',
+                'price' => 2200,
+                'duration' => 'one-time',
+                'features' => json_encode([
+                    'Custom AI voice based on your audio sample',
+                    'Guide provided for best results',
+                    'One-time setup; no usage fees',
+                ]),
+            ],
         ]);
     }
 }

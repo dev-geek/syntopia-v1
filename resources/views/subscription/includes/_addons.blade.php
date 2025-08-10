@@ -7,12 +7,13 @@
             @if(isset($pageType) && ($pageType === 'upgrade' || $pageType === 'downgrade'))
                 <h2 class="section-title">Bring Your Own Face & Voice to Life on Syntopia.</h2>
                 <p class="section-subtitle">Want to go live as your own AI avatar on TikTok, YouTube, or your site? You'll need two customizations to match your appearance and voice:</p>
+                <p class="section-subtitle">We create your AI avatar (your face, hairstyle, and outfit) so you can go live as you.</p>
 
                 <div class="addons-grid-wrapper">
                     <div class="addons-grid addons-centered">
                         <!-- Avatar Customization -->
                         <div class="addon-card">
-                            <h3>We create your AI avatar (your face, hairstyle, and outfit) so you can go live as you.</h3>
+                            <h3>Avatar Customization</h3>
                             <p class="addon-price">$2800</p>
                             <button class="btn dark">Get Started</button>
                             <p class="included-title">What's required from you:</p>

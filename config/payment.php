@@ -27,6 +27,13 @@ return [
             'username' => env('FASTSPRING_USERNAME', ''),
             'password' => env('FASTSPRING_PASSWORD', ''),
             'webhook_secret' => env('FASTSPRING_WEBHOOK_SECRET', ''),
+            // Map internal add-on keys to FastSpring product paths
+            'addons' => [
+                'avatar_customization' => 'avatar-customization',
+                'voice_customization' => 'voice-customization',
+                'avatar-customization' => 'avatar-customization',
+                'voice-customization' => 'voice-customization',
+            ],
             'product_ids' => [
                 'free' => 'free-plan',
                 'starter' => 'starter-plan',

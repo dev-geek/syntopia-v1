@@ -118,10 +118,11 @@
     @endif
 
     <!-- FastSpring Integration -->
-    @if ($activeGateway && $activeGateway->name === 'FastSpring')
+    @if (($activeGateway && $activeGateway->name === 'FastSpring') || request()->has('adon'))
         <script id="fsc-api" src="https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js" type="text/javascript"
-            data-storefront="livebuzzstudio.test.onfastspring.com/popup-test-87654-payment" data-popup-closed="onFSPopupClosed"></script>
+            data-storefront="{{ config('payment.gateways.FastSpring.storefront') }}" data-popup-closed="onFSPopupClosed"></script>
         <script>
+            const fastspringStorefront = "{{ config('payment.gateways.FastSpring.storefront') }}";
             let currentProductPath = '';
 
             function processFastSpring(packageName, action = 'new') {
@@ -135,7 +136,9 @@
                     }
 
                     // Show spinner for FastSpring processing
-                    showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
+                    if (window.showSpinner) {
+                        window.showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
+                    }
 
                     fastspring.builder.reset();
                     console.log('FastSpring builder reset');
@@ -162,16 +165,85 @@
                         fastspring.builder.checkout();
                         console.log('FastSpring checkout launched');
                         // Hide spinner when checkout is launched
-                        hideSpinner();
+                        if (window.hideSpinner) {
+                            window.hideSpinner();
+                        }
                     }, 500);
                 } catch (error) {
                     console.error('FastSpring processing error:', error);
-                    hideSpinner(); // Hide spinner on error
-                    showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
+                    if (window.hideSpinner) {
+                        window.hideSpinner();
+                    }
+                    if (window.showAlert) {
+                        window.showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
+                    }
                 }
             }
 
             function onFSPopupClosed(orderData) {
+                if (window.isAddonCheckout === true) {
+                    try {
+                        if (!orderData || !orderData.id) {
+                            showAlert('info', 'Payment Cancelled', 'Your add-on payment was cancelled.', () => {
+                                window.isAddonCheckout = false;
+                            });
+                            sessionStorage.removeItem('addonAutoPopupTriggered');
+                            sessionStorage.removeItem('pendingAddon');
+                            sessionStorage.removeItem('currentProductPath');
+                            currentProductPath = '';
+                            return;
+                        }
+
+                        const orderId = orderData.id;
+                        fetch('/payments/addon-debug-log', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ message: 'Addon popup closed with order', context: { orderId } })
+                        }).catch(() => {});
+                        const addon = (new URLSearchParams(window.location.search).get('adon') || sessionStorage.getItem('pendingAddon') || '').toLowerCase();
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/payments/addon-success';
+
+                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                        if (csrfToken) {
+                            const csrfInput = document.createElement('input');
+                            csrfInput.type = 'hidden';
+                            csrfInput.name = '_token';
+                            csrfInput.value = csrfToken;
+                            form.appendChild(csrfInput);
+                        }
+
+                        const orderInput = document.createElement('input');
+                        orderInput.type = 'hidden';
+                        orderInput.name = 'orderId';
+                        orderInput.value = orderId;
+                        form.appendChild(orderInput);
+
+                        const addonInput = document.createElement('input');
+                        addonInput.type = 'hidden';
+                        addonInput.name = 'addon';
+                        addonInput.value = addon;
+                        form.appendChild(addonInput);
+
+                        document.body.appendChild(form);
+                        form.submit();
+                    } catch (e) {
+                        console.error('Addon close handler error:', e);
+                        showAlert('error', 'Processing Error', 'There was an error processing your add-on.');
+                    } finally {
+                        window.isAddonCheckout = false;
+                        sessionStorage.removeItem('addonAutoPopupTriggered');
+                        sessionStorage.removeItem('pendingAddon');
+                        sessionStorage.removeItem('currentProductPath');
+                        currentProductPath = '';
+                    }
+                    return;
+                }
                 console.log('=== onFSPopupClosed ===', {
                     orderData: JSON.stringify(orderData, null, 2),
                     currentProductPath,
@@ -295,8 +367,17 @@
                         payment_gateway_id: "{{ $activeGateway->id ?? '' }}",
                     });
                     form.submit();
-                } catch (err) {
+                    } catch (err) {
                     console.error('Error in onFSPopupClosed:', err);
+                    fetch('/payments/addon-debug-log', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ message: 'Addon close handler error', context: { error: String(err) }, level: 'error' })
+                    }).catch(() => {});
                     showAlert('error', 'Processing Error', 'There was an error processing your payment.', () => {
                         window.location.href = '/user/dashboard?error=processing';
                     });
@@ -1403,6 +1484,146 @@
                         sessionStorage.removeItem('autoPopupTriggered');
                     }
                 }, 1000); // Wait 1 second for everything to load
+            }
+
+            // Add-on auto-checkout via FastSpring only
+            const addonFromUrl = urlParams.get('adon');
+            const pendingAddon = sessionStorage.getItem('pendingAddon');
+            if (addonFromUrl) {
+                try {
+                    // Ensure retries on reload when adon is present
+                    sessionStorage.removeItem('addonAutoPopupTriggered');
+                    fetch('/payments/addon-debug-log', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ message: 'Addon param detected on load. Reset trigger flag.', context: { addonFromUrl } })
+                    }).catch(() => {});
+                } catch (_) {}
+            }
+            const addonKey = (addonFromUrl || pendingAddon || '').toLowerCase();
+
+            function getAddonProductPath(adon) {
+                if (!adon) return '';
+                const normalized = adon.toLowerCase().trim();
+                // Config-driven mapping injected from backend
+                const configMap = @json(config('payment.gateways.FastSpring.addons', []));
+                // Try with underscores and hyphens
+                const underscoreKey = normalized.replace(/\s+/g, '_');
+                const hyphenKey = normalized.replace(/\s+/g, '-');
+                const resolved = configMap[underscoreKey] || configMap[hyphenKey] || hyphenKey;
+                try {
+                    fetch('/payments/addon-debug-log', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            message: 'Addon product path resolved',
+                            context: { adon, normalized, underscoreKey, hyphenKey, resolved, keys: Object.keys(configMap || {}) },
+                            level: 'info'
+                        })
+                    }).catch(() => {});
+                } catch (_) {}
+                return resolved;
+            }
+
+            function ensureFastSpringLoaded(callback) {
+                if (typeof fastspring !== 'undefined' && fastspring.builder) {
+                    callback();
+                    return;
+                }
+                // If script already being added, poll briefly
+                if (document.getElementById('fsc-api')) {
+                    const waitForFS = setInterval(() => {
+                        if (typeof fastspring !== 'undefined' && fastspring.builder) {
+                            clearInterval(waitForFS);
+                            callback();
+                        }
+                    }, 100);
+                    setTimeout(() => clearInterval(waitForFS), 5000);
+                    return;
+                }
+                const fsScript = document.createElement('script');
+                fsScript.id = 'fsc-api';
+                fsScript.src = 'https://sbl.onfastspring.com/sbl/1.0.3/fastspring-builder.min.js';
+                fsScript.type = 'text/javascript';
+                fsScript.setAttribute('data-storefront', fastspringStorefront);
+                fsScript.setAttribute('data-popup-closed', 'onFSPopupClosed');
+                fsScript.onload = () => callback();
+                document.head.appendChild(fsScript);
+            }
+
+            if (addonKey && !sessionStorage.getItem('addonAutoPopupTriggered')) {
+                const productPath = getAddonProductPath(addonKey);
+                sessionStorage.setItem('addonAutoPopupTriggered', 'true');
+                sessionStorage.removeItem('pendingAddon');
+                window.isAddonCheckout = true; // flag for close handler
+
+                showSpinner('Opening add-on payment...', 'Connecting to FastSpring');
+
+                ensureFastSpringLoaded(() => {
+                    try {
+                        fetch('/payments/addon-debug-log', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ message: 'FastSpring loaded for addon', context: { productPath, addonKey, storefront: fastspringStorefront }, level: 'info' })
+                        }).catch(() => {});
+                        if (!productPath) {
+                            throw new Error('Missing add-on product mapping');
+                        }
+                        processFastSpring(productPath, 'addon');
+                    } catch (e) {
+                        console.warn('Add-on checkout with specific product failed, attempting generic checkout...', e);
+                        fetch('/payments/addon-debug-log', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ message: 'Addon checkout failed, attempting generic', context: { error: String(e), productPath }, level: 'warning' })
+                        }).catch(() => {});
+                        try {
+                            fastspring.builder.reset();
+                            // Fallback: open storefront popup without a specific product
+                            setTimeout(() => {
+                                fastspring.builder.checkout();
+                                if (window.hideSpinner) {
+                                    window.hideSpinner();
+                                }
+                            }, 300);
+                        } catch (fallbackErr) {
+                            console.error('Fallback FastSpring checkout also failed:', fallbackErr);
+                            fetch('/payments/addon-debug-log', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                                },
+                                credentials: 'same-origin',
+                                body: JSON.stringify({ message: 'Addon generic checkout failed', context: { error: String(fallbackErr) }, level: 'error' })
+                            }).catch(() => {});
+                            if (window.hideSpinner) {
+                                window.hideSpinner();
+                            }
+                            if (window.showError) {
+                                window.showError('Payment Error', 'Could not start add-on checkout. Please configure the add-on product in FastSpring and try again.');
+                            }
+                            sessionStorage.removeItem('addonAutoPopupTriggered');
+                            window.isAddonCheckout = false;
+                        }
+                    }
+                });
             }
 
             document.querySelectorAll('.checkout-button').forEach(button => {

@@ -554,6 +554,15 @@
     <script>
     // Email clear button functionality
     document.addEventListener('DOMContentLoaded', function() {
+        // Persist add-on request for post-login flow
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const adon = params.get('adon');
+            if (adon) {
+                sessionStorage.setItem('pendingAddon', adon);
+            }
+        } catch (e) {}
+
         const emailInput = document.getElementById('email');
         const emailClearBtn = document.getElementById('emailClearBtn');
         const passwordField = document.getElementById('password-field');

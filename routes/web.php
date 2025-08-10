@@ -42,14 +42,14 @@ Route::post('/admin-logout', [LoginController::class, 'logout'])->name('admin.lo
 Route::get('/debug/check-admin-hash', function() {
     try {
         $user = \App\Models\User::where('email', 'admin@syntopia.io')->first();
-        
+
         if (!$user) {
             return response()->json(['error' => 'Admin user not found'], 404);
         }
-        
+
         $password = 'admin@syntopia.io';
         $isValid = \Illuminate\Support\Facades\Hash::check($password, $user->password);
-        
+
         return response()->json([
             'user_id' => $user->id,
             'email' => $user->email,
@@ -76,7 +76,7 @@ Route::get('/debug/check-admin-hash', function() {
 Route::get('/debug/reset-admin-password', function() {
     try {
         $user = \App\Models\User::where('email', 'admin@syntopia.io')->first();
-        
+
         if (!$user) {
             $user = \App\Models\User::create([
                 'name' => 'Super Admin',
@@ -89,11 +89,11 @@ Route::get('/debug/reset-admin-password', function() {
             ]);
             $user->assignRole('Super Admin');
         }
-        
+
         // Force reset password
         $user->password = 'admin@syntopia.io';
         $user->save();
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Admin password has been reset to: admin@syntopia.io',
@@ -119,11 +119,11 @@ Route::get('/debug/reset-admin-password', function() {
 Route::get('/debug/admin-check', function() {
     try {
         $user = \App\Models\User::where('email', 'like', '%admin%')
-            ->orWhereHas('roles', function($q) { 
-                $q->whereIn('name', ['Super Admin', 'Sub Admin']); 
+            ->orWhereHas('roles', function($q) {
+                $q->whereIn('name', ['Super Admin', 'Sub Admin']);
             })
             ->first();
-            
+
         if ($user) {
             return response()->json([
                 'id' => $user->id,
@@ -146,16 +146,16 @@ Route::prefix('admin')->group(function () {
     // Admin Password Reset Routes
     Route::get('/forgotpassword', [\App\Http\Controllers\Auth\AdminForgotPasswordController::class, 'showLinkRequestForm'])
         ->name('admin.password.request');
-        
+
     Route::post('/password/check-email', [\App\Http\Controllers\Auth\AdminForgotPasswordController::class, 'checkEmail'])
         ->name('admin.password.check-email');
-        
+
     Route::post('/password/email', [\App\Http\Controllers\Auth\AdminForgotPasswordController::class, 'sendResetLinkEmail'])
         ->name('admin.password.email');
-        
+
     Route::get('/password/reset/{token}', [\App\Http\Controllers\Auth\AdminResetPasswordController::class, 'showResetForm'])
         ->name('admin.password.reset');
-        
+
     Route::post('/password/reset', [\App\Http\Controllers\Auth\AdminResetPasswordController::class, 'reset'])
         ->name('admin.password.update');
 });
@@ -174,6 +174,8 @@ Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check
 
 // Payment callback routes
 Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payments.success');
+Route::match(['get', 'post'], '/payments/addon-success', [PaymentController::class, 'handleAddonSuccess'])->name('payments.addon-success');
+Route::post('/payments/addon-debug-log', [PaymentController::class, 'addonDebugLog'])->name('payments.addon-debug-log');
 Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payments.cancel');
 Route::get('/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
 Route::get('/payments/license-error', [PaymentController::class, 'handleLicenseError'])->name('payments.license-error');
