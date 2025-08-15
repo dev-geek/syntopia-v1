@@ -194,7 +194,13 @@ Route::middleware(['web'])->group(function () {
 });
 
 // Protected Routes (Authenticated and Verified Users)
-Route::middleware(['auth', 'verified.custom'])->group(function () {
+// Subscription required page (shown when user doesn't have an active subscription)
+Route::get('/subscription-required', function () {
+    return view('subscription.required');
+})->name('subscription.required');
+
+// Routes that require authentication, email verification, and an active subscription
+Route::middleware(['auth', 'verified.custom', 'subscription.required'])->group(function () {
     Route::get('/', [SubscriptionController::class, 'index'])->name('home');
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
 

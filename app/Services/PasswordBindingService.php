@@ -125,7 +125,7 @@ class PasswordBindingService
     {
         return match ($code) {
             665 => 'The application is not activated for this tenant. Please contact support.',
-            730 => 'This admin is already registered with another company.',
+            730 => 'This user is already registered. Please use a different email or contact support.',
             400 => 'Invalid request parameters.',
             401 => 'Authentication failed.',
             404 => 'Resource not found.',
