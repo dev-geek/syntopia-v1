@@ -158,7 +158,7 @@
                 confirmButtonColor: '#3b82f6',
             }).then((result) => {
                 if (result.isConfirmed) {
-                    window.location.href = '{{ route('home') }}';
+                    window.location.href = '{{ route('subscription') }}';
                 }
             });
         });

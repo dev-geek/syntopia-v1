@@ -199,7 +199,7 @@ Route::get('/subscription-required', function () {
     return view('subscription.required');
 })->name('subscription.required');
 
-// Routes that require authentication, email verification, and an active subscription
+// Middleware group for routes requiring an active subscription
 Route::middleware(['auth', 'verified.custom', 'subscription.required'])->group(function () {
     Route::get('/', [SubscriptionController::class, 'index'])->name('home');
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');

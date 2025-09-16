@@ -217,11 +217,13 @@ class SubscriptionController extends Controller
         $type = $request->query('type');
 
         // Check if user is authenticated
-        if (!auth()->check()) {
-            // Store the intended URL to redirect back after login
-            session(['url.intended' => $request->fullUrl()]);
-            return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
-        }
+        // This check is removed because the route should be publicly accessible
+        // The 'auth' middleware will handle unauthenticated users accessing protected routes.
+        // if (!auth()->check()) {
+        //     // Store the intended URL to redirect back after login
+        //     session(['url.intended' => $request->fullUrl()]);
+        //     return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
+        // }
 
         // Handle different types
         if ($type === 'upgrade') {
@@ -248,7 +250,7 @@ class SubscriptionController extends Controller
 
     public function upgrade(Request $request, $package = null)
     {
-        $user = Auth::user();
+        // $https://store.payproglobal.com/checkout?merchant_id=172314&product=Pro&subscription=114561&order_id=6&downgrade=trueuser = Auth::user();
 
         if ($request->isMethod('post') && $package) {
             // Delegate to PaymentController for checkout
@@ -261,6 +263,81 @@ class SubscriptionController extends Controller
 
     public function downgrade(Request $request)
     {
+        $user = Auth::user();
+
+        if (!$user) {
+            return redirect()->route('login')->with('error', 'Please log in to manage your subscription.');
+        }
+
+        if ($request->isMethod('post')) {
+            $targetPackageId = $request->input('package_id');
+            $targetPackage = Package::find($targetPackageId);
+
+            if (!$targetPackage || !$this->canDowngradeToPackage($user->package, $targetPackage)) {
+                return redirect()->route('user.subscription.details')->with('error', 'Invalid package selected for downgrade.');
+            }
+
+            // Check if user's payment gateway is Pay Pro Global
+            if ($user->paymentGateway && $user->paymentGateway->name === 'Pay Pro Global') {
+                // Delegate to PaymentController for PayProGlobal downgrade checkout
+                $paymentController = app(PaymentController::class);
+                return $paymentController->payproglobalDowngrade($request);
+            }
+
+            // Existing logic for other payment gateways (scheduled downgrade)
+            // Check if there is an active license and its expiry
+            $activeLicense = $user->userLicence;
+            if (!$activeLicense || !$activeLicense->expires_at) {
+                return redirect()->route('user.subscription.details')->with('error', 'No active subscription found to downgrade.');
+            }
+
+            try {
+                DB::transaction(function () use ($user, $targetPackage, $activeLicense) {
+                    // Cancel any existing scheduled downgrades for the user
+                    Order::where('user_id', $user->id)
+                        ->where('order_type', 'downgrade')
+                        ->where('status', 'scheduled_downgrade')
+                        ->update(['status' => 'cancelled']);
+
+                    // Create a new scheduled downgrade order
+                    $order = new Order();
+                    $order->user_id = $user->id;
+                    $order->package_id = $targetPackage->id;
+                    $order->order_type = 'downgrade';
+                    $order->status = 'scheduled_downgrade';
+                    $order->transaction_id = 'SCHEDULED-DOWNGRADE-' . uniqid(); // Unique ID for scheduled order
+                    $order->amount = $targetPackage->price;
+                    $order->currency = 'USD'; // Assuming USD, adjust if dynamic
+                    $order->payment_method = $user->paymentGateway->name ?? 'N/A';
+                    $order->metadata = [
+                        'original_package_id' => $user->package->id,
+                        'original_package_name' => $user->package->name,
+                        'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
+                        'downgrade_processed' => false,
+                    ];
+                    $order->save();
+
+                    Log::info('Subscription downgrade scheduled', [
+                        'user_id' => $user->id,
+                        'original_package' => $user->package->name,
+                        'target_package' => $targetPackage->name,
+                        'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
+                        'order_id' => $order->id,
+                    ]);
+                });
+
+                return redirect()->route('user.subscription.details')
+                    ->with('success', "Downgrade to {$targetPackage->name} scheduled successfully. It will activate on " . Carbon::parse($activeLicense->expires_at)->format('M d, Y') . '.');
+            } catch (\Exception $e) {
+                Log::error('Failed to schedule downgrade', [
+                    'user_id' => $user->id,
+                    'target_package_id' => $targetPackageId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                return redirect()->route('user.subscription.details')->with('error', 'Failed to schedule downgrade. Please try again.');
+            }
+        }
         return $this->showSubscriptionPage('downgrade');
     }
 
@@ -313,50 +390,20 @@ class SubscriptionController extends Controller
         // Check for pending downgrade orders
         $pendingDowngrade = Order::where('user_id', $user->id)
             ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'pending_downgrade'])
+            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
             ->where('created_at', '>=', now()->subDays(30))
             ->latest()
             ->first();
         $hasPendingDowngrade = $pendingDowngrade !== null;
         $pendingDowngradeDetails = null;
 
-        // Determine the current package (gateway-agnostic)
-        // Prefer the active license package whenever available
+        // Determine the current active package (gateway-agnostic)
+        // This should always reflect the package the user is CURRENTLY on.
+        $package = $user->package; // Start with user's current package
+
+        // If there's an active license and it has a package, that's the most accurate current package.
         if ($activeLicense && $activeLicense->package) {
             $package = $activeLicense->package;
-        } elseif ($hasPendingDowngrade) {
-            if ($activeLicense && $activeLicense->package) {
-                $package = $activeLicense->package;
-            } else {
-                // Resolve original package using order metadata -> payload -> last completed order -> user package
-                $originalPackageName = null;
-                if ($pendingDowngrade) {
-                    if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package'])) {
-                        $originalPackageName = $pendingDowngrade->metadata['original_package'];
-                    } elseif (isset($pendingDowngrade->payload['original_package'])) {
-                        $originalPackageName = $pendingDowngrade->payload['original_package'];
-                    }
-                }
-
-                if (!$originalPackageName) {
-                    $lastCompletedOrder = Order::where('user_id', $user->id)
-                        ->where('status', 'completed')
-                        ->where('created_at', '<=', $pendingDowngrade->created_at)
-                        ->latest()
-                        ->first();
-                    if ($lastCompletedOrder && $lastCompletedOrder->package) {
-                        $originalPackageName = $lastCompletedOrder->package->name;
-                    }
-                }
-
-                if ($originalPackageName) {
-                    $package = Package::where('name', $originalPackageName)->first() ?: $user->package;
-                } else {
-                    $package = $user->package;
-                }
-            }
-        } else {
-            $package = $user->package;
         }
 
         $hasActiveSubscription = $this->hasActiveSubscription($user);
@@ -383,10 +430,10 @@ class SubscriptionController extends Controller
 
         if ($hasPendingDowngrade) {
             $originalPackageName = null;
-            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package'])) {
-                $originalPackageName = $pendingDowngrade->metadata['original_package'];
-            } elseif (isset($pendingDowngrade->payload['original_package'])) {
-                $originalPackageName = $pendingDowngrade->payload['original_package'];
+            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package_name'])) {
+                $originalPackageName = $pendingDowngrade->metadata['original_package_name'];
+            } elseif (isset($pendingDowngrade->payload['original_package_name'])) {
+                $originalPackageName = $pendingDowngrade->payload['original_package_name'];
             }
             if (!$originalPackageName) {
                 $lastCompletedOrder = Order::where('user_id', $user->id)
@@ -399,10 +446,18 @@ class SubscriptionController extends Controller
                 }
             }
 
+            $scheduledActivationDate = null;
+            $targetPackageName = $pendingDowngrade->package->name ?? 'Unknown';
+
+            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['scheduled_activation_date'])) {
+                $scheduledActivationDate = Carbon::parse($pendingDowngrade->metadata['scheduled_activation_date']);
+            }
+
             $pendingDowngradeDetails = [
-                'target_package' => $pendingDowngrade->package->name ?? 'Unknown',
+                'target_package' => $targetPackageName,
                 'original_package' => $originalPackageName,
                 'created_at' => $pendingDowngrade->created_at,
+                'scheduled_activation_date' => $scheduledActivationDate ? $scheduledActivationDate->format('M d, Y') : 'N/A',
                 'downgrade_type' => 'subscription_downgrade'
             ];
         }
@@ -422,6 +477,7 @@ class SubscriptionController extends Controller
                     'order_type' => $pendingDowngrade->order_type,
                     'package' => $pendingDowngrade->package?->name,
                     'metadata' => $pendingDowngrade->metadata ?? null,
+                    'scheduled_activation_date' => $pendingDowngrade->metadata['scheduled_activation_date'] ?? 'N/A',
                 ] : null,
                 'resolved_current_package' => $package?->name,
                 'pending_downgrade_details' => $pendingDowngradeDetails,

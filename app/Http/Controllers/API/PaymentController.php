@@ -15,16 +15,32 @@ use App\Services\LicenseApiService;
 use App\Services\PaddleClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use App\Services\SubscriptionService;
+use App\Services\PayProGlobalClient;
+use App\Services\DeviceFingerprintService;
+use Carbon\Carbon;
 
 class PaymentController extends Controller
 {
     private $licenseService;
     private $licenseApiService;
+    private $subscriptionService;
+    private $deviceFingerprintService;
+    private $payProGlobalClient;
 
-    public function __construct(LicenseService $licenseService, LicenseApiService $licenseApiService)
+    public function __construct(
+        LicenseService $licenseService,
+        LicenseApiService $licenseApiService,
+        SubscriptionService $subscriptionService,
+        DeviceFingerprintService $deviceFingerprintService,
+        PayProGlobalClient $payProGlobalClient
+    )
     {
         $this->licenseService = $licenseService;
         $this->licenseApiService = $licenseApiService;
+        $this->subscriptionService = $subscriptionService;
+        $this->deviceFingerprintService = $deviceFingerprintService;
+        $this->payProGlobalClient = $payProGlobalClient;
     }
     private function validatePackageAndGetUser($packageName)
     {
@@ -916,6 +932,8 @@ class PaymentController extends Controller
     public function handleSuccess(Request $request)
     {
         Log::info('[handleSuccess] called', [
+            'auth_check_start' => auth()->check(),
+            'auth_id_start' => auth()->id(),
             'params' => $request->all(),
             'query' => $request->query(),
             'method' => $request->method(),
@@ -934,6 +952,15 @@ class PaymentController extends Controller
 
         try {
             $gateway = $request->input('gateway', $request->query('gateway'));
+
+            // For PayProGlobal, the gateway might be embedded in the success-url parameter
+            if (empty($gateway) && $request->has('success-url')) {
+                $successUrl = $request->input('success-url');
+                $queryString = parse_url($successUrl, PHP_URL_QUERY);
+                parse_str($queryString, $queryParams);
+                $gateway = $queryParams['gateway'] ?? null;
+            }
+
             if (empty($gateway)) {
                 Log::error('No gateway specified in success callback', [
                     'params' => $request->all(),
@@ -959,7 +986,11 @@ class PaymentController extends Controller
                 ]);
 
                 if (!$transactionId) {
-                    Log::error('Missing Paddle transaction_id', ['params' => $request->all()]);
+                    Log::error('Missing Paddle transaction_id', [
+                        'params' => $request->all(),
+                        'auth_check_before_redirect' => auth()->check(),
+                        'auth_id_before_redirect' => auth()->id()
+                    ]);
                     return redirect()->route('home')->with('error', 'Invalid payment request');
                 }
 
@@ -996,7 +1027,14 @@ class PaymentController extends Controller
 
                 if ($order && $order->status === 'completed') {
                     Log::info('Order already completed', ['transaction_id' => $transactionId]);
-                    return redirect()->route('user.subscription.details')->with('success', 'Subscription active');
+                    Log::info('Redirect decision for completed Paddle order', [
+                        'auth_check' => auth()->check(),
+                        'auth_id' => auth()->id()
+                    ]);
+                    if (!auth()->check()) {
+                        return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your dashboard.');
+                    }
+                    return redirect()->route('user.dashboard')->with('success', 'Subscription active');
                 }
 
                 // If we found an order, we can update it if needed
@@ -1110,28 +1148,40 @@ class PaymentController extends Controller
                                 'license_id' => $license->id,
                                 'transaction_id' => $transactionId,
                                 'subscription_id' => $subscriptionId,
-                                'is_upgrade' => $isUpgrade
+                                'is_upgrade' => $isUpgrade,
+                                'auth_check_before_redirect' => auth()->check(),
+                                'auth_id_before_redirect' => auth()->id()
                             ]);
 
                             $successMessage = $isUpgrade
                                 ? "Successfully upgraded to {$package->name}!"
                                 : "Successfully subscribed to {$package->name}!";
 
-                            return redirect()->route('user.subscription.details')->with('success', $successMessage);
+                            if (!auth()->check()) {
+                                return redirect()->route('login')->with('info', $successMessage . ' Please log in to access your dashboard.');
+                            }
+                            return redirect()->route('user.dashboard')->with('success', $successMessage);
                         } else {
                             Log::error('Failed to create license for Paddle order in success callback', [
                                 'user_id' => $userId,
                                 'package' => $package->name,
                                 'transaction_id' => $transactionId,
-                                'subscription_id' => $subscriptionId
+                                'subscription_id' => $subscriptionId,
+                                'auth_check_before_redirect' => auth()->check(),
+                                'auth_id_before_redirect' => auth()->id()
                             ]);
-                            return redirect()->route('home')->with('error', 'Subscription completed but license creation failed');
+                            if (!auth()->check()) {
+                                return redirect()->route('login')->with('info', "Subscription to {$package->name} bought successfully! Please log in to access your dashboard.");
+                            }
+                            return redirect()->route('user.dashboard')->with('success', "Subscription to {$package->name} bought successfully!");
                         }
                     } else {
                         Log::error('User or package not found', [
                             'user_id' => $userId,
                             'package_id' => $pendingOrder->package_id,
-                            'transaction_id' => $transactionId
+                            'transaction_id' => $transactionId,
+                            'auth_check_before_redirect' => auth()->check(),
+                            'auth_id_before_redirect' => auth()->id()
                         ]);
                         return redirect()->route('home')->with('error', 'Order processing failed');
                     }
@@ -1141,7 +1191,9 @@ class PaymentController extends Controller
                     if (!$packageName) {
                         Log::error('No package name in Paddle transaction custom_data', [
                             'transaction_id' => $transactionId,
-                            'custom_data' => $customData
+                            'custom_data' => $customData,
+                            'auth_check_before_redirect' => auth()->check(),
+                            'auth_id_before_redirect' => auth()->id()
                         ]);
                         return redirect()->route('home')->with('error', 'Invalid transaction data');
                     }
@@ -1151,20 +1203,22 @@ class PaymentController extends Controller
                     if ($result) {
                         Log::info('Paddle payment processed successfully via success callback', [
                             'transaction_id' => $transactionId,
-                            'user_id' => $userId
+                            'user_id' => $userId,
+                            'auth_check_before_redirect' => auth()->check(),
+                            'auth_id_before_redirect' => auth()->id()
                         ]);
                         return redirect()->route('user.subscription.details')->with('success', "Subscription to {$packageName} bought successfully!");
                     } else {
                         Log::error('Failed to process Paddle payment via success callback', [
                             'transaction_id' => $transactionId,
-                            'user_id' => $userId
+                            'user_id' => $userId,
+                            'auth_check_before_redirect' => auth()->check(),
+                            'auth_id_before_redirect' => auth()->id()
                         ]);
                         return redirect()->route('home')->with('error', 'Payment processing failed');
                     }
                 }
-            }
-
-            if ($gateway === 'fastspring') {
+            } elseif ($gateway === 'fastspring') {
                 $orderId = $request->input('orderId') ?? $request->query('orderId');
                 $packageName = $request->input('package_name') ?? $request->query('package_name');
 
@@ -1179,14 +1233,25 @@ class PaymentController extends Controller
                 $subscriptionId = $subscriptionData['id'];
 
                 if (!$orderId) {
-                    Log::error('Missing FastSpring orderId', ['params' => $request->all()]);
+                    Log::error('Missing FastSpring orderId', [
+                        'params' => $request->all(),
+                        'auth_check_before_redirect' => auth()->check(),
+                        'auth_id_before_redirect' => auth()->id()
+                    ]);
                     return redirect()->route('home')->with('error', 'Invalid order ID');
                 }
 
                 $order = Order::where('transaction_id', $orderId)->first();
                 if ($order && $order->status === 'completed') {
                     Log::info('Order already completed', ['order_id' => $orderId]);
-                    return redirect()->route('user.subscription.details')->with('success', "Subscription to {$packageName} bought successfully!");
+                    Log::info('Redirect decision for completed FastSpring order', [
+                        'auth_check' => auth()->check(),
+                        'auth_id' => auth()->id()
+                    ]);
+                    if (!auth()->check()) {
+                        return redirect()->route('login')->with('info', "Subscription to {$packageName} bought successfully! Please log in to access your dashboard.");
+                    }
+                    return redirect()->route('user.dashboard')->with('success', "Subscription to {$packageName} bought successfully!");
                 }
 
                 // Try orderId as reference first, then as id
@@ -1210,71 +1275,161 @@ class PaymentController extends Controller
                     'package' => $packageName,
                     'subscription_id' => $subscriptionId
                 ]), 'fastspring');
-            }
-
-            if ($gateway === 'payproglobal') {
-                $orderId = $request->query('order_id') ?? $request->input('order_id');
-                $userId = $request->query('user_id') ?? $request->input('user_id');
-                $packageName = $request->query('package') ?? $request->input('package');
-
-                // 36908520, 36, Pro
-                if (!$orderId || !$userId || !$packageName) {
-                    Log::error('Missing PayProGlobal parameters', [
-                        'order_id' => $orderId,
-                        'user_id' => $userId,
-                        'package' => $packageName,
-                        'params' => $request->all()
-                    ]);
-                    return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Invalid payment parameters');
-                }
-
-                $isVerified = $this->verifyPayProGlobalPayment($orderId, $orderId);
-                if (!$isVerified) {
-                    Log::error('PayProGlobal payment verification failed', ['order_id' => $orderId]);
-                    return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Payment verification failed');
-                }
-
-                return $this->processPayment([
-                    'order_id' => $orderId,
-                    'user_id' => $userId,
-                    'package' => $packageName,
-                    'amount' => 0,
-                    'currency' => 'USD'
-                ], 'payproglobal');
-            }
-
-            Log::error('Invalid gateway in success callback', ['gateway' => $gateway]);
-
-            // Extract package name from request for redirect
-            $packageName = $request->input('package_name') ??
-                $request->query('package_name') ??
-                $request->input('package') ??
-                $request->query('package');
-
-            return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Invalid gateway');
-        } catch (\Exception $e) {
-            Log::error('Payment success processing failed', [
-                'error' => $e->getMessage(),
-                'params' => $request->all(),
-                'url' => $request->fullUrl()
-            ]);
-
-            // Check if this is a license API failure
-            if ($e->getMessage() === 'license_api_failed') {
-                Log::error('License API failed during payment processing', [
-                    'gateway' => $gateway ?? 'unknown',
-                    'params' => $request->all()
+            } elseif ($gateway === 'payproglobal') {
+                Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
+                    'gateway' => $gateway,
+                    'all_params' => $request->all(),
+                    'query_params' => $request->query(),
+                    'input_params' => $request->input()
                 ]);
-                return redirect()->route('payments.license-error')->with('error', 'license_api_failed');
+
+                $customData = json_decode($request->input('custom', '{}'), true);
+                $userId = $customData['user_id'] ?? null;
+                $packageSlug = $customData['package'] ?? null;
+                $pendingOrderId = $customData['pending_order_id'] ?? null;
+                $action = $customData['action'] ?? 'new';
+
+                Log::info('Extracted custom data from PayProGlobal callback', [
+                    'user_id' => $userId,
+                    'package_slug' => $packageSlug,
+                    'pending_order_id' => $pendingOrderId,
+                    'action' => $action
+                ]);
+
+                if (!$userId || !$packageSlug || !$pendingOrderId) {
+                    Log::error('Missing essential PayProGlobal custom data', [
+                        'custom_data' => $customData,
+                        'request_all' => $request->all(),
+                        'auth_check_before_redirect' => auth()->check(),
+                        'auth_id_before_redirect' => auth()->id()
+                    ]);
+                    return redirect()->route('home')->with('error', 'Invalid payment data from PayProGlobal');
+                }
+
+                $user = User::find($userId);
+                $package = Package::where('name', $packageSlug)->first();
+                $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
+
+                if (!$user || !$package || !$pendingOrder) {
+                    Log::error('PayProGlobal: User, Package or Pending Order not found', [
+                        'user_id' => $userId,
+                        'package_slug' => $packageSlug,
+                        'pending_order_id' => $pendingOrderId,
+                        'user_exists' => (bool) $user,
+                        'package_exists' => (bool) $package,
+                        'order_exists' => (bool) $pendingOrder,
+                        'auth_check_before_redirect' => auth()->check(),
+                        'auth_id_before_redirect' => auth()->id()
+                    ]);
+                    return redirect()->route('home')->with('error', 'Payment processing error (data mismatch).');
+                }
+
+                if ($pendingOrder->status === 'completed') {
+                    Log::info('PayProGlobal: Order already completed', ['order_id' => $pendingOrder->id]);
+                    Log::info('Redirect decision for completed PayProGlobal order', [
+                        'auth_check' => auth()->check(),
+                        'auth_id' => auth()->id()
+                    ]);
+                    if (!auth()->check()) {
+                        return redirect()->route('login')->with('info', 'Subscription is already active! Please log in to access your dashboard.');
+                    }
+                    return redirect()->route('user.dashboard')->with('success', 'Subscription is already active.');
+                }
+
+                DB::transaction(function () use ($user, $package, $pendingOrder, $request) {
+                    $pendingOrder->update([
+                        'status' => 'completed',
+                        'completed_at' => now(),
+                        'transaction_id' => $request->input('products.1.id') ?? $pendingOrder->transaction_id, // Update with actual transaction ID if available
+                    ]);
+
+                    $paymentGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
+                    if (!$paymentGateway) {
+                        Log::error('PayProGlobal gateway not found in database.');
+                        throw new \Exception('PayProGlobal gateway not configured.');
+                    }
+
+                    $user->update([
+                        'package_id' => $package->id,
+                        'is_subscribed' => true,
+                        'payment_gateway_id' => $paymentGateway->id,
+                        'subscription_id' => $request->input('products.1.id') // PayProGlobal often uses product ID as subscription identifier
+                    ]);
+
+                    $this->licenseService->createAndActivateLicense(
+                        $user,
+                        $package,
+                        $request->input('products.1.id'),
+                        $paymentGateway->id
+                    );
+
+                    Log::info('PayProGlobal: User subscription and license updated successfully', [
+                        'user_id' => $user->id,
+                        'order_id' => $pendingOrder->id,
+                        'package' => $package->name,
+                    ]);
+                });
+
+                // Check if the request is from a popup (indicated by `popup=true` in success-url)
+                if ($request->query('popup') === 'true') {
+                    // For popup, return a simple view that closes the popup and refreshes the parent
+                    return view('payments.popup-close', ['message' => 'Payment successful! Please wait while we update your subscription.']);
+                }
+
+                Log::info('PayProGlobal: User authenticated before redirect', [
+                    'user_id' => $user->id,
+                    'Auth::check()' => Auth::check(),
+                    'Auth::id()' => Auth::id(),
+                    'auth_check_before_final_redirect' => auth()->check(),
+                    'auth_id_before_final_redirect' => auth()->id()
+                ]);
+
+                // If user is not authenticated but we have the user object, log them in
+                if (!auth()->check() && $user) {
+                    auth()->login($user);
+                    Log::info('PayProGlobal: User logged in during success callback', [
+                        'user_id' => $user->id,
+                        'Auth::check()' => auth()->check(),
+                        'Auth::id()' => auth()->id()
+                    ]);
+                }
+
+                // Determine the success message based on the action (e.g., downgrade)
+                $successMessage = 'Your subscription is now active!';
+                if (($customData['action'] ?? '') === 'downgrade') {
+                    $scheduledActivationDate = null;
+                    if ($pendingOrder && is_array($pendingOrder->metadata) && isset($pendingOrder->metadata['scheduled_activation_date'])) {
+                        $scheduledActivationDate = Carbon::parse($pendingOrder->metadata['scheduled_activation_date']);
+                    }
+                    if ($scheduledActivationDate) {
+                        $successMessage = "Downgrade to {$package->name} scheduled successfully. It will activate on " . $scheduledActivationDate->format('M d, Y') . '.';
+                    } else {
+                        $successMessage = "Downgrade to {$package->name} scheduled successfully. It will activate at the end of your current billing cycle.";
+                    }
+                }
+
+                if (!auth()->check()) {
+                    return redirect()->route('login')->with('info', $successMessage . ' Please log in to access your dashboard.');
+                }
+                return redirect()->route('user.dashboard')->with('success', $successMessage);
+
+            } // Add other payment gateways here
+            else {
+                Log::error('Unhandled payment gateway in success callback', [
+                    'gateway' => $gateway,
+                    'params' => $request->all(),
+                    'auth_check_before_redirect' => auth()->check(),
+                    'auth_id_before_redirect' => auth()->id()
+                ]);
+                return redirect()->route('home')->with('error', 'Unknown payment gateway.');
             }
-
-            // Extract package name from request for redirect
-            $packageName = $request->input('package_name') ??
-                $request->query('package_name') ??
-                $request->input('package') ??
-                $request->query('package');
-
-            return redirect()->route('subscription', ['package_name' => $packageName])->with('error', 'Payment processing failed');
+        } catch (\Exception $e) {
+            Log::error('Payment success callback error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_all' => $request->all()
+            ]);
+            return redirect()->route('home')->with('error', 'There was an error processing your payment: ' . $e->getMessage());
         }
     }
 
@@ -1500,6 +1655,7 @@ class PaymentController extends Controller
                 'amount' => $amount,
                 'currency' => $currency,
                 'payment_gateway_id' => $this->getPaymentGatewayId($gateway),
+                'order_type' => $action, // Set order_type based on action
                 'metadata' => $paymentData
             ];
 
@@ -4659,6 +4815,116 @@ class PaymentController extends Controller
                 'user_id' => $user->id ?? null
             ]);
             return false;
+        }
+    }
+
+    public function payproglobalDowngrade(Request $request)
+    {
+        Log::info('[payproglobalDowngrade] called', ['user_id' => Auth::id(), 'params' => $request->all()]);
+
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated.'], 401);
+            }
+
+            $targetPackageId = $request->input('package_id');
+            $targetPackage = Package::find($targetPackageId);
+            $currentPackage = $user->package;
+
+            if (!$targetPackage || !$currentPackage) {
+                Log::error('PayProGlobal Downgrade: Invalid target or current package', [
+                    'user_id' => $user->id,
+                    'target_package_id' => $targetPackageId,
+                    'current_package_id' => $currentPackage->id ?? 'N/A'
+                ]);
+                return response()->json(['error' => 'Invalid package selection.'], 400);
+            }
+
+            // Ensure it's a valid downgrade
+            if ($targetPackage->price >= $currentPackage->price) {
+                Log::error('PayProGlobal Downgrade: Target package is not a downgrade', [
+                    'user_id' => $user->id,
+                    'target_package' => $targetPackage->name,
+                    'current_package' => $currentPackage->name
+                ]);
+                return response()->json(['error' => 'Selected package is not a downgrade.'], 400);
+            }
+
+            // Check for an active license to get expiration date
+            $activeLicense = $user->userLicence;
+            if (!$activeLicense || !$activeLicense->expires_at) {
+                Log::error('PayProGlobal Downgrade: No active license found for user', ['user_id' => $user->id]);
+                return response()->json(['error' => 'No active subscription found to downgrade.'], 400);
+            }
+
+            // Create a pending order for the scheduled downgrade
+            $pendingOrderId = 'PPG-DOWNGRADE-' . uniqid();
+            $pendingOrder = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $targetPackage->id,
+                'order_type' => 'downgrade',
+                'status' => 'scheduled_downgrade',
+                'transaction_id' => $pendingOrderId,
+                'amount' => $targetPackage->price,
+                'currency' => 'USD',
+                'payment_method' => $user->paymentGateway->name ?? 'Pay Pro Global',
+                'metadata' => [
+                    'original_package_id' => $currentPackage->id,
+                    'original_package_name' => $currentPackage->name,
+                    'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
+                    'downgrade_processed' => false,
+                ]
+            ]);
+
+            // Build custom data for PayProGlobal
+            $custom = json_encode([
+                'user_id' => $user->id,
+                'package_id' => $targetPackage->id,
+                'package' => $targetPackage->name,
+                'pending_order_id' => $pendingOrder->transaction_id,
+                'action' => 'downgrade',
+                'original_package_name' => $currentPackage->name,
+                'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
+            ]);
+
+            $successUrl = route('payments.success', [
+                'gateway' => 'payproglobal',
+                'user_id' => $user->id,
+                'package' => $targetPackage->name,
+                'popup' => 'true',
+                'pending_order_id' => $pendingOrder->transaction_id,
+                'action' => 'downgrade'
+            ]);
+
+            $cancelUrl = route('payments.popup-cancel');
+
+            $checkoutUrl = $this->payProGlobalClient->getCheckoutUrl(
+                $targetPackage->price,
+                'USD',
+                $targetPackage->id,
+                $user->email,
+                $user->first_name ?? '',
+                $user->last_name ?? '',
+                $custom,
+                $successUrl,
+                $cancelUrl
+            );
+
+            Log::info('PayProGlobal downgrade checkout created', [
+                'user_id' => $user->id,
+                'pending_order_id' => $pendingOrderId,
+                'checkout_url' => $checkoutUrl,
+            ]);
+
+            return response()->json(['checkout_url' => $checkoutUrl]);
+        } catch (\Exception $e) {
+            Log::error('PayProGlobal downgrade checkout failed', [
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Failed to initiate downgrade checkout.'], 500);
         }
     }
 }

@@ -13,6 +13,7 @@ class VerifyCsrfToken extends Middleware
      */
     protected $except = [
         '/verify-code',
+        '/payments/success',
         'payment/webhook/fastspring',
         'payment/webhook/payproglobal',
         'webhooks/paddle',

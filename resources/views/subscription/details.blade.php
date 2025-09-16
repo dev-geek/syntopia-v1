@@ -299,7 +299,7 @@
                                     <p class="mb-2" style="color: white; font-size: 1.1rem; line-height: 1.5;">
                                         Your subscription will downgrade to
                                         <strong>{{ $pendingDowngradeDetails['target_package'] ?? 'the selected plan' }}</strong>
-                                        at the end of your current billing cycle.
+                                        at the end of your current billing cycle. It will activate on <strong>{{ $pendingDowngradeDetails['scheduled_activation_date'] ?? 'N/A' }}</strong>.
                                     </p>
                                     <p class="mb-0" style="color: rgba(255,255,255,0.9); font-size: 1rem;">
                                         <i class="fas fa-exclamation-triangle mr-2"></i>
@@ -474,14 +474,6 @@
                                             <div class="col-12">
                                                 @php
                                                     $displayCurrentPackage = $currentPackage;
-                                                    if ($hasPendingDowngrade) {
-                                                        if (!empty($pendingDowngradeDetails['original_package'])) {
-                                                            $displayCurrentPackage =
-                                                                $pendingDowngradeDetails['original_package'];
-                                                        } elseif ($user->userLicence && $user->userLicence->package) {
-                                                            $displayCurrentPackage = $user->userLicence->package->name;
-                                                        }
-                                                    }
                                                 @endphp
 
                                                 <p class="text-muted mb-2"><strong>Current Plan:</strong></p>
@@ -537,8 +529,7 @@
                                                                 <i class="fas fa-info-circle"></i>
                                                                 Your plan will change to
                                                                 {{ $pendingDowngradeDetails['target_package'] ?? 'the selected plan' }}
-                                                                at period
-                                                                end{{ $calculatedEndDate ? ' on ' . $calculatedEndDate->format('F j, Y') : '' }}.
+                                                                at period end on <strong>{{ $pendingDowngradeDetails['scheduled_activation_date'] ?? 'N/A' }}</strong>.
                                                             </p>
                                                         </div>
                                                     @else

@@ -7,10 +7,45 @@ use Illuminate\Support\Facades\Http;
 class PayProGlobalClient
 {
     private $apiKey;
+    private $vendorId;
+    private $apiSecretKey;
 
-    public function __construct(string $apiKey)
+    public function __construct()
     {
-        $this->apiKey = $apiKey;
+        $this->apiKey = config('payment.gateways.PayProGlobal.api_key');
+        $this->vendorId = config('payment.gateways.PayProGlobal.vendor_account_id');
+        $this->apiSecretKey = config('payment.gateways.PayProGlobal.api_secret_key');
+    }
+
+    public function getCheckoutUrl(
+        float $amount,
+        string $currency,
+        string $productId,
+        string $customerEmail,
+        string $customerFirstName = '',
+        string $customerLastName = '',
+        string $customData = '',
+        string $successUrl = '',
+        string $cancelUrl = '',
+        bool $useTestMode = true
+    ): string
+    {
+        $baseUrl = 'https://store.payproglobal.com/checkout';
+
+        $params = [
+            'products[1][id]' => $productId,
+            'email' => $customerEmail,
+            'first_name' => $customerFirstName,
+            'last_name' => $customerLastName,
+            'custom' => $customData,
+            'currency' => $currency,
+            'use-test-mode' => $useTestMode ? 'true' : 'false',
+            'secret-key' => $this->apiSecretKey,
+            'success-url' => $successUrl,
+            'cancel-url' => $cancelUrl,
+        ];
+
+        return $baseUrl . '?' . http_build_query($params);
     }
 
     public function upgradeSubscription(string $subscriptionId, string $newProductId)

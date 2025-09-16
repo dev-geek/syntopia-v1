@@ -697,48 +697,28 @@
                 }
             });
 
-            // Monitor downgrade popup for URL changes
-            function monitorDowngradePopup(popup) {
-                let popupCheckInterval = setInterval(() => {
-                    try {
-                        if (popup.closed) {
-                            clearInterval(popupCheckInterval);
-                            console.log('Downgrade popup closed');
+            // Function to open PayProGlobal checkout in a popup
+            function openPayProGlobalPopup(checkoutUrl, packageName, userId) {
+                console.log('Opening PayProGlobal popup for URL:', checkoutUrl);
 
-                            // Check if we have a success flag
-                            const successUrl = sessionStorage.getItem('downgradeSuccessUrl');
-                            if (successUrl) {
-                                console.log('Redirecting to success URL:', successUrl);
-                                window.location.href = successUrl;
-                            } else {
-                                showInfo('Downgrade Cancelled', 'Your downgrade was cancelled or incomplete.');
-                            }
+                // Store package name and user ID in session storage for later use in success callback
+                sessionStorage.setItem('payProGlobalPackageName', packageName);
+                sessionStorage.setItem('payProGlobalUserId', userId);
 
-                            // Clean up
-                            sessionStorage.removeItem('downgradeSuccessUrl');
-                            return;
-                        }
+                // Open the popup window
+                const popup = window.open(checkoutUrl, '_blank', 'width=800,height=700,resizable=yes,scrollbars=yes');
 
-                        // Try to check the popup URL for success indicators
-                        try {
-                            const popupUrl = popup.location.href;
-                            if (popupUrl && (popupUrl.includes('/payments/success') || popupUrl.includes('/thankyou') || popupUrl.includes('success'))) {
-                                console.log('Downgrade success page detected');
-
-                                // Set success flag
-                                sessionStorage.setItem('downgradeSuccessUrl', popupUrl);
-
-                                clearInterval(popupCheckInterval);
-                                setTimeout(() => popup.close(), 1000);
-                            }
-                        } catch (e) {
-                            // Cross-origin error expected, we'll rely on popup closure
-                        }
-                    } catch (error) {
-                        console.error('Downgrade popup monitoring error:', error);
-                        clearInterval(popupCheckInterval);
-                    }
-                }, 500);
+                if (popup) {
+                    // Start monitoring the popup
+                    monitorPayProGlobalPopup(popup);
+                    hideSpinner();
+                } else {
+                    // If popup blocked, redirect to checkout URL
+                    showError('Popup Blocked', 'Please allow popups for this site or you will be redirected to the payment page.');
+                    setTimeout(() => {
+                        window.location.href = checkoutUrl;
+                    }, 3000);
+                }
             }
 
             // Monitor PayProGlobal popup for URL changes
@@ -795,6 +775,7 @@
                     }
                 }, 500);
             }
+
             // This script will run on the PayProGlobal domain and send the OrderId back
             const thankYouScript = `
                             <script>
@@ -1366,6 +1347,7 @@
         const hasActiveSubscription = '{{ isset($hasActiveSubscription) && $hasActiveSubscription ? 'true' : 'false' }}';
         const selectedPackage = @json($selectedPackage ?? null);
         const currentPaymentGateway = "{{ $currentLoggedInUserPaymentGateway ?? '' }}";
+        const loggedInUserId = "{{ Auth::id() ?? '' }}";
 
         document.addEventListener("DOMContentLoaded", function() {
             console.log('Page configuration:', {
@@ -1786,6 +1768,9 @@
                                 // Handle FastSpring downgrade with popup
                                 console.log('Processing FastSpring downgrade with popup');
                                 processFastSpring(packageName, action);
+                            } else if (selectedGateway === 'Pay Pro Global') {
+                                console.log('Processing PayProGlobal downgrade with existing method');
+                                processPayProGlobal(packageName, action);
                             } else if (data.checkout_url) {
                                 // For other gateways with a checkout URL, open in popup
                                 console.log('Opening downgrade checkout URL:', data.checkout_url);
@@ -1813,7 +1798,7 @@
                                 processPaddle(packageName, action);
                             }
                         } else if (selectedGateway === 'Pay Pro Global') {
-                            console.log('Executing PayProGlobal checkout...');
+                            console.log('Executing PayProGlobal checkout for action:', action);
                             processPayProGlobal(packageName, action);
                         }
                     })
@@ -2005,8 +1990,10 @@
 
                         // Validate URL format
                         if (!data.checkout_url.includes('payproglobal.com')) {
-                            console.error('Invalid checkout URL format:', data.checkout_url);
-                            throw new Error('Invalid checkout URL format');
+                            console.error('Invalid PayProGlobal checkout URL:', data.checkout_url);
+                            hideSpinner();
+                            showError('Payment Error', 'Received an invalid PayProGlobal checkout URL.');
+                            return;
                         }
 
                         // Store user ID and package name in session storage for popup communication
@@ -2015,35 +2002,19 @@
                         sessionStorage.setItem('payProGlobalPackageName', packageName);
                         sessionStorage.setItem('payProGlobalAction', action);
 
+                        // Open PayProGlobal in a popup
+                        if (typeof openPayProGlobalPopup === 'function') {
+                            openPayProGlobalPopup(data.checkout_url, packageName, userId);
+                        } else {
+                            console.error('openPayProGlobalPopup function not found.');
+                            window.location.href = data.checkout_url;
+                        }
+
                         console.log('Stored in session storage:', {
                             userId,
                             packageName,
                             action
                         });
-
-                        // Open popup with better error handling
-                        const popupFeatures =
-                            'width=1200,height=1200,location=no,toolbar=no,menubar=no,scrollbars=yes,resizable=yes';
-                        const popup = window.open(
-                            data.checkout_url,
-                            action === 'upgrade' ? 'PayProGlobal_Upgrade' :
-                            action === 'downgrade' ? 'PayProGlobal_Downgrade' :
-                            'PayProGlobal_Checkout',
-                            popupFeatures
-                        );
-
-                        if (!popup) {
-                            console.error('Popup was blocked');
-                            hideSpinner(); // Hide spinner on error
-                            showError('Popup Blocked',
-                                'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.'
-                            );
-                            return;
-                        }
-
-                        console.log('PayProGlobal popup opened successfully');
-                        // Hide spinner when popup is opened
-                        hideSpinner();
                     })
                     .catch(error => {
                         console.error('PayProGlobal processing error:', error);
