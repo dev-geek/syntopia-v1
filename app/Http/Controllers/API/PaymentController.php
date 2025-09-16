@@ -838,7 +838,7 @@ class PaymentController extends Controller
                 'user_id' => $user->id,
                 'package' => $processedPackage,
                 'popup' => 'true',
-                'pending_order_id' => $pendingOrderId,
+                'pending_order_id' => $order->transaction_id,
                 'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
             ];
 
@@ -854,7 +854,7 @@ class PaymentController extends Controller
                     'user_id' => $user->id,
                     'package_id' => $packageData->id,
                     'package' => $processedPackage,
-                    'pending_order_id' => $pendingOrderId,
+                    'pending_order_id' => $order->transaction_id,
                     'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
                 ]),
                 'page-template' => 'ID',
@@ -1276,12 +1276,7 @@ class PaymentController extends Controller
                     'subscription_id' => $subscriptionId
                 ]), 'fastspring');
             } elseif ($gateway === 'payproglobal') {
-                Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
-                    'gateway' => $gateway,
-                    'all_params' => $request->all(),
-                    'query_params' => $request->query(),
-                    'input_params' => $request->input()
-                ]);
+                Log::info('PayProGlobal success callback - RAW REQUEST INCOMING', ['request_all' => $request->all()]);
 
                 $customData = json_decode($request->input('custom', '{}'), true);
                 $userId = $customData['user_id'] ?? null;
@@ -1289,12 +1284,21 @@ class PaymentController extends Controller
                 $pendingOrderId = $customData['pending_order_id'] ?? null;
                 $action = $customData['action'] ?? 'new';
 
+                Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
+                    'gateway' => $gateway,
+                    'all_params' => $request->all(),
+                    'query_params' => $request->query(),
+                    'input_params' => $request->input()
+                ]);
+
                 Log::info('Extracted custom data from PayProGlobal callback', [
                     'user_id' => $userId,
                     'package_slug' => $packageSlug,
                     'pending_order_id' => $pendingOrderId,
                     'action' => $action
                 ]);
+
+                Log::info('PayProGlobal success callback - full request data', ['request_all' => $request->all()]);
 
                 if (!$userId || !$packageSlug || !$pendingOrderId) {
                     Log::error('Missing essential PayProGlobal custom data', [
@@ -1337,10 +1341,34 @@ class PaymentController extends Controller
                 }
 
                 DB::transaction(function () use ($user, $package, $pendingOrder, $request) {
+                    Log::debug('PaymentController: Raw request for subscription ID detection', ['request_all' => $request->all()]);
+
+                    $payProGlobalSubscriptionId = (int)($request->input('ORDER_ITEMS.0.SUBSCRIPTION_ID')
+                        ?? $request->input('subscriptionId')
+                        ?? $request->input('transactionId')
+                        ?? $pendingOrder->transaction_id);
+
+                    Log::debug('PaymentController: payProGlobalSubscriptionId detected', ['id' => $payProGlobalSubscriptionId]);
+
+                    $payProGlobalOrderId = $request->input('ORDER_ID');
+                    Log::debug('PaymentController: payProGlobalOrderId detected', ['id' => $payProGlobalOrderId]);
+
+                    $finalTransactionId = $payProGlobalSubscriptionId !== 0 ? (string)$payProGlobalSubscriptionId : (string)($payProGlobalOrderId ?? $pendingOrder->transaction_id);
+                    Log::debug('PaymentController: finalTransactionId for order', ['id' => $finalTransactionId]);
+
                     $pendingOrder->update([
                         'status' => 'completed',
                         'completed_at' => now(),
-                        'transaction_id' => $request->input('products.1.id') ?? $pendingOrder->transaction_id, // Update with actual transaction ID if available
+                        'transaction_id' => $finalTransactionId,
+                        'metadata' => array_merge(($pendingOrder->metadata ?? []), [
+                            'subscription_id' => $payProGlobalSubscriptionId,
+                            'payproglobal_order_id' => $payProGlobalOrderId,
+                        ]),
+                    ]);
+
+                    Log::debug('PaymentController: Order updated with subscription_id in metadata', [
+                        'order_id' => $pendingOrder->id,
+                        'metadata' => $pendingOrder->metadata,
                     ]);
 
                     $paymentGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
@@ -1353,7 +1381,12 @@ class PaymentController extends Controller
                         'package_id' => $package->id,
                         'is_subscribed' => true,
                         'payment_gateway_id' => $paymentGateway->id,
-                        'subscription_id' => $request->input('products.1.id') // PayProGlobal often uses product ID as subscription identifier
+                        'subscription_id' => $payProGlobalSubscriptionId
+                    ]);
+
+                    Log::debug('PaymentController: User updated with subscription_id', [
+                        'user_id' => $user->id,
+                        'user_subscription_id' => $user->subscription_id,
                     ]);
 
                     $this->licenseService->createAndActivateLicense(
@@ -2309,10 +2342,6 @@ class PaymentController extends Controller
                     'cancellation_type' => 'end_of_billing_period'
                 ]);
 
-                // For Paddle, we don't immediately update the user's subscription status
-                // as the cancellation happens at the end of the billing period
-                // The webhook will handle the actual status change when the cancellation takes effect
-
                 // Update order status to indicate cancellation is scheduled
                 $order = Order::where('user_id', $user->id)
                     ->latest('created_at')
@@ -2326,116 +2355,52 @@ class PaymentController extends Controller
                     'subscription_id' => $subscriptionId,
                     'cancellation_type' => 'end_of_billing_period'
                 ]);
-            } elseif ($gateway === 'payproglobal') {
-                // Use PayProGlobalClient for cancellation
-                $payProGlobalClient = new \App\Services\PayProGlobalClient(config('payment.gateways.PayProGlobal.api_key'));
-
-                Log::info('Canceling PayProGlobal subscription', [
+            } else { // This block will now handle PayProGlobal and any other unhandled gateways
+                // Delegate to SubscriptionService for cancellation, which handles PayProGlobal and other unhandled gateways
+                Log::info('Delegating cancellation to SubscriptionService', [
                     'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'cancellation_type' => 'immediate'
+                    'gateway' => $gateway
                 ]);
 
-                $response = $payProGlobalClient->cancelSubscription($subscriptionId, 2, null, true); // Default reason, send notification
+                $cancellationReasonId = $request->input('cancellation_reason_id');
+                $reasonText = $request->input('reason_text');
 
-                if (!$response->successful()) {
-                    Log::error('PayProGlobal subscription cancellation failed', [
+                try {
+                    $this->subscriptionService->cancelSubscription(
+                        $user,
+                        $cancellationReasonId,
+                        $reasonText
+                    );
+
+                    Log::info('Subscription cancellation scheduled successfully by SubscriptionService', [
                         'user_id' => $user->id,
-                        'subscription_id' => $subscriptionId,
-                        'response_status' => $response->status(),
-                        'response_body' => $response->body()
+                        'gateway' => $gateway,
+                    ]);
+
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'success' => true,
+                            'message' => 'Subscription cancellation scheduled successfully.'
+                        ]);
+                    }
+                    return redirect()->route('user.subscription.details')->with('success', 'Subscription cancellation scheduled successfully.');
+                } catch (\Exception $e) {
+                    Log::error('Subscription cancellation failed via SubscriptionService', [
+                        'user_id' => $user->id,
+                        'gateway' => $gateway,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
 
                     if ($request->wantsJson()) {
                         return response()->json([
                             'success' => false,
-                            'error' => 'Failed to cancel subscription'
+                            'error' => 'Failed to cancel subscription.'
                         ], 500);
                     }
-                    return redirect()->route('user.subscription.details')->with('error', 'Failed to cancel subscription');
+                    return redirect()->route('user.subscription.details')->with('error', 'Failed to cancel subscription.');
                 }
-
-                $responseData = $response->json();
-                Log::info('PayProGlobal cancellation response', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'response_data' => $responseData
-                ]);
-
-                // For PayProGlobal, cancellation is immediate, so we update the user's status
-                DB::transaction(function () use ($user, $subscriptionId) {
-                    // Delete the user's license record
-                    $userLicense = $user->userLicence;
-                    if ($userLicense) {
-                        Log::info('Deleting user license record', [
-                            'license_id' => $userLicense->id,
-                            'user_id' => $user->id,
-                            'subscription_id' => $userLicense->subscription_id
-                        ]);
-                        $userLicense->delete();
-                    }
-
-                    // Reset user's subscription data
-                    $user->update([
-                        'is_subscribed' => 0,
-                        'subscription_id' => null,
-                        'payment_gateway_id' => null,
-                        'package_id' => null,
-                        'user_license_id' => null
-                    ]);
-
-                    // Update order status
-                    $order = Order::where('user_id', $user->id)
-                        ->latest('created_at')
-                        ->first();
-                    if ($order) {
-                        $order->update(['status' => 'canceled']);
-                    }
-                });
-
-                Log::info('PayProGlobal subscription canceled immediately', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'cancellation_type' => 'immediate'
-                ]);
-            } else {
-                Log::error('Unsupported payment gateway for cancellation', ['gateway' => $gateway, 'user_id' => $user->id]);
-
-                if ($request->wantsJson()) {
-                    return response()->json([
-                        'success' => false,
-                        'error' => 'Unsupported payment gateway'
-                    ], 400);
-                }
-                return redirect()->route('user.subscription.details')->with('error', 'Unsupported payment gateway');
             }
-
-            // Determine cancellation type and appropriate message
-            $cancellationType = 'immediate';
-            $successMessage = 'Subscription cancelled successfully';
-
-            if (in_array($gateway, ['fastspring', 'paddle', 'payproglobal'])) {
-                $cancellationType = 'end_of_billing_period';
-                $successMessage = 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.';
-            }
-
-            Log::info('Subscription cancellation completed', [
-                'user_id' => $user->id,
-                'subscription_id' => $subscriptionId,
-                'gateway' => $gateway,
-                'cancellation_type' => $cancellationType
-            ]);
-
-            if ($request->wantsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => $successMessage,
-                    'cancellation_type' => $cancellationType,
-                    'gateway' => $gateway
-                ]);
-            }
-
-            return redirect()->route('user.subscription.details')->with('success', $successMessage);
         } catch (\Exception $e) {
             Log::error('Subscription cancellation error', [
                 'error' => $e->getMessage(),

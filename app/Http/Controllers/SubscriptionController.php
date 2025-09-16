@@ -38,7 +38,12 @@ class SubscriptionController extends Controller
             return false;
         }
 
-        // Check if license is not expired
+        // If cancellation is scheduled, the subscription is still active until the expiration date
+        if ($activeLicense->status === 'cancelled_at_period_end' && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
+            return true;
+        }
+
+        // Check if license is not expired (for truly active subscriptions or after scheduled cancellation takes effect)
         if ($activeLicense->isExpired()) {
             return false;
         }
@@ -250,7 +255,6 @@ class SubscriptionController extends Controller
 
     public function upgrade(Request $request, $package = null)
     {
-        // $https://store.payproglobal.com/checkout?merchant_id=172314&product=Pro&subscription=114561&order_id=6&downgrade=trueuser = Auth::user();
 
         if ($request->isMethod('post') && $package) {
             // Delegate to PaymentController for checkout

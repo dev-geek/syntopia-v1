@@ -71,23 +71,22 @@ class PayProGlobalClient
     {
         $payload = [
             'subscriptionId' => (int) $subscriptionId,
-            'vendorAccountId' => (int) config('payment.gateways.PayProGlobal.vendor_account_id'),
-            'apiSecretKey' => config('payment.gateways.PayProGlobal.api_secret_key'),
+            'vendorAccountId' => (int) $this->vendorId,
+            'apiSecretKey' => $this->apiSecretKey,
             'sendCustomerNotification' => $sendCustomerNotification
         ];
 
-        // Add cancellation reason - either predefined ID or custom text
+        // Add cancellation reason
         if ($cancellationReasonId) {
             $payload['cancellationReasonId'] = $cancellationReasonId;
         } elseif ($reasonText) {
             $payload['reasonText'] = $reasonText;
         } else {
-            // Default reason if none provided
-            $payload['cancellationReasonId'] = 2; // "I no longer need this product"
+            $payload['cancellationReasonId'] = 2;
         }
 
-        return Http::withHeaders([
-            'Content-Type' => 'application/json'
-        ])->post('https://store.payproglobal.com/api/Subscriptions/Terminate', $payload);
+        $response = Http::post('https://store.payproglobal.com/api/Subscriptions/Terminate', $payload);
+
+        return $response->json();
     }
 }
