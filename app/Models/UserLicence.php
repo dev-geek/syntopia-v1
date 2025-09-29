@@ -20,13 +20,15 @@ class UserLicence extends Model
         'expires_at',
         'is_active',
         'metadata',
+        'is_upgrade_license',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'activated_at' => 'datetime',
         'expires_at' => 'datetime',
-        'metadata' => 'array'
+        'metadata' => 'array',
+        'is_upgrade_license' => 'boolean',
     ];
 
     public function user(): BelongsTo

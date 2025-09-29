@@ -181,6 +181,16 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            // Apply upgrade/downgrade restriction
+            if (!$this->licenseService->canUserChangePlan($user)) {
+                return response()->json([
+                    'error' => 'Plan Change Restricted',
+                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
+                    'action' => 'info'
+                ], 403);
+            }
+
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
@@ -290,7 +300,8 @@ class PaymentController extends Controller
                     $user,
                     $packageData,
                     null,
-                    $this->getPaymentGatewayId('paddle')
+                    $this->getPaymentGatewayId('paddle'),
+                    $isUpgrade
                 );
 
                 if (!$license) {
@@ -628,8 +639,6 @@ class PaymentController extends Controller
 
     public function fastspringCheckout(Request $request, $package)
     {
-        Log::info('[fastspringCheckout] called', ['package' => $package, 'user_id' => Auth::id()]);
-        Log::info('FastSpring checkout started', ['package' => $package, 'user_id' => Auth::id()]);
 
         try {
             $processedPackage = $this->processPackageName($package);
@@ -640,6 +649,16 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            // Apply upgrade/downgrade restriction
+            if (!$this->licenseService->canUserChangePlan($user)) {
+                return response()->json([
+                    'error' => 'Plan Change Restricted',
+                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
+                    'action' => 'info'
+                ], 403);
+            }
+
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
@@ -659,7 +678,8 @@ class PaymentController extends Controller
                 $user,
                 $packageData,
                 null,
-                $this->getPaymentGatewayId('fastspring')
+                $this->getPaymentGatewayId('fastspring'),
+                $isUpgrade
             );
 
             if (!$license) {
@@ -775,6 +795,15 @@ class PaymentController extends Controller
             $processedPackage = $this->processPackageName($package);
             $user = Auth::user();
 
+            // Apply upgrade/downgrade restriction
+            if (!$this->licenseService->canUserChangePlan($user)) {
+                return response()->json([
+                    'error' => 'Plan Change Restricted',
+                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
+                    'action' => 'info'
+                ], 403);
+            }
+
             if (!$user) {
                 Log::error('User not authenticated for PayProGlobal checkout');
                 return response()->json([
@@ -817,16 +846,16 @@ class PaymentController extends Controller
             } catch (\Exception $e) {
                 Log::error('Error creating license for PayProGlobal checkout', ['user_id' => $user->id, 'package_name' => $packageData->name, 'error' => $e->getMessage()]);
                 return response()->json([
-                    'error' => 'License Creation Failed',
-                    'message' => 'Failed to create a license for your purchase. Please try again or contact support.'
+                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.'
                 ], 500);
             }
 
             if (!$license) {
                 Log::error('License not created for PayProGlobal checkout', ['user_id' => $user->id, 'package_name' => $packageData->name]);
                 return response()->json([
-                    'error' => 'License Creation Failed',
-                    'message' => 'Failed to create a license for your purchase. Please try again or contact support.'
+                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.'
                 ], 500);
             }
 

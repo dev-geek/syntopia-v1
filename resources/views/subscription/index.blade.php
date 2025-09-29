@@ -1997,6 +1997,8 @@
                             return;
                         }
 
+                        hideSpinner(); // Hide spinner before opening popup or redirecting
+
                         // Store user ID and package name in session storage for popup communication
                         const userId = "{{ Auth::id() ?? '' }}";
                         sessionStorage.setItem('payProGlobalUserId', userId);

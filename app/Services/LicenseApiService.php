@@ -50,13 +50,28 @@ class LicenseApiService
             $payload['tenantId'] = $tenantId;
         }
 
-        $response = Http::withHeaders($this->getHeaders())
-            ->post(self::API_BASE_URL . '/api/partner/channel/inventory/subscription/summary/search', $payload);
+        try {
+            $response = Http::withHeaders($this->getHeaders())
+                ->timeout(30) // Set a timeout for the request
+                ->post(self::API_BASE_URL . '/api/partner/channel/inventory/subscription/summary/search', $payload);
 
-        if (!$response->successful() || $response->json('code') !== 200) {
-            Log::error('Failed to fetch subscription summary', [
-                'response' => $response->body(),
-                'tenant_id' => $tenantId
+            if (!$response->successful() || $response->json('code') !== 200) {
+                Log::error('Failed to fetch subscription summary', [
+                    'response' => $response->body(),
+                    'tenant_id' => $tenantId
+                ]);
+                return null;
+            }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('cURL connection error when fetching subscription summary', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage()
+            ]);
+            return null; // Indicate failure due to connection error
+        } catch (\Exception $e) {
+            Log::error('Unexpected error when fetching subscription summary', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage()
             ]);
             return null;
         }
@@ -84,13 +99,39 @@ class LicenseApiService
             'subscriptionCode' => $licenseKey,
         ];
 
-        $response = Http::withHeaders($this->getHeaders())
-            ->post(self::API_BASE_URL . '/api/partner/tenant/subscription/license/add', $payload);
+        try {
+            $response = Http::withHeaders($this->getHeaders())
+                ->timeout(30) // Set a timeout for the request
+                ->post(self::API_BASE_URL . '/api/partner/tenant/subscription/license/add', $payload);
 
-        $responseData = $response->json();
-        Log::info("License response", $responseData);
+            $responseData = $response->json();
+            Log::info("License response", $responseData);
 
-        return $response->successful() && $responseData['code'] === 200;
+            if ($response->successful() && $responseData['code'] === 200) {
+                return true;
+            } else {
+                Log::error('Failed to add license to external API', [
+                    'tenant_id' => $tenantId,
+                    'license_key' => $licenseKey,
+                    'response' => $response->body()
+                ]);
+                return false;
+            }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('cURL connection error when adding license to external API', [
+                'tenant_id' => $tenantId,
+                'license_key' => $licenseKey,
+                'error' => $e->getMessage()
+            ]);
+            return false; // Indicate failure due to connection error
+        } catch (\Exception $e) {
+            Log::error('Unexpected error when adding license to external API', [
+                'tenant_id' => $tenantId,
+                'license_key' => $licenseKey,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
     }
 
     public function checkLicenseAvailability(): bool

@@ -21,7 +21,7 @@ class LicenseService
     /**
      * Create a new license for a user and activate it
      */
-    public function createAndActivateLicense(User $user, Package $package, string $subscriptionId = null, string $paymentGateway = null): ?UserLicence
+    public function createAndActivateLicense(User $user, Package $package, string $subscriptionId = null, string $paymentGateway = null, bool $isUpgradeAttempt = false): ?UserLicence
     {
         try {
             DB::beginTransaction();
@@ -37,7 +37,26 @@ class LicenseService
             }
 
             // Get license keys from external API
-            $summaryData = $this->licenseApiService->getSubscriptionSummary($user->tenant_id, true);
+            $summaryData = null;
+            try {
+                $summaryData = $this->licenseApiService->getSubscriptionSummary($user->tenant_id, true);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                Log::error('LicenseService: cURL connection error when getting subscription summary', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'error' => $e->getMessage()
+                ]);
+                DB::rollBack();
+                throw new \Exception('Failed to connect to the license server to get subscription details. Please check your internet connection and try again.');
+            } catch (\Exception $e) {
+                Log::error('LicenseService: Unexpected error when getting subscription summary', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'error' => $e->getMessage()
+                ]);
+                // Fall through to general error handling if empty
+            }
+
             if (empty($summaryData)) {
                 Log::error('Failed to get license summary', [
                     'user_id' => $user->id,
@@ -120,7 +139,28 @@ class LicenseService
                 }
 
                 // Add license to external API
-                $licenseApiSuccess = $this->licenseApiService->addLicenseToTenant($user->tenant_id, $licenseKey);
+                $licenseApiSuccess = false;
+                try {
+                    $licenseApiSuccess = $this->licenseApiService->addLicenseToTenant($user->tenant_id, $licenseKey);
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    Log::error('LicenseService: cURL connection error when adding license to external API', [
+                        'user_id' => $user->id,
+                        'package_name' => $package->name,
+                        'license_key' => $licenseKey,
+                        'error' => $e->getMessage()
+                    ]);
+                    DB::rollBack();
+                    throw new \Exception('Failed to connect to the license server. Please check your internet connection and try again.');
+                } catch (\Exception $e) {
+                    Log::error('LicenseService: Unexpected error when calling addLicenseToTenant', [
+                        'user_id' => $user->id,
+                        'package_name' => $package->name,
+                        'license_key' => $licenseKey,
+                        'error' => $e->getMessage()
+                    ]);
+                    // Fall through to general error handling if not successful
+                }
+
                 if (!$licenseApiSuccess) {
                     Log::error('Failed to add license to external API', [
                         'user_id' => $user->id,
@@ -146,6 +186,7 @@ class LicenseService
                     'activated_at' => now(),
                     'expires_at' => $expiresAt,
                     'is_active' => true,
+                    'is_upgrade_license' => $isUpgradeAttempt, // Set the new flag
                     'metadata' => [
                         'created_via' => 'payment',
                         'package_name' => $package->name,
@@ -279,5 +320,33 @@ class LicenseService
         ]);
 
         Log::info('All licenses deactivated for user', ['user_id' => $user->id]);
+    }
+
+    /**
+     * Check if a user is currently restricted from changing their plan.
+     *
+     * @param User $user
+     * @return bool
+     */
+    public function canUserChangePlan(User $user): bool
+    {
+        $activeLicense = $this->getActiveLicense($user);
+
+        // If no active license or current license is expired, user can change plan.
+        if (!$activeLicense || ($activeLicense->expires_at && $activeLicense->expires_at->isPast())) {
+            return true;
+        }
+
+        // If an active license exists and it's an upgrade license, prevent further changes.
+        if ($activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
+            return false;
+        }
+
+        // If an active license exists but it's NOT an upgrade license, allow one upgrade.
+        if (!$activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
+            return true; // This allows the first upgrade to a new plan
+        }
+
+        return true; // Default to allowing changes if none of the above conditions are met (should not be reached in most cases)
     }
 }
