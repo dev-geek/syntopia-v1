@@ -55,9 +55,9 @@ class LicenseService
             $fastspringGateway = PaymentGateways::where('name', 'FastSpring')->first();
             $paddleGateway = PaymentGateways::where('name', 'Paddle')->first();
 
-            $isPayProGlobal = $paymentGateway === ($payproglobalGateway ? $payproglobalGateway->id : null);
-            $isFastSpring = $paymentGateway === ($fastspringGateway ? $fastspringGateway->id : null);
-            $isPaddle = $paymentGateway === ($paddleGateway ? $paddleGateway->id : null);
+            $isPayProGlobal = $paymentGateway == ($payproglobalGateway ? $payproglobalGateway->id : null);
+            $isFastSpring = $paymentGateway == ($fastspringGateway ? $fastspringGateway->id : null);
+            $isPaddle = $paymentGateway == ($paddleGateway ? $paddleGateway->id : null);
 
             // For Paddle, we need subscription_id for upgrades, but can proceed without it for new subscriptions
             if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring && !$isPaddle) {

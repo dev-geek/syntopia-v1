@@ -762,6 +762,13 @@ class PaymentController extends Controller
             'user_id' => Auth::id(),
             'is_upgrade' => $request->input('is_upgrade', false),
             'is_downgrade' => $request->input('is_downgrade', false)
+        ]); //dd($request->all(), $package);
+
+        Log::info('Auth::user() status in payProGlobalCheckout', [
+            'authenticated' => Auth::check(),
+            'user_id' => Auth::id(),
+            'csrf_token_header' => $request->header('X-CSRF-TOKEN'),
+            'cookie_header' => $request->header('Cookie'),
         ]);
 
         try {
@@ -796,13 +803,38 @@ class PaymentController extends Controller
                 'is_downgrade' => $request->input('is_downgrade', false)
             ]);
 
-            // For PayProGlobal, license creation happens after payment via webhook
-            // Skip license creation during checkout since subscription_id is not available yet
-            Log::info('Skipping license creation during PayProGlobal checkout - will be created after payment', [
+            // Create and activate license using LicenseService
+            $license = null;
+            try {
+                $license = $this->licenseService->createAndActivateLicense(
+                    $user,
+                    $packageData,
+                    null,
+                    $this->getPaymentGatewayId('payproglobal'),
+                    $request->input('is_upgrade', false),
+                    $request->input('is_downgrade', false)
+                );
+            } catch (\Exception $e) {
+                Log::error('Error creating license for PayProGlobal checkout', ['user_id' => $user->id, 'package_name' => $packageData->name, 'error' => $e->getMessage()]);
+                return response()->json([
+                    'error' => 'License Creation Failed',
+                    'message' => 'Failed to create a license for your purchase. Please try again or contact support.'
+                ], 500);
+            }
+
+            if (!$license) {
+                Log::error('License not created for PayProGlobal checkout', ['user_id' => $user->id, 'package_name' => $packageData->name]);
+                return response()->json([
+                    'error' => 'License Creation Failed',
+                    'message' => 'Failed to create a license for your purchase. Please try again or contact support.'
+                ], 500);
+            }
+
+            Log::info('License successfully created for PayProGlobal checkout', [
                 'user_id' => $user->id,
                 'package_name' => $packageData->name,
-                'is_upgrade' => $request->input('is_upgrade', false),
-                'is_downgrade' => $request->input('is_downgrade', false)
+                'license_id' => $license->id,
+                'license_key' => $license->license_key
             ]);
 
             $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");

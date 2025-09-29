@@ -1942,6 +1942,7 @@
                 showSpinner('Opening payment window...', 'Please wait while we connect to PayProGlobal');
 
                 const apiUrl = `/api/payments/payproglobal/checkout/${packageName}`;
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
                 const requestBody = {
                     package: packageName,
                     is_upgrade: action === 'upgrade',

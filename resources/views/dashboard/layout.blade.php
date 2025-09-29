@@ -9,7 +9,7 @@
     <!-- /.content-header -->
 
     <!-- Main content -->
-    <section class="content">
+    <section class="content pt-5">
         <div class="container-fluid">
             <!-- alert component -->
              @include('components.alert-messages')
