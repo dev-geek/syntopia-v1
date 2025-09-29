@@ -67,7 +67,6 @@ class Kernel extends HttpKernel
 
         // Custom Middlewares
         'verified.custom' => \App\Http\Middleware\EnsureEmailIsVerifiedCustom::class,
-        'subscription.required' => \App\Http\Middleware\CheckUserSubscription::class,
         'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
         'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
         'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,

@@ -193,14 +193,7 @@ Route::middleware(['web'])->group(function () {
     Route::post('/verification/delete-user', [VerificationController::class, 'deleteUserAndRedirect'])->name('verification.deleteUserAndRedirect');
 });
 
-// Protected Routes (Authenticated and Verified Users)
-// Subscription required page (shown when user doesn't have an active subscription)
-Route::get('/subscription-required', function () {
-    return view('subscription.required');
-})->name('subscription.required');
-
-// Middleware group for routes requiring an active subscription
-Route::middleware(['auth', 'verified.custom', 'subscription.required'])->group(function () {
+Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/', [SubscriptionController::class, 'index'])->name('home');
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
 
