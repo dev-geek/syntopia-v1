@@ -795,6 +795,9 @@ class PaymentController extends Controller
             $processedPackage = $this->processPackageName($package);
             $user = Auth::user();
 
+            $isUpgrade = $request->input('is_upgrade', false);
+            $isDowngrade = $request->input('is_downgrade', false);
+
             // Apply upgrade/downgrade restriction
             if (!$this->licenseService->canUserChangePlan($user)) {
                 return response()->json([
@@ -821,6 +824,11 @@ class PaymentController extends Controller
                     'message' => 'The selected package is not available or doesn\'t exist. Please choose a valid package.',
                     'action' => 'select_valid_package'
                 ], 400);
+            }
+
+            // If it's a downgrade, delegate to the specific downgrade method
+            if ($isDowngrade) {
+                return $this->payproglobalDowngrade($request, $packageData);
             }
 
             // Check license availability from API and update user's license
@@ -865,6 +873,78 @@ class PaymentController extends Controller
                 'license_id' => $license->id,
                 'license_key' => $license->license_key
             ]);
+
+            // Handle Downgrade separately
+            if ($isDowngrade) {
+                $currentLicense = $user->userLicence;
+                if (!$currentLicense || !$currentLicense->subscription_id) {
+                    Log::error('User does not have an active subscription for downgrade', ['user_id' => $user->id]);
+                    return response()->json([
+                        'error' => 'No Active Subscription',
+                        'message' => 'You do not have an active subscription to downgrade.',
+                        'action' => 'info'
+                    ], 400);
+                }
+
+                $subscriptionId = $currentLicense->subscription_id;
+                $newProductId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
+
+                if (!$newProductId) {
+                    Log::error('PayProGlobal product ID not configured for downgrade', ['package' => $processedPackage]);
+                    return response()->json([
+                        'error' => 'Product Not Available',
+                        'message' => 'This product is currently not available for downgrade. Please try again later or contact support.',
+                        'action' => 'contact_support'
+                    ], 400);
+                }
+
+                Log::info('Initiating PayProGlobal downgrade API call', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'new_product_id' => $newProductId
+                ]);
+
+                $downgradeResponse = $this->payProGlobalClient->downgradeSubscription($subscriptionId, $newProductId);
+
+                if (isset($downgradeResponse['result']) && $downgradeResponse['result'] === 'OK') {
+                    Log::info('PayProGlobal downgrade successful', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'new_package' => $packageData->name,
+                        'response' => $downgradeResponse
+                    ]);
+                    // Update the user's package and license immediately on successful downgrade
+                    // This is a direct API call, so the response should be immediate.
+                    $user->update([
+                        'package_id' => $packageData->id,
+                        'is_subscribed' => true // Assuming downgrade keeps subscription active
+                    ]);
+
+                    $currentLicense->update([
+                        'package_id' => $packageData->id,
+                        'expires_at' => now()->addMonth(),
+                        'is_upgrade_license' => false
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Your subscription has been successfully downgraded.',
+                        'redirect_url' => route('user.subscription.details') // Redirect to subscription details
+                    ]);
+                } else {
+                    Log::error('PayProGlobal downgrade failed', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'new_product_id' => $newProductId,
+                        'response' => $downgradeResponse
+                    ]);
+                    return response()->json([
+                        'error' => 'Downgrade Failed',
+                        'message' => $downgradeResponse['message'] ?? 'Failed to downgrade your subscription. Please try again or contact support.'
+                    ], 500);
+                }
+                return; // Ensure the method exits after handling downgrade
+            }
 
             $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
             if (!$productId) {
@@ -4914,7 +4994,7 @@ class PaymentController extends Controller
                 'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
             ]);
 
-            $successUrl = route('payments.success', [
+            $redirectUrl = route('payments.success', [
                 'gateway' => 'payproglobal',
                 'user_id' => $user->id,
                 'package' => $targetPackage->name,
@@ -4923,27 +5003,18 @@ class PaymentController extends Controller
                 'action' => 'downgrade'
             ]);
 
-            $cancelUrl = route('payments.popup-cancel');
-
-            $checkoutUrl = $this->payProGlobalClient->getCheckoutUrl(
-                $targetPackage->price,
-                'USD',
-                $targetPackage->id,
-                $user->email,
-                $user->first_name ?? '',
-                $user->last_name ?? '',
-                $custom,
-                $successUrl,
-                $cancelUrl
-            );
-
-            Log::info('PayProGlobal downgrade checkout created', [
+            Log::info('PayProGlobal downgrade successfully initiated, redirecting...', [
                 'user_id' => $user->id,
                 'pending_order_id' => $pendingOrderId,
-                'checkout_url' => $checkoutUrl,
+                'redirect_url' => $redirectUrl,
             ]);
 
-            return response()->json(['checkout_url' => $checkoutUrl]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Your downgrade has been successfully scheduled.',
+                'redirect_url' => $redirectUrl
+            ]);
+
         } catch (\Exception $e) {
             Log::error('PayProGlobal downgrade checkout failed', [
                 'user_id' => Auth::id(),

@@ -1360,7 +1360,7 @@
                 hasActiveSubscription
             });
 
-            let selectedGateway = isUpgrade === 'true' && userOriginalGateway ?
+            let selectedGateway = (isUpgrade === 'true' || pageType === 'downgrade') && userOriginalGateway ?
                 userOriginalGateway :
                 activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null;
             console.log('Selected gateway:', selectedGateway);
@@ -1769,8 +1769,19 @@
                                 console.log('Processing FastSpring downgrade with popup');
                                 processFastSpring(packageName, action);
                             } else if (selectedGateway === 'Pay Pro Global') {
-                                console.log('Processing PayProGlobal downgrade with existing method');
-                                processPayProGlobal(packageName, action);
+                                // For PayProGlobal downgrades, the backend directly returns a redirect_url
+                                console.log('PayProGlobal downgrade API response:', data);
+                                if (data.redirect_url) {
+                                    console.log('PayProGlobal downgrade successful, redirecting to:', data.redirect_url);
+                                    hideSpinner();
+                                    showSuccess(data.message || 'Downgrade Successful', 'Your plan has been successfully downgraded.').then(() => {
+                                        window.location.href = data.redirect_url;
+                                    });
+                                    return; // Exit after handling downgrade
+                                } else {
+                                    console.error('PayProGlobal downgrade successful, but no redirect_url in response:', data);
+                                    throw new Error(data.error || 'PayProGlobal downgrade successful, but no redirect URL received.');
+                                }
                             } else if (data.checkout_url) {
                                 // For other gateways with a checkout URL, open in popup
                                 console.log('Opening downgrade checkout URL:', data.checkout_url);
@@ -1980,6 +1991,22 @@
 
                         if (!data.success) {
                             throw new Error(data.error || 'API returned success: false');
+                        }
+
+                        // Handle downgrade action specifically
+                        if (action === 'downgrade') {
+                            console.log('PayProGlobal downgrade API response:', data); // Log full data for downgrade
+                            if (data.redirect_url) {
+                                console.log('PayProGlobal downgrade successful, redirecting to:', data.redirect_url);
+                                hideSpinner();
+                                showSuccess(data.message || 'Downgrade Successful', 'Your plan has been successfully downgraded.').then(() => {
+                                    window.location.href = data.redirect_url;
+                                });
+                                return; // Exit after handling downgrade
+                            } else {
+                                console.error('Downgrade successful, but no redirect_url in response:', data);
+                                throw new Error(data.error || 'Downgrade successful, but no redirect URL received.');
+                            }
                         }
 
                         if (!data.checkout_url) {

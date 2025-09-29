@@ -64,7 +64,15 @@ class PayProGlobalClient
 
     public function downgradeSubscription(string $subscriptionId, string $newProductId)
     {
-        return $this->upgradeSubscription($subscriptionId, $newProductId);
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Content-Type' => 'application/json'
+        ])->post('https://api.payproglobal.com/v1/subscriptions/downgrade', [
+            'subscription_id' => $subscriptionId,
+            'product_id' => $newProductId
+        ]);
+
+        return $response->json();
     }
 
     public function cancelSubscription(string $subscriptionId, int $cancellationReasonId = null, string $reasonText = null, bool $sendCustomerNotification = false)
