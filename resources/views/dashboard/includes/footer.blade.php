@@ -88,6 +88,23 @@
         <!-- Password Modal Script -->
         <script>
             function checkPasswordAndAccess() {
+                @if (!Auth::user()->hasActiveSubscription())
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Subscription Required',
+                        text: 'You need an active plan or add-on to access the software.',
+                        showCancelButton: true,
+                        confirmButtonText: 'View Plans',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#28a745',
+                        cancelButtonColor: '#dc3545'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.href = '{{ route('subscription') }}';
+                        }
+                    });
+                    return;
+                @endif
                 @if (!Auth::user()->hasValidSubscriberPassword())
                     // User doesn't have a password, show modal
                     showPasswordModal();
