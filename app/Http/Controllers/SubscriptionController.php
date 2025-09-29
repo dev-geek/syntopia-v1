@@ -376,6 +376,13 @@ class SubscriptionController extends Controller
 
         $activeLicense = $user->userLicence;
         $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
+        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at) {
+            try {
+                $calculatedEndDate = $activeLicense->activated_at->copy()->addMonth();
+            } catch (\Throwable $e) {
+            }
+        }
+        $isUpgradeLocked = $activeLicense && $activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture();
 
         // Check for pending upgrade orders first
         $pendingUpgrade = Order::where('user_id', $user->id)
@@ -400,6 +407,23 @@ class SubscriptionController extends Controller
             ->first();
         $hasPendingDowngrade = $pendingDowngrade !== null;
         $pendingDowngradeDetails = null;
+
+        if ($hasPendingDowngrade) {
+            $targetPackage = is_array($pendingDowngrade->metadata)
+                ? ($pendingDowngrade->metadata['downgrade_to'] ?? null)
+                : (is_string($pendingDowngrade->metadata) ? (json_decode($pendingDowngrade->metadata, true)['downgrade_to'] ?? null) : null);
+
+            $scheduledEnd = $calculatedEndDate;
+            if (!$scheduledEnd && $activeLicense && $activeLicense->activated_at) {
+                try { $scheduledEnd = $activeLicense->activated_at->copy()->addMonth(); } catch (\Throwable $e) {}
+            }
+            $scheduledActivationDate = $scheduledEnd ? $scheduledEnd->format('F j, Y') : null;
+
+            $pendingDowngradeDetails = [
+                'target_package' => $targetPackage,
+                'scheduled_activation_date' => $scheduledActivationDate,
+            ];
+        }
 
         // Determine the current active package (gateway-agnostic)
         // This should always reflect the package the user is CURRENTLY on.
@@ -450,18 +474,29 @@ class SubscriptionController extends Controller
                 }
             }
 
-            $scheduledActivationDate = null;
             $targetPackageName = $pendingDowngrade->package->name ?? 'Unknown';
 
-            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['scheduled_activation_date'])) {
+            // Prefer the previously computed date; otherwise derive from metadata or license end
+            $scheduledActivationDate = null;
+            if (isset($pendingDowngradeDetails['scheduled_activation_date']) && $pendingDowngradeDetails['scheduled_activation_date']) {
+                $scheduledActivationDate = Carbon::parse($pendingDowngradeDetails['scheduled_activation_date']);
+            } elseif (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['scheduled_activation_date'])) {
                 $scheduledActivationDate = Carbon::parse($pendingDowngrade->metadata['scheduled_activation_date']);
+            } else {
+                $fallback = $calculatedEndDate;
+                if (!$fallback && $activeLicense && $activeLicense->activated_at) {
+                    try { $fallback = $activeLicense->activated_at->copy()->addMonth(); } catch (\Throwable $e) {}
+                }
+                if ($fallback) {
+                    $scheduledActivationDate = $fallback;
+                }
             }
 
             $pendingDowngradeDetails = [
                 'target_package' => $targetPackageName,
                 'original_package' => $originalPackageName,
                 'created_at' => $pendingDowngrade->created_at,
-                'scheduled_activation_date' => $scheduledActivationDate ? $scheduledActivationDate->format('M d, Y') : 'N/A',
+                'scheduled_activation_date' => $scheduledActivationDate ? $scheduledActivationDate->format('F j, Y') : null,
                 'downgrade_type' => 'subscription_downgrade'
             ];
         }
@@ -520,6 +555,7 @@ class SubscriptionController extends Controller
             'hasActiveSubscription' => $hasActiveSubscription,
             'hasScheduledCancellation' => $hasScheduledCancellation,
             'canUpgrade' => $canUpgrade,
+            'isUpgradeLocked' => $isUpgradeLocked,
             'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false,
             'hasPendingUpgrade' => $hasPendingUpgrade,
             'pendingUpgradeDetails' => $pendingUpgradeDetails,

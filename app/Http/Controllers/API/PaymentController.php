@@ -182,6 +182,15 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            // Block further plan changes if an upgrade is currently active
+            if (!$this->licenseService->canUserChangePlan($user)) {
+                return response()->json([
+                    'error' => 'Plan Change Restricted',
+                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
+                    'action' => 'info'
+                ], 403);
+            }
+
             // Apply upgrade/downgrade restriction
             if (!$this->licenseService->canUserChangePlan($user)) {
                 return response()->json([
@@ -1862,7 +1871,8 @@ class PaymentController extends Controller
                 $user,
                 $package,
                 $subscriptionId,
-                $this->getPaymentGatewayId($gateway)
+                $this->getPaymentGatewayId($gateway),
+                $action === 'upgrade'
             );
 
             if (!$license) {
@@ -1908,7 +1918,7 @@ class PaymentController extends Controller
             ]);
 
             $successMessage = $action === 'upgrade'
-                ? "Subscription upgraded to {$package->name} successfully!"
+                ? 'Your plan upgrade is active now.'
                 : "Subscription to {$package->name} bought successfully!";
             return redirect()->route('user.subscription.details')->with('success', $successMessage);
         });
@@ -3866,6 +3876,15 @@ class PaymentController extends Controller
             $user = Auth::user();
             if (!$user) {
                 return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            // Block further plan changes if an upgrade is currently active
+            if (!$this->licenseService->canUserChangePlan($user)) {
+                return response()->json([
+                    'error' => 'Plan Change Restricted',
+                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
+                    'action' => 'info'
+                ], 403);
             }
 
             $newPackage = $request->input('package');

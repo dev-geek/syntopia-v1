@@ -393,13 +393,34 @@
 
                             <div class="float-right">
                                 @if ($hasActiveSubscription && $canUpgrade)
-                                    <a class="btn btn-success"
-                                        href="{{ route('subscription', ['type' => 'upgrade']) }}">
-                                        <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
-                                    </a>
-                                    <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
-                                        <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
-                                    </a>
+                                    @php
+                                        $lockTooltip = '';
+                                        if ($isUpgradeLocked) {
+                                            $lockTooltip = 'Further plan changes are locked until your upgraded plan expires' . ($calculatedEndDate ? ' on ' . $calculatedEndDate->format('F j, Y') : '');
+                                        } elseif ($hasPendingDowngrade && $pendingDowngradeDetails) {
+                                            $lockTooltip = 'Further plan changes are locked due to a pending downgrade scheduled for ' . ($pendingDowngradeDetails['scheduled_activation_date'] ?? 'the end of your billing period');
+                                        }
+                                        $lockButtons = $isUpgradeLocked || ($hasPendingDowngrade && $pendingDowngradeDetails);
+                                    @endphp
+                                    @if($lockButtons)
+                                        <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
+                                            <a class="btn btn-success disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
+                                                <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
+                                            </a>
+                                        </span>
+                                        <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
+                                            <a class="btn btn-info disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
+                                                <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                            </a>
+                                        </span>
+                                    @else
+                                        <a class="btn btn-success" href="{{ route('subscription', ['type' => 'upgrade']) }}">
+                                            <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
+                                        </a>
+                                        <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
+                                            <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                        </a>
+                                    @endif
                                     @if ($hasScheduledCancellation)
                                         <button class="btn btn-secondary" disabled>
                                             <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
@@ -410,13 +431,34 @@
                                         </button>
                                     @endif
                                 @elseif ($hasActiveSubscription && !$canUpgrade)
-                                    <a class="btn btn-success"
-                                        href="{{ route('subscription', ['type' => 'upgrade']) }}">
-                                        <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
-                                    </a>
-                                    <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
-                                        <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
-                                    </a>
+                                    @php
+                                        $lockTooltip = '';
+                                        if ($isUpgradeLocked) {
+                                            $lockTooltip = 'Further plan changes are locked until your upgraded plan expires' . ($calculatedEndDate ? ' on ' . $calculatedEndDate->format('F j, Y') : '');
+                                        } elseif ($hasPendingDowngrade && $pendingDowngradeDetails) {
+                                            $lockTooltip = 'Further plan changes are locked due to a pending downgrade scheduled for ' . ($pendingDowngradeDetails['scheduled_activation_date'] ?? 'the end of your billing period');
+                                        }
+                                        $lockButtons = $isUpgradeLocked || ($hasPendingDowngrade && $pendingDowngradeDetails);
+                                    @endphp
+                                    @if($lockButtons)
+                                        <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
+                                            <a class="btn btn-success disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
+                                                <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
+                                            </a>
+                                        </span>
+                                        <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
+                                            <a class="btn btn-info disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
+                                                <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                            </a>
+                                        </span>
+                                    @else
+                                        <a class="btn btn-success" href="{{ route('subscription', ['type' => 'upgrade']) }}">
+                                            <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
+                                        </a>
+                                        <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
+                                            <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                        </a>
+                                    @endif
                                     @if ($hasScheduledCancellation)
                                         <button class="btn btn-secondary" disabled>
                                             <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
@@ -731,6 +773,10 @@
 </style>
 
 <script>
+    // Enable Bootstrap tooltips
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip()
+    })
     // Make upgrade notice undismissable
     document.addEventListener('DOMContentLoaded', function() {
         const upgradeNotice = document.querySelector('.upgrade-notice');

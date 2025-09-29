@@ -11,7 +11,7 @@
             font-src 'self' https://fonts.gstatic.com;
             script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://store.payproglobal.com 'unsafe-inline' 'unsafe-eval';
             img-src 'self' https://syntopia.ai https://sbl.onfastspring.com https://store.payproglobal.com data:;
-            connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
+            connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
             frame-src 'self' https://buy.paddle.com https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
             media-src 'self' data: https://sbl.onfastspring.com https://store.payproglobal.com;">
     <title>Syntopia Pricing</title>
@@ -1889,6 +1889,11 @@
                         'Payment checkout is not available. Please refresh the page and try again.');
                     return;
                 }
+                if (packageName && packageName.toLowerCase() === 'free') {
+                    hideSpinner();
+                    showError('New Failed', 'Customer setup failed');
+                    return;
+                }
                 const apiUrl = `/api/payments/paddle/checkout/${packageName}`;
                 const requestBody = {
                     package: packageName,
@@ -1996,16 +2001,17 @@
                         // Handle downgrade action specifically
                         if (action === 'downgrade') {
                             console.log('PayProGlobal downgrade API response:', data); // Log full data for downgrade
-                            if (data.redirect_url) {
-                                console.log('PayProGlobal downgrade successful, redirecting to:', data.redirect_url);
+                            const redirectUrl = data.redirect_url || data.checkout_url;
+                            if (redirectUrl) {
+                                console.log('PayProGlobal downgrade redirecting to:', redirectUrl);
                                 hideSpinner();
-                                showSuccess(data.message || 'Downgrade Successful', 'Your plan has been successfully downgraded.').then(() => {
-                                    window.location.href = data.redirect_url;
+                                showSuccess(data.message || 'Downgrade Successful', 'Your plan downgrade has been scheduled.').then(() => {
+                                    window.location.href = redirectUrl;
                                 });
                                 return; // Exit after handling downgrade
                             } else {
-                                console.error('Downgrade successful, but no redirect_url in response:', data);
-                                throw new Error(data.error || 'Downgrade successful, but no redirect URL received.');
+                                console.error('Downgrade response missing redirect URL:', data);
+                                throw new Error(data.error || 'No redirect URL received.');
                             }
                         }
 
@@ -2032,13 +2038,8 @@
                         sessionStorage.setItem('payProGlobalPackageName', packageName);
                         sessionStorage.setItem('payProGlobalAction', action);
 
-                        // Open PayProGlobal in a popup
-                        if (typeof openPayProGlobalPopup === 'function') {
-                            openPayProGlobalPopup(data.checkout_url, packageName, userId);
-                        } else {
-                            console.error('openPayProGlobalPopup function not found.');
-                            window.location.href = data.checkout_url;
-                        }
+                        // Always open PayProGlobal checkout in the same tab
+                        window.location.href = data.checkout_url;
 
                         console.log('Stored in session storage:', {
                             userId,

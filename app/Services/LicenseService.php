@@ -8,6 +8,7 @@ use App\Models\PaymentGateways;
 use App\Models\UserLicence;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Models\Order;
 
 class LicenseService
 {
@@ -331,6 +332,16 @@ class LicenseService
     public function canUserChangePlan(User $user): bool
     {
         $activeLicense = $this->getActiveLicense($user);
+
+        // Block changes if there is a pending or scheduled downgrade
+        $hasPendingOrScheduledDowngrade = Order::where('user_id', $user->id)
+            ->where('order_type', 'downgrade')
+            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
+            ->exists();
+
+        if ($hasPendingOrScheduledDowngrade) {
+            return false;
+        }
 
         // If no active license or current license is expired, user can change plan.
         if (!$activeLicense || ($activeLicense->expires_at && $activeLicense->expires_at->isPast())) {
