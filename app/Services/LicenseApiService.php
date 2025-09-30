@@ -271,17 +271,17 @@ class LicenseApiService
         // 试用版 -> Trial Version
         // 云端高级直播-一年版 -> Cloud Advanced Live Streaming – 1 Year Plan
 
-        $aliases = [
-            'free' => ['free', 'free version', 'free plan', '免费', '免费版'],
-            'trial' => ['trial', 'trial version', '试用', '试用版'],
-            'starter' => ['starter', 'starter plan'],
-            'pro' => ['pro', 'pro plan'],
-            'business' => ['business', 'business plan'],
-            'enterprise' => ['enterprise', 'enterprise plan', '企业版'],
-            'avatar customization' => ['avatar customization', 'avatar-customization', 'avatar', 'avatar 定制', '形象定制'],
-            'voice customization' => ['voice customization', 'voice-customization', 'voice', '语音定制'],
-            'cloud-advanced-live-streaming-1-year' => ['云端高级直播-一年版', 'cloud advanced live streaming – 1 year plan', 'cloud advanced live streaming-1 year plan'],
-        ];
+		$aliases = [
+			'free' => ['Free', 'free', 'free version', 'free plan', '免费', '免费版'],
+			'trial' => ['trial', 'trial version', '试用', '试用版'],
+			'starter' => ['Starter','starter', 'starter plan', 'starter package', 'starter tier'],
+			'pro' => ['Pro', 'pro', 'pro plan'],
+			'business' => ['Business', 'business', 'business plan'],
+			'enterprise' => ['Enterprise', 'enterprise', 'enterprise plan', '企业版'],
+			'avatar customization' => ['Avatar Customization', 'avatar customization', 'avatar-customization', 'avatar', 'avatar 定制', '形象定制'],
+			'voice customization' => ['Voice Customization', 'voice customization', 'voice-customization', 'voice', '语音定制'],
+			'cloud-advanced-live-streaming-1-year' => ['Cloud Advanced Live Streaming – 1 Year Plan', 'cloud advanced live streaming – 1 year plan', 'cloud advanced live streaming-1 year plan'],
+		];
 
         // infer key from normalizedPlan
         $key = $normalizedPlan;
@@ -308,21 +308,32 @@ class LicenseApiService
             }
         }
 
-        // heuristic by code prefixes
-        $prefixMap = [
-            'free' => ['PKG-CL-FREE'],
-            'starter' => ['PKG-CL-OVS-02'],
-            'pro' => ['PKG-CL-OVS-03'],
-            'business' => ['PKG-CL-OVS-04'],
-            'trial' => ['PKG-CL-GLB'],
-        ];
-        if (isset($prefixMap[$key])) {
-            foreach ($prefixMap[$key] as $prefix) {
-                if (stripos($subscriptionCode, $prefix) === 0) {
-                    return true;
-                }
-            }
-        }
+		// exact code matches for certain tiers (strongest signal)
+		$codeExactMap = [
+			'starter' => ['PKG-CL-OVS-02'],
+			'pro' => ['PKG-CL-OVS-03'],
+			'business' => ['PKG-CL-OVS-04'],
+			'trial' => ['PKG-CL-GLB-01'],
+		];
+		if (isset($codeExactMap[$key]) && in_array($subscriptionCode, $codeExactMap[$key], true)) {
+			return true;
+		}
+
+		// heuristic by code prefixes
+		$prefixMap = [
+			'free' => ['PKG-CL-FREE'],
+			'starter' => ['PKG-CL-OVS-02'],
+			'pro' => ['PKG-CL-OVS-03'],
+			'business' => ['PKG-CL-OVS-04'],
+			'trial' => ['PKG-CL-GLB'],
+		];
+		if (isset($prefixMap[$key])) {
+			foreach ($prefixMap[$key] as $prefix) {
+				if (stripos($subscriptionCode, $prefix) === 0) {
+					return true;
+				}
+			}
+		}
 
         return false;
     }

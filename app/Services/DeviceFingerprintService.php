@@ -12,6 +12,27 @@ class DeviceFingerprintService
         // No dependencies needed
     }
 
+    private function isTestingBypassEnabled(): bool
+    {
+        return (bool) config('free_plan_abuse.testing_bypass_enabled', false);
+    }
+
+    private function isWhitelisted(Request $request): bool
+    {
+        $whitelist = (array) config('free_plan_abuse.whitelist', []);
+        $ip = $request->ip();
+        $email = $request->input('email');
+        $fingerprintId = $request->cookie('fp_id', '');
+        $fingerprint = $this->generateFingerprint($request);
+
+        $ipWhitelisted = in_array($ip, $whitelist['ips'] ?? [], true);
+        $emailWhitelisted = $email ? in_array($email, $whitelist['emails'] ?? [], true) : false;
+        $fpIdWhitelisted = $fingerprintId ? in_array($fingerprintId, $whitelist['fingerprint_ids'] ?? [], true) : false;
+        $fpWhitelisted = in_array($fingerprint, $whitelist['device_fingerprints'] ?? [], true);
+
+        return $ipWhitelisted || $emailWhitelisted || $fpIdWhitelisted || $fpWhitelisted;
+    }
+
     public function generateFingerprint(Request $request): string
     {
         // Basic components that are always available
@@ -53,7 +74,7 @@ class DeviceFingerprintService
 
         // Generate a stable fingerprint
         $fingerprintString = json_encode($components);
-        
+
         // Use SHA-256 for better collision resistance
         return hash('sha256', $fingerprintString);
     }
@@ -80,6 +101,9 @@ class DeviceFingerprintService
 
     public function isBlocked(Request $request): bool
     {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+            return false;
+        }
         $ip = $request->ip();
         $fingerprint = $this->generateFingerprint($request);
         $email = $request->input('email');
@@ -131,6 +155,9 @@ class DeviceFingerprintService
 
     public function hasRecentAttempts(Request $request, int $maxAttempts = 3, int $days = 30): bool
     {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+            return false;
+        }
         $ip = $request->ip();
         $fingerprint = $this->generateFingerprint($request);
         $email = $request->input('email');
@@ -169,6 +196,9 @@ class DeviceFingerprintService
 
     public function recordAttempt(Request $request): void
     {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+            return; // do not record attempts when bypassed/whitelisted
+        }
         $fingerprint = $this->generateFingerprint($request);
         $email = $request->input('email');
 
@@ -182,6 +212,9 @@ class DeviceFingerprintService
 
     public function shouldBlock(Request $request, int $maxAttempts = 3, int $days = 30): bool
     {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+            return false;
+        }
         $ip = $request->ip();
         $fingerprint = $this->generateFingerprint($request);
         $email = $request->input('email');
@@ -193,4 +226,4 @@ class DeviceFingerprintService
 
         return $ipAttempts >= $maxAttempts || $fingerprintAttempts >= $maxAttempts || $emailAttempts >= $maxAttempts;
     }
-} 
+}

@@ -29,6 +29,21 @@ return [
     // Block duration in days (0 = permanent)
     'block_duration_days' => env('FREE_PLAN_BLOCK_DURATION', 0),
 
+    // Testing bypass: when true, no device/IP/email will be blocked or counted
+    'testing_bypass_enabled' => env('FREE_PLAN_TESTING_BYPASS', false),
+
+    // Whitelists for exempting identifiers from blocking/counting
+    'whitelist' => [
+        // Exact IP addresses
+        'ips' => array_filter(array_map('trim', explode(',', env('FREE_PLAN_WHITELIST_IPS', '')))),
+        // Exact device fingerprints (sha256 from DeviceFingerprintService)
+        'device_fingerprints' => array_filter(array_map('trim', explode(',', env('FREE_PLAN_WHITELIST_DEVICE_FPS', '')))),
+        // Exact emails
+        'emails' => array_filter(array_map('trim', explode(',', env('FREE_PLAN_WHITELIST_EMAILS', '')))),
+        // Fingerprint IDs from cookie
+        'fingerprint_ids' => array_filter(array_map('trim', explode(',', env('FREE_PLAN_WHITELIST_FP_IDS', '')))),
+    ],
+
     // Error messages
     'messages' => [
         'too_many_attempts' => 'Too many registration attempts from this device. Please contact support if you need assistance.',
@@ -42,4 +57,4 @@ return [
         'enabled' => env('FREE_PLAN_LOGGING_ENABLED', true),
         'level' => env('FREE_PLAN_LOG_LEVEL', 'info'),
     ],
-]; 
+];
