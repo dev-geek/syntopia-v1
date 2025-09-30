@@ -55,6 +55,95 @@ class LicenseApiService
                 ->timeout(30) // Set a timeout for the request
                 ->post(self::API_BASE_URL . '/api/partner/channel/inventory/subscription/summary/search', $payload);
 
+                // output: {
+                //     "code": 200,
+                //     "message": "成功",
+                //     "traceId": "a76d893ddc5ce6eb",
+                //     "data": {
+                //         "data": [
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "4db87c12de824ff094687d8020d1a804",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-FREE-02",
+                //                 "subscriptionName": "试用版",
+                //                 "total": 10,
+                //                 "used": 10,
+                //                 "remaining": 0
+                //             },
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "50c1a4b18b7447dab0d06e2e314bc7e0",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-STD-03",
+                //                 "subscriptionName": "云端高级直播-一年版",
+                //                 "total": 1,
+                //                 "used": 1,
+                //                 "remaining": 0
+                //             },
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "0f4f9cced9bd46ed92bc62fb90fa375d",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-OVS-01",
+                //                 "subscriptionName": "Free Plan",
+                //                 "total": 150,
+                //                 "used": 150,
+                //                 "remaining": 0
+                //             },
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "5aa5b677e6d34e4b94f4e20b1e08038e",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-OVS-04",
+                //                 "subscriptionName": "Business Plan",
+                //                 "total": 14,
+                //                 "used": 14,
+                //                 "remaining": 0
+                //             },
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "7c05a9a7cba64830a551d0549d983a71",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-GLB-01",
+                //                 "subscriptionName": "Trial",
+                //                 "total": 50,
+                //                 "used": 31,
+                //                 "remaining": 19
+                //             },
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "f5d7f58bcbc64696be2ba2c0ccb1bd83",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-OVS-02",
+                //                 "subscriptionName": "Starter Plan",
+                //                 "total": 10,
+                //                 "used": 10,
+                //                 "remaining": 0
+                //             },
+                //             {
+                //                 "channelId": "a581486eb1094846b92ac028de2264c6",
+                //                 "appId": 1,
+                //                 "subscriptionId": "c2fa257a54f84a138c3f961602611894",
+                //                 "subscriptionType": "license",
+                //                 "subscriptionCode": "PKG-CL-OVS-03",
+                //                 "subscriptionName": "Pro Plan",
+                //                 "total": 10,
+                //                 "used": 10,
+                //                 "remaining": 0
+                //             }
+                //         ],
+                //         "total": 7,
+                //         "pageIndex": 1,
+                //         "pageSize": 100
+                //     }
+                // }
             if (!$response->successful() || $response->json('code') !== 200) {
                 Log::error('Failed to fetch subscription summary', [
                     'response' => $response->body(),
@@ -132,6 +221,110 @@ class LicenseApiService
             ]);
             return false;
         }
+    }
+
+    /**
+     * Resolve a subscription entry from API summary by human plan name.
+     * Accepts English and Chinese aliases and normalizes common variants.
+     * Returns the first item with remaining > 0 that matches; otherwise null.
+     */
+    public function resolvePlanLicense(?string $tenantId, string $planName, bool $bypassCache = false): ?array
+    {
+        $summaryData = $this->getSubscriptionSummary($tenantId, $bypassCache) ?? [];
+
+        if (empty($summaryData)) {
+            return null;
+        }
+
+        $normalized = $this->normalizePlanName($planName);
+
+        foreach ($summaryData as $item) {
+            $name = (string)($item['subscriptionName'] ?? '');
+            $code = (string)($item['subscriptionCode'] ?? '');
+            $remaining = (int)($item['remaining'] ?? 0);
+
+            if ($remaining <= 0) {
+                continue;
+            }
+
+            if ($this->planMatches($normalized, $name, $code)) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizePlanName(string $planName): string
+    {
+        $p = trim(mb_strtolower($planName));
+        // remove common suffixes
+        $p = str_replace([' plan', '-plan'], '', $p);
+        return $p;
+    }
+
+    private function planMatches(string $normalizedPlan, string $subscriptionName, string $subscriptionCode): bool
+    {
+        $name = mb_strtolower($subscriptionName);
+
+        // Chinese -> English mappings for clarity
+        // 试用版 -> Trial Version
+        // 云端高级直播-一年版 -> Cloud Advanced Live Streaming – 1 Year Plan
+
+        $aliases = [
+            'free' => ['free', 'free version', 'free plan', '免费', '免费版'],
+            'trial' => ['trial', 'trial version', '试用', '试用版'],
+            'starter' => ['starter', 'starter plan'],
+            'pro' => ['pro', 'pro plan'],
+            'business' => ['business', 'business plan'],
+            'enterprise' => ['enterprise', 'enterprise plan', '企业版'],
+            'avatar customization' => ['avatar customization', 'avatar-customization', 'avatar', 'avatar 定制', '形象定制'],
+            'voice customization' => ['voice customization', 'voice-customization', 'voice', '语音定制'],
+            'cloud-advanced-live-streaming-1-year' => ['云端高级直播-一年版', 'cloud advanced live streaming – 1 year plan', 'cloud advanced live streaming-1 year plan'],
+        ];
+
+        // infer key from normalizedPlan
+        $key = $normalizedPlan;
+        if (!isset($aliases[$key])) {
+            // map common variants
+            $map = [
+                'trial version' => 'trial',
+                'cloud advanced live streaming – 1 year plan' => 'cloud-advanced-live-streaming-1-year',
+                'cloud advanced live streaming-1 year plan' => 'cloud-advanced-live-streaming-1-year',
+                'avatar-customization' => 'avatar customization',
+                'voice-customization' => 'voice customization',
+            ];
+            if (isset($map[$key])) {
+                $key = $map[$key];
+            }
+        }
+
+        // direct name match
+        if (isset($aliases[$key])) {
+            foreach ($aliases[$key] as $alias) {
+                if (mb_strpos($name, mb_strtolower($alias)) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        // heuristic by code prefixes
+        $prefixMap = [
+            'free' => ['PKG-CL-FREE'],
+            'starter' => ['PKG-CL-OVS-02'],
+            'pro' => ['PKG-CL-OVS-03'],
+            'business' => ['PKG-CL-OVS-04'],
+            'trial' => ['PKG-CL-GLB'],
+        ];
+        if (isset($prefixMap[$key])) {
+            foreach ($prefixMap[$key] as $prefix) {
+                if (stripos($subscriptionCode, $prefix) === 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public function checkLicenseAvailability(): bool

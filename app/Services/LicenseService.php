@@ -132,8 +132,32 @@ class LicenseService
                 ]);
             }
 
-            // Create a license for each available license key
-            foreach ($summaryData as $licenseData) {
+            // If package name maps to a specific subscription, require that one
+            $resolved = $this->licenseApiService->resolvePlanLicense($user->tenant_id, $package->name, true);
+            if (!$resolved) {
+                $availableNames = array_map(function ($i) {
+                    $n = (string)($i['subscriptionName'] ?? '');
+                    // Translate common Chinese names for readability
+                    $translations = [
+                        '试用版' => 'Trial Version',
+                        '云端高级直播-一年版' => 'Cloud Advanced Live Streaming – 1 Year Plan',
+                    ];
+                    $translated = $translations[$n] ?? null;
+                    return $translated ? $n . ' (' . $translated . ')' : $n;
+                }, $summaryData);
+
+                Log::error('Requested plan not found in API inventory; refusing to assign mismatched license', [
+                    'user_id' => $user->id,
+                    'requested_plan' => $package->name,
+                    'available_subscription_names' => $availableNames,
+                ]);
+                DB::rollBack();
+                return null;
+            }
+            $targetList = [$resolved];
+
+            // Create a license for each available license key (usually one after filtering)
+            foreach ($targetList as $licenseData) {
                 $licenseKey = $licenseData['subscriptionCode'] ?? null;
                 if (!$licenseKey) {
                     continue;

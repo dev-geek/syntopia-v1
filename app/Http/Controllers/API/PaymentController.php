@@ -82,78 +82,35 @@ class PaymentController extends Controller
         return str_replace('-plan', '', strtolower($package));
     }
 
-    private function checkLicenseAvailability()
+    private function checkLicenseAvailability(string $plan = 'Free')
     {
-        $cacheKey = 'license_availability_check';
-        $summaryData = Cache::remember($cacheKey, 300, function () {
-            $summary = Http::withHeaders([
-                'subscription-key' => '5c745ccd024140ffad8af2ed7a30ccad',
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post('https://openapi.xiaoice.com/vh-cp/api/partner/channel/inventory/subscription/summary/search', [
-                'pageIndex' => 1,
-                'pageSize' => 100,
-                'appIds' => [1],
-                'subscriptionType' => 'license',
+        $user = Auth::user();
+        $tenantId = $user?->tenant_id;
+
+        $resolved = $this->licenseApiService->resolvePlanLicense($tenantId, $plan, false);
+        if (!$resolved) {
+            Log::error('Requested plan not found in API inventory', [
+                'plan' => $plan,
+                'tenant_id' => $tenantId,
             ]);
-
-            if (!$summary->successful() || $summary->json()['code'] !== 200) {
-                Log::error('Failed to fetch subscription summary in checkLicenseAvailability', [
-                    'response' => $summary->body(),
-                ]);
-                return null;
-            }
-
-            $allData = $summary->json()['data']['data'] ?? [];
-
-            // Filter to only use "Free Plan" subscription
-            $freePlanData = collect($allData)->filter(function ($item) {
-                return $item['subscriptionName'] === 'Free Plan';
-            })->first();
-
-            if (!$freePlanData) {
-                Log::error('Free Plan subscription not found in license availability check', [
-                    'available_subscriptions' => collect($allData)->pluck('subscriptionName')->toArray()
-                ]);
-                return null;
-            }
-
-            Log::info('Free Plan subscription found', [
-                'subscription_name' => $freePlanData['subscriptionName'],
-                'subscription_code' => $freePlanData['subscriptionCode'],
-                'total' => $freePlanData['total'],
-                'used' => $freePlanData['used'],
-                'remaining' => $freePlanData['remaining']
-            ]);
-
-            return $freePlanData;
-        });
-
-        if (empty($summaryData)) {
-            Log::error('No Free Plan subscription data found in license availability check');
             return false;
         }
 
-        $licenseKey = $summaryData['subscriptionCode'] ?? null;
-        if (!$licenseKey) {
-            Log::error('No license codes available in Free Plan subscription');
-            return false;
-        }
-
-        $remaining = $summaryData['remaining'] ?? 0;
+        $remaining = (int)($resolved['remaining'] ?? 0);
         if ($remaining <= 0) {
-            Log::error('No remaining licenses available in Free Plan subscription', [
-                'total' => $summaryData['total'] ?? 0,
-                'used' => $summaryData['used'] ?? 0,
-                'remaining' => $remaining
+            Log::error('No remaining licenses available for requested plan', [
+                'plan' => $plan,
+                'tenant_id' => $tenantId,
+                'resolved' => $resolved,
             ]);
             return false;
         }
 
-        Log::info('Free Plan license availability check passed', [
-            'available' => true,
-            'subscription_code' => $licenseKey,
-            'remaining_licenses' => $remaining
+        Log::info('License availability check passed for plan', [
+            'plan' => $plan,
+            'subscription_name' => $resolved['subscriptionName'] ?? null,
+            'subscription_code' => $resolved['subscriptionCode'] ?? null,
+            'remaining' => $remaining,
         ]);
         return true;
     }
@@ -1737,8 +1694,35 @@ class PaymentController extends Controller
                 'addon' => $addon,
             ]);
 
-            // TODO: Trigger actual fulfillment workflow for the add-on
-            // For example: dispatch(new FulfillAddonJob($user->id, $addon, $order->id));
+            // Fulfill add-on by assigning the matching license (if such a subscription exists)
+            try {
+                $resolved = $this->licenseApiService->resolvePlanLicense($user->tenant_id, $addonName ?? $addonKey, true);
+                if ($resolved) {
+                    $licenseKey = $resolved['subscriptionCode'] ?? null;
+                    if ($licenseKey) {
+                        $added = $this->licenseApiService->addLicenseToTenant($user->tenant_id, $licenseKey);
+                        Log::info('Addon license assignment attempted', [
+                            'user_id' => $user->id,
+                            'addon' => $addon,
+                            'subscription_name' => $resolved['subscriptionName'] ?? null,
+                            'license_key' => $licenseKey,
+                            'success' => $added,
+                        ]);
+                    }
+                } else {
+                    Log::warning('Addon plan not found in API inventory', [
+                        'user_id' => $user->id,
+                        'addon' => $addon,
+                        'note' => 'If this is a purely internal add-on, no external license is required.'
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Addon license fulfillment failed', [
+                    'user_id' => $user->id,
+                    'addon' => $addon,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return redirect()->route('user.dashboard')->with('success', 'Your add-on purchase has been recorded. We will reach out shortly.');
         } catch (\Exception $e) {
