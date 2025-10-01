@@ -639,6 +639,7 @@ class SubscriptionController extends Controller
         // Exclude one-time add-ons from plan listing
         $packages = Package::select('name', 'price', 'duration', 'features')
             ->whereNotIn('name', ['Avatar Customization', 'Voice Customization'])
+            ->orderBy('id', 'asc')
             ->get();
 
         // Get current user's package
