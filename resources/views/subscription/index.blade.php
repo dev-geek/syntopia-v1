@@ -1298,7 +1298,9 @@
                         <button class="btn {{ $buttonClass }} checkout-button"
                             data-package="{{ $package->name }}"
                             data-action="{{ $buttonAction }}"
-                            {{ $isDisabled ? 'disabled' : '' }}>
+                            {{ $isDisabled ? 'disabled' : '' }}
+                            @if ($package->name == 'Enterprise') onclick="window.location.href='https://syntopia.ai/contact-us/'" @endif
+                            >
                             @if ($package->name == 'Enterprise')
                                 Get in Touch
                             @elseif ($isCurrentPackage)
@@ -1612,6 +1614,12 @@
                 button.addEventListener('click', function() {
                     const packageName = this.getAttribute('data-package');
                     const action = this.getAttribute('data-action');
+
+                    if (packageName === 'Enterprise') {
+                        console.log('Enterprise plan: Redirecting to contact page, no checkout.');
+                        return;
+                    }
+
                     if (this.disabled || this.classList.contains('active') || this.classList.contains('disabled')) {
                         console.warn('Button click ignored - button is disabled, active, or not available', {
                             packageName,
