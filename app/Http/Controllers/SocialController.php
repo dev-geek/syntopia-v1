@@ -42,7 +42,7 @@ class SocialController extends Controller
                     if ($this->hasActiveSubscription($user)) {
                         return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
                     } else {
-                        return redirect()->route('home')->with('login_success', 'User Login Successfully');
+                        return redirect()->route('subscription')->with('login_success', 'User Login Successfully');
                     }
                 }
 
@@ -407,7 +407,7 @@ class SocialController extends Controller
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->route('user.dashboard')->with('login_success', $message);
             } else {
-                return redirect()->route('home')->with('login_success', $message);
+                return redirect()->route('subscription')->with('login_success', $message);
             }
         }
 

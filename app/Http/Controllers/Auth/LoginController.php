@@ -50,7 +50,7 @@ class LoginController extends Controller
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->intended(route('user.dashboard'));
             } else {
-                return redirect()->intended(route('home'));
+                return redirect()->intended(route('subscription'));
             }
         }
 
@@ -121,7 +121,7 @@ class LoginController extends Controller
                 if ($this->hasActiveSubscription($user)) {
                     return redirect()->route('user.dashboard');
                 } else {
-                    return redirect()->route('home');
+                    return redirect()->route('subscription');
                 }
             }
         }
@@ -142,7 +142,7 @@ class LoginController extends Controller
     {
         // Check if there's an email in the session from a previous login attempt
         $email = $request->session()->get('email');
-        
+
         // If email exists and belongs to a Super Admin, redirect to admin login
         if ($email) {
             $user = User::where('email', $email)->first();
@@ -150,7 +150,7 @@ class LoginController extends Controller
                 return redirect()->route('admin-login');
             }
         }
-        
+
         return view('auth.login');
     }
 

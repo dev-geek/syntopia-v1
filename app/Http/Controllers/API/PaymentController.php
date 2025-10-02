@@ -1083,7 +1083,7 @@ class PaymentController extends Controller
                     'query' => $request->query(),
                     'url' => $request->fullUrl()
                 ]);
-                return redirect()->route('home')->with('error', 'Invalid payment gateway');
+                return redirect()->route('subscription')->with('error', 'Invalid payment gateway');
             }
 
             if ($gateway === 'paddle') {
@@ -1107,7 +1107,7 @@ class PaymentController extends Controller
                         'auth_check_before_redirect' => auth()->check(),
                         'auth_id_before_redirect' => auth()->id()
                     ]);
-                    return redirect()->route('home')->with('error', 'Invalid payment request');
+                    return redirect()->route('subscription')->with('error', 'Invalid payment request');
                 }
 
                 Log::info('Processing Paddle success callback', [
@@ -1176,7 +1176,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'response' => $response->body()
                     ]);
-                    return redirect()->route('home')->with('error', 'Payment verification failed');
+                    return redirect()->route('subscription')->with('error', 'Payment verification failed');
                 }
 
                 $transactionData = $response->json()['data'];
@@ -1188,7 +1188,7 @@ class PaymentController extends Controller
                         'transaction_id' => $transactionId,
                         'custom_data' => $customData
                     ]);
-                    return redirect()->route('home')->with('error', 'Invalid transaction data');
+                    return redirect()->route('subscription')->with('error', 'Invalid transaction data');
                 }
 
                 Log::info('Processing Paddle payment with user_id from custom_data', [
@@ -1299,7 +1299,7 @@ class PaymentController extends Controller
                             'auth_check_before_redirect' => auth()->check(),
                             'auth_id_before_redirect' => auth()->id()
                         ]);
-                        return redirect()->route('home')->with('error', 'Order processing failed');
+                        return redirect()->route('subscription')->with('error', 'Order processing failed');
                     }
                 } else {
                     // Process as regular payment (new subscription)
@@ -1311,7 +1311,7 @@ class PaymentController extends Controller
                             'auth_check_before_redirect' => auth()->check(),
                             'auth_id_before_redirect' => auth()->id()
                         ]);
-                        return redirect()->route('home')->with('error', 'Invalid transaction data');
+                        return redirect()->route('subscription')->with('error', 'Invalid transaction data');
                     }
 
                     $result = $this->processPaddlePaymentFromWebhook($transactionData, $packageName, $userId);
@@ -1331,7 +1331,7 @@ class PaymentController extends Controller
                             'auth_check_before_redirect' => auth()->check(),
                             'auth_id_before_redirect' => auth()->id()
                         ]);
-                        return redirect()->route('home')->with('error', 'Payment processing failed');
+                        return redirect()->route('subscription')->with('error', 'Payment processing failed');
                     }
                 }
             } elseif ($gateway === 'fastspring') {
@@ -1342,7 +1342,7 @@ class PaymentController extends Controller
                 // Handle errors from getSubscriptionId
                 if (isset($subscriptionData['error'])) {
                     Log::error('FastSpring Error: ' . $subscriptionData['error']);
-                    return redirect()->route('home')->with('error', $subscriptionData['error']);
+                    return redirect()->route('subscription')->with('error', $subscriptionData['error']);
                 }
 
                 // Proceed if successfull
@@ -1354,7 +1354,7 @@ class PaymentController extends Controller
                         'auth_check_before_redirect' => auth()->check(),
                         'auth_id_before_redirect' => auth()->id()
                     ]);
-                    return redirect()->route('home')->with('error', 'Invalid order ID');
+                    return redirect()->route('subscription')->with('error', 'Invalid order ID');
                 }
 
                 $order = Order::where('transaction_id', $orderId)->first();
@@ -1381,7 +1381,7 @@ class PaymentController extends Controller
                         'order_id' => $orderId,
                         'response' => $response->body()
                     ]);
-                    return redirect()->route('home')->with('error', 'Order verification failed');
+                    return redirect()->route('subscription')->with('error', 'Order verification failed');
                 }
 
                 $orderData = $response->json()['orders'][0] ?? $response->json();
@@ -1423,7 +1423,7 @@ class PaymentController extends Controller
                         'auth_check_before_redirect' => auth()->check(),
                         'auth_id_before_redirect' => auth()->id()
                     ]);
-                    return redirect()->route('home')->with('error', 'Invalid payment data from PayProGlobal');
+                    return redirect()->route('subscription')->with('error', 'Invalid payment data from PayProGlobal');
                 }
 
                 $user = User::find($userId);
@@ -1441,7 +1441,7 @@ class PaymentController extends Controller
                         'auth_check_before_redirect' => auth()->check(),
                         'auth_id_before_redirect' => auth()->id()
                     ]);
-                    return redirect()->route('home')->with('error', 'Payment processing error (data mismatch).');
+                    return redirect()->route('subscription')->with('error', 'Payment processing error (data mismatch).');
                 }
 
                 if ($pendingOrder->status === 'completed') {
@@ -1570,7 +1570,7 @@ class PaymentController extends Controller
                     'auth_check_before_redirect' => auth()->check(),
                     'auth_id_before_redirect' => auth()->id()
                 ]);
-                return redirect()->route('home')->with('error', 'Unknown payment gateway.');
+                return redirect()->route('subscription')->with('error', 'Unknown payment gateway.');
             }
         } catch (\Exception $e) {
             Log::error('Payment success callback error', [
@@ -1578,7 +1578,7 @@ class PaymentController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request_all' => $request->all()
             ]);
-            return redirect()->route('home')->with('error', 'There was an error processing your payment: ' . $e->getMessage());
+            return redirect()->route('subscription')->with('error', 'There was an error processing your payment: ' . $e->getMessage());
         }
     }
 
@@ -4648,7 +4648,7 @@ class PaymentController extends Controller
             'url' => $request->fullUrl()
         ]);
 
-        return redirect()->route('home')->with('info', 'Payment was cancelled');
+        return redirect()->route('subscription')->with('info', 'Payment was cancelled');
     }
 
     public function handlePopupCancel(Request $request)

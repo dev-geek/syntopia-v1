@@ -153,8 +153,8 @@ class VerificationController extends Controller
                     return redirect()->route('user.dashboard')
                         ->with('success', 'Email verified successfully!');
                 } else {
-                    Log::info('[verifyCode] Redirecting to home', ['user_id' => $user->id]);
-                    return redirect()->route('home')
+                    Log::info('[verifyCode] Redirecting to subscription', ['user_id' => $user->id]);
+                    return redirect()->route('subscription')
                         ->with('success', 'Email verified successfully!');
                 }
             }

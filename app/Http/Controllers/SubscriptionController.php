@@ -243,7 +243,7 @@ class SubscriptionController extends Controller
         if ($packageName) {
             $package = Package::where('name', $packageName)->first();
             if (!$package) {
-                return redirect()->route('home')->with('error', 'Invalid package selected.');
+                return redirect()->route('subscription')->with('error', 'Invalid package selected.');
             }
 
             return $this->showSubscriptionPage('new', $package);
