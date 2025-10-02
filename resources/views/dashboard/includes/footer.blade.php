@@ -87,6 +87,51 @@
 
         <!-- Password Modal Script -->
         <script>
+            (function() {
+                const spinner = document.getElementById('globalSpinner');
+                if (spinner) {
+                    let requestCount = 0;
+                    function show() { spinner.style.display = 'flex'; }
+                    function hide() { spinner.style.display = 'none'; }
+                    function inc() { requestCount++; show(); }
+                    function dec() { requestCount = Math.max(0, requestCount - 1); if (requestCount === 0) hide(); }
+
+                    // Hook fetch
+                    const originalFetch = window.fetch;
+                    window.fetch = function() {
+                        inc();
+                        return originalFetch.apply(this, arguments).finally(dec);
+                    };
+
+                    // Hook jQuery AJAX if available
+                    if (window.jQuery) {
+                        $(document).ajaxStart(function() { inc(); });
+                        $(document).ajaxStop(function() { dec(); });
+                    }
+
+                    // Show on form submits and internal navigation clicks
+                    document.addEventListener('submit', function(e) {
+                        const form = e.target;
+                        if (form && !form.hasAttribute('data-no-spinner')) {
+                            show();
+                        }
+                    }, true);
+
+                    document.addEventListener('click', function(e) {
+                        const link = e.target.closest('a');
+                        if (!link) return;
+                        const href = link.getAttribute('href');
+                        const target = link.getAttribute('target');
+                        const noSpinner = link.hasAttribute('data-no-spinner');
+                        if (!noSpinner && href && href.startsWith('/') && (!target || target === '_self')) {
+                            show();
+                        }
+                    }, true);
+
+                    window.addEventListener('pageshow', function() { hide(); });
+                }
+            })();
+
             function checkPasswordAndAccess() {
                 @if (!Auth::user()->hasActiveSubscription())
                     Swal.fire({

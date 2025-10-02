@@ -875,12 +875,42 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
             transform: scale(1.05);
             transition: transform 0.2s ease;
         }
+
+        /* Global Spinner Overlay */
+        .global-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(2px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+        }
+        .global-spinner {
+            width: 54px;
+            height: 54px;
+            border: 6px solid #e3eafc;
+            border-top-color: #0d6efd;
+            border-radius: 50%;
+            animation: global-spin 0.8s linear infinite;
+            box-shadow: 0 4px 16px rgba(13,110,253,0.18);
+        }
+        @keyframes global-spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 
 </head>
 
 <body class="hold-transition sidebar-mini layout-fixed layout-navbar-fixed">
     <div class="wrapper">
+        <div id="globalSpinner" class="global-spinner-overlay">
+            <div class="global-spinner"></div>
+        </div>
         <!-- Navbar -->
         <nav class="main-header navbar navbar-expand navbar-white navbar-light">
             <!-- Left navbar links -->

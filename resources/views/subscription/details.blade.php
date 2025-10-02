@@ -280,7 +280,7 @@
     <section class="content">
         <div class="container-fluid">
 
-
+            @if($hasActiveSubscription)
             {{-- Scheduled Downgrade Notice --}}
             @if ($hasPendingDowngrade && $pendingDowngradeDetails)
                 <div class="row">
@@ -675,6 +675,60 @@
                     </div>
                 </div>
             </div>
+            @else
+            <div class="row">
+                <div class="col-12">
+                    <div class="info-card">
+                        <div class="row">
+                            <div class="col-12">
+                                <p class="text-muted mb-2"><strong>Status:</strong></p>
+                                <span class="badge badge-warning px-3 py-2 status-badge">
+                                    <i class="fas fa-exclamation-circle"></i> No active subscription
+                                </span>
+                                <p class="mt-3 mb-3">
+                                    You don’t have an active subscription. Choose a plan to get started.
+                                </p>
+                                <a class="btn btn-primary" href="{{ route('subscription') }}">
+                                    <i class="fas fa-box-open mr-1"></i> Choose a plan
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if(isset($purchasedAddons) && $purchasedAddons->count())
+            <div class="row">
+                <div class="col-12">
+                    <div class="info-card">
+                        <div class="row">
+                            <div class="col-12">
+                                <ul class="list-group">
+                                    @foreach($purchasedAddons as $addonOrder)
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ $addonOrder->package->name ?? (is_array($addonOrder->metadata) && isset($addonOrder->metadata['addon']) ? ucwords(str_replace(['_', '-'], ' ', $addonOrder->metadata['addon'])) : 'Add-on') }}</strong>
+                                                <br>
+                                                <small class="text-muted">Purchased on {{ $addonOrder->created_at->format('F j, Y') }}</small>
+                                            </div>
+                                            <div class="text-right">
+                                                <span class="badge badge-success px-3 py-2">Active</span>
+                                                <span class="badge badge-info px-3 py-2 ml-1">No expiry</span>
+                                                @if(!empty($addonOrder->amount))
+                                                    <br>
+                                                    <small class="text-muted">Paid ${{ number_format($addonOrder->amount, 2) }} {{ $addonOrder->currency }}</small>
+                                                @endif
+                                            </div>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            @endif
+            @endif
         </div>
     </section>
     <!-- /.content -->

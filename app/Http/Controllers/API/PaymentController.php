@@ -259,38 +259,13 @@ class PaymentController extends Controller
                     'package_price' => $packageData->price
                 ]);
 
-                // Create and activate license using LicenseService
-                $license = null;
-
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $packageData,
-                    null,
-                    $this->getPaymentGatewayId('paddle'),
-                    $isUpgrade
-                );
-
-                if (!$license) {
-                    Log::info('No license record created (no subscription_id), proceeding with checkout', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                    // Continue with checkout even if no license record was created
-                }
-
-                if ($license) {
-                    Log::info('License successfully created and activated', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name,
-                        'license_id' => $license->id,
-                        'license_key' => $license->license_key
-                    ]);
-                } else {
-                    Log::info('License key updated without creating license record', [
-                        'user_id' => $user->id,
-                        'package_name' => $packageData->name
-                    ]);
-                }
+            // Do NOT create license before payment. Allocate after success/thank-you.
+            $license = null;
+            Log::info('Deferring license creation until payment success (Paddle)', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'is_upgrade' => $isUpgrade
+            ]);
             }
 
             // Create a pending order to track this checkout attempt
@@ -303,7 +278,7 @@ class PaymentController extends Controller
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
                 'status' => 'pending',
                 'metadata' => [
-                    'license_id' => $license ? $license->id : null,
+                    // no license id pre-payment
                     'is_upgrade' => $isUpgrade,
                     'is_downgrade' => $isDowngrade
                 ]
@@ -428,16 +403,25 @@ class PaymentController extends Controller
                                 ], 500);
                             }
                         } else {
+                            $statusCode = $customerResponse->status();
                             Log::error('Paddle customer creation failed', [
                                 'user_id' => $user->id,
-                                'status' => $customerResponse->status(),
+                                'status' => $statusCode,
                                 'response' => $customerResponse->body(),
                                 'request_data' => $customerData
                             ]);
+
+                            // Provide a user-friendly error message (hide raw details)
+                            $friendlyMessage = 'We could not start your checkout with server issue right now. Please try again in a moment. If this keeps happening, contact support.';
+                            if ($statusCode === 403) {
+                                $friendlyMessage = 'We are currently unable to connect to server for your checkout. Please try again shortly.';
+                            }
+
                             return response()->json([
-                                'error' => 'Customer setup failed',
-                                'details' => $customerResponse->body()
-                            ], 500);
+                                'error' => 'We are currently unable to connect to server for your checkout. Please try again shortly.',
+                                'message' => $friendlyMessage,
+                                'action' => 'retry_or_contact_support'
+                            ], 502);
                         }
                     } else {
                         // Customer was created successfully
@@ -646,38 +630,13 @@ class PaymentController extends Controller
                 'is_downgrade' => $isDowngrade
             ]);
 
-            // Create and activate license using LicenseService
+            // Do NOT create license before payment. Allocate after success/thank-you.
             $license = null;
-
-            $license = $this->licenseService->createAndActivateLicense(
-                $user,
-                $packageData,
-                null,
-                $this->getPaymentGatewayId('fastspring'),
-                $isUpgrade
-            );
-
-            if (!$license) {
-                Log::info('No license record created (no subscription_id), proceeding with checkout', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name
-                ]);
-                // Continue with checkout even if no license record was created
-            }
-
-            if ($license) {
-                Log::info('License successfully created and activated', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'license_id' => $license->id,
-                    'license_key' => $license->license_key
-                ]);
-            } else {
-                Log::info('License key updated without creating license record', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name
-                ]);
-            }
+            Log::info('Deferring license creation until payment success (FastSpring)', [
+                'user_id' => $user->id,
+                'package_name' => $packageData->name,
+                'is_upgrade' => $isUpgrade
+            ]);
 
             $storefront = config('payment.gateways.FastSpring.storefront');
             if (!$storefront) {
@@ -806,47 +765,12 @@ class PaymentController extends Controller
                 return $this->payproglobalDowngrade($request, $packageData);
             }
 
-            // Check license availability from API and update user's license
-            Log::info('Checking license availability from API', [
+            // Defer license creation until payment success for PayPro Global as well
+            Log::info('Deferring license creation until payment success (PayPro Global)', [
                 'user_id' => $user->id,
                 'package_name' => $packageData->name,
-                'package_price' => $packageData->price,
                 'is_upgrade' => $request->input('is_upgrade', false),
                 'is_downgrade' => $request->input('is_downgrade', false)
-            ]);
-
-            // Create and activate license using LicenseService
-            $license = null;
-            try {
-                $license = $this->licenseService->createAndActivateLicense(
-                    $user,
-                    $packageData,
-                    null,
-                    $this->getPaymentGatewayId('payproglobal'),
-                    $request->input('is_upgrade', false),
-                    $request->input('is_downgrade', false)
-                );
-            } catch (\Exception $e) {
-                Log::error('Error creating license for PayProGlobal checkout', ['user_id' => $user->id, 'package_name' => $packageData->name, 'error' => $e->getMessage()]);
-                return response()->json([
-                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
-                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.'
-                ], 500);
-            }
-
-            if (!$license) {
-                Log::error('License not created for PayProGlobal checkout', ['user_id' => $user->id, 'package_name' => $packageData->name]);
-                return response()->json([
-                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
-                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.'
-                ], 500);
-            }
-
-            Log::info('License successfully created for PayProGlobal checkout', [
-                'user_id' => $user->id,
-                'package_name' => $packageData->name,
-                'license_id' => $license->id,
-                'license_key' => $license->license_key
             ]);
 
             // Handle Downgrade separately
