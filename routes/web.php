@@ -23,6 +23,11 @@ use Illuminate\Support\Facades\Auth;
 |--------------------------------------------------------------------------
 */
 
+// Redirect root to login
+Route::get('/', function () {
+    return redirect()->route('login');
+});
+
 // Guest routes (no authentication required)
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
