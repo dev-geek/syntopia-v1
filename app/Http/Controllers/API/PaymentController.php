@@ -4932,91 +4932,93 @@ class PaymentController extends Controller
         Log::info('[payproglobalDowngrade] called', ['user_id' => Auth::id(), 'params' => $request->all()]);
 
         try {
-            $user = Auth::user();
-            if (!$user) {
-                return response()->json(['error' => 'User not authenticated.'], 401);
-            }
+            return DB::transaction(function () use ($request) {
+                $user = Auth::user();
+                if (!$user) {
+                    return response()->json(['error' => 'User not authenticated.'], 401);
+                }
 
-            $targetPackageId = $request->input('package_id');
-            $targetPackage = Package::find($targetPackageId);
-            $currentPackage = $user->package;
+                $targetPackageId = $request->input('package_id');
+                $targetPackage = Package::find($targetPackageId);
+                $currentPackage = $user->package;
 
-            if (!$targetPackage || !$currentPackage) {
-                Log::error('PayProGlobal Downgrade: Invalid target or current package', [
+                if (!$targetPackage || !$currentPackage) {
+                    Log::error('PayProGlobal Downgrade: Invalid target or current package', [
+                        'user_id' => $user->id,
+                        'target_package_id' => $targetPackageId,
+                        'current_package_id' => $currentPackage->id ?? 'N/A'
+                    ]);
+                    return response()->json(['error' => 'Invalid package selection.'], 400);
+                }
+
+                // Ensure it's a valid downgrade
+                if ($targetPackage->price >= $currentPackage->price) {
+                    Log::error('PayProGlobal Downgrade: Target package is not a downgrade', [
+                        'user_id' => $user->id,
+                        'target_package' => $targetPackage->name,
+                        'current_package' => $currentPackage->name
+                    ]);
+                    return response()->json(['error' => 'Selected package is not a downgrade.'], 400);
+                }
+
+                // Check for an active license to get expiration date
+                $activeLicense = $user->userLicence;
+                if (!$activeLicense || !$activeLicense->expires_at) {
+                    Log::error('PayProGlobal Downgrade: No active license found for user', ['user_id' => $user->id]);
+                    return response()->json(['error' => 'No active subscription found to downgrade.'], 400);
+                }
+
+                // Create a pending order for the scheduled downgrade
+                $pendingOrderId = 'PPG-DOWNGRADE-' . uniqid();
+                $pendingOrder = Order::create([
                     'user_id' => $user->id,
-                    'target_package_id' => $targetPackageId,
-                    'current_package_id' => $currentPackage->id ?? 'N/A'
+                    'package_id' => $targetPackage->id,
+                    'order_type' => 'downgrade',
+                    'status' => 'scheduled_downgrade',
+                    'transaction_id' => $pendingOrderId,
+                    'amount' => $targetPackage->price,
+                    'currency' => 'USD',
+                    'payment_method' => $user->paymentGateway->name ?? 'Pay Pro Global',
+                    'metadata' => [
+                        'original_package_id' => $currentPackage->id,
+                        'original_package_name' => $currentPackage->name,
+                        'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
+                        'downgrade_processed' => false,
+                    ]
                 ]);
-                return response()->json(['error' => 'Invalid package selection.'], 400);
-            }
 
-            // Ensure it's a valid downgrade
-            if ($targetPackage->price >= $currentPackage->price) {
-                Log::error('PayProGlobal Downgrade: Target package is not a downgrade', [
+                // Build custom data for PayProGlobal
+                $custom = json_encode([
                     'user_id' => $user->id,
-                    'target_package' => $targetPackage->name,
-                    'current_package' => $currentPackage->name
-                ]);
-                return response()->json(['error' => 'Selected package is not a downgrade.'], 400);
-            }
-
-            // Check for an active license to get expiration date
-            $activeLicense = $user->userLicence;
-            if (!$activeLicense || !$activeLicense->expires_at) {
-                Log::error('PayProGlobal Downgrade: No active license found for user', ['user_id' => $user->id]);
-                return response()->json(['error' => 'No active subscription found to downgrade.'], 400);
-            }
-
-            // Create a pending order for the scheduled downgrade
-            $pendingOrderId = 'PPG-DOWNGRADE-' . uniqid();
-            $pendingOrder = Order::create([
-                'user_id' => $user->id,
-                'package_id' => $targetPackage->id,
-                'order_type' => 'downgrade',
-                'status' => 'scheduled_downgrade',
-                'transaction_id' => $pendingOrderId,
-                'amount' => $targetPackage->price,
-                'currency' => 'USD',
-                'payment_method' => $user->paymentGateway->name ?? 'Pay Pro Global',
-                'metadata' => [
-                    'original_package_id' => $currentPackage->id,
+                    'package_id' => $targetPackage->id,
+                    'package' => $targetPackage->name,
+                    'pending_order_id' => $pendingOrder->transaction_id,
+                    'action' => 'downgrade',
                     'original_package_name' => $currentPackage->name,
                     'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
-                    'downgrade_processed' => false,
-                ]
-            ]);
+                ]);
 
-            // Build custom data for PayProGlobal
-            $custom = json_encode([
-                'user_id' => $user->id,
-                'package_id' => $targetPackage->id,
-                'package' => $targetPackage->name,
-                'pending_order_id' => $pendingOrder->transaction_id,
-                'action' => 'downgrade',
-                'original_package_name' => $currentPackage->name,
-                'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
-            ]);
+                $redirectUrl = route('payments.success', [
+                    'gateway' => 'payproglobal',
+                    'user_id' => $user->id,
+                    'package' => $targetPackage->name,
+                    'popup' => 'true',
+                    'pending_order_id' => $pendingOrder->transaction_id,
+                    'action' => 'downgrade'
+                ]);
 
-            $redirectUrl = route('payments.success', [
-                'gateway' => 'payproglobal',
-                'user_id' => $user->id,
-                'package' => $targetPackage->name,
-                'popup' => 'true',
-                'pending_order_id' => $pendingOrder->transaction_id,
-                'action' => 'downgrade'
-            ]);
+                Log::info('PayProGlobal downgrade successfully initiated, redirecting...', [
+                    'user_id' => $user->id,
+                    'pending_order_id' => $pendingOrderId,
+                    'redirect_url' => $redirectUrl,
+                ]);
 
-            Log::info('PayProGlobal downgrade successfully initiated, redirecting...', [
-                'user_id' => $user->id,
-                'pending_order_id' => $pendingOrderId,
-                'redirect_url' => $redirectUrl,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Your downgrade has been successfully scheduled.',
-                'redirect_url' => $redirectUrl
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Your downgrade has been successfully scheduled.',
+                    'redirect_url' => $redirectUrl
+                ]);
+            });
 
         } catch (\Exception $e) {
             Log::error('PayProGlobal downgrade checkout failed', [

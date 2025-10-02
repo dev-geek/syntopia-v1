@@ -20,7 +20,7 @@
                                 @endif
                             </h3>
                             <p class="addon-price">$2800</p>
-                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif onclick="window.location.href = '{{ route('subscription', ['adon' => 'avatar_customization']) }}'">
                                 Get Started
                             </button>
                             <p class="included-title">What's required from you:</p>
@@ -42,7 +42,7 @@
                                 @endif
                             </h3>
                             <p class="addon-price">$2200</p>
-                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif onclick="window.location.href = '{{ route('subscription', ['adon' => 'voice_customization']) }}'">
                                 Get Started
                             </button>
                             <p class="included-title">What's required from you:</p>
@@ -69,7 +69,7 @@
                                 @endif
                             </h3>
                             <p class="addon-price">$2800</p>
-                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>Get Started</button>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif onclick="window.location.href = '{{ route('subscription', ['adon' => 'avatar_customization']) }}'">Get Started</button>
                             <p class="included-title">What's included</p>
                             <ul class="features">
                                 <li><span class="icon"></span> 30+ min of training video recorded</li>
@@ -91,7 +91,7 @@
                                 @endif
                             </h3>
                             <p class="addon-price">$2200</p>
-                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif>Get Started</button>
+                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif onclick="window.location.href = '{{ route('subscription', ['adon' => 'voice_customization']) }}'">Get Started</button>
                             <p class="included-title">What's included</p>
                             <ul class="features">
                                 <li><span class="icon"></span> 30+ min of valid audio recorded</li>
