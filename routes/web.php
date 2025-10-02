@@ -169,7 +169,7 @@ Route::controller(SocialController::class)->group(function () {
 });
 
 // Public routes
-Route::get('/subscription', [SubscriptionController::class, 'showSubscriptionWithPackage'])->name('subscription');
+Route::get('/subscription', [SubscriptionController::class, 'index'])->name('subscription');
 Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check-email');
 
 // Payment callback routes
@@ -194,7 +194,6 @@ Route::middleware(['web'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified.custom'])->group(function () {
-    Route::get('/', [SubscriptionController::class, 'index'])->name('home');
     Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
 
     // Profile routes
