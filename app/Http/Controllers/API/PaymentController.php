@@ -139,16 +139,16 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Block further plan changes if an upgrade is currently active
-            if (!$this->licenseService->canUserChangePlan($user)) {
+            // Check license availability
+            if (!$this->checkLicenseAvailability($packageData->name)) {
                 return response()->json([
-                    'error' => 'Plan Change Restricted',
-                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
-                    'action' => 'info'
-                ], 403);
+                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'action' => 'error'
+                ], 503);
             }
 
-            // Apply upgrade/downgrade restriction
+            // Block further plan changes if an upgrade is currently active
             if (!$this->licenseService->canUserChangePlan($user)) {
                 return response()->json([
                     'error' => 'Plan Change Restricted',
@@ -615,6 +615,15 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            // Check license availability
+            if (!$this->checkLicenseAvailability($packageData->name)) {
+                return response()->json([
+                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'action' => 'error'
+                ], 503);
+            }
 
             // Apply upgrade/downgrade restriction
             if (!$this->licenseService->canUserChangePlan($user)) {
