@@ -597,9 +597,9 @@
                                 <div class="col-lg-6 col-md-12 mb-4">
                                     @if ($user->userLicence && $user->userLicence->license_key)
                                         <div class="info-card">
-                                            <h3 class="card-title">
-                                                <i class="fas fa-key mr-2"></i>License Information
-                                            </h3>
+{{--                                            <h3 class="card-title">--}}
+{{--                                                <i class="fas fa-key mr-2"></i>License Information--}}
+{{--                                            </h3>--}}
                                             <div class="row">
                                                 <div class="col-12">
                                                     <p class="text-muted mb-2"><strong>License Key:</strong></p>
@@ -626,9 +626,9 @@
                                 @if ($user->userLicence)
                                     <div class="col-lg-6 col-md-12 mb-4">
                                         <div class="info-card">
-                                            <h3 class="card-title">
-                                                <i class="fas fa-calendar-alt mr-2"></i>License Period
-                                            </h3>
+{{--                                            <h3 class="card-title">--}}
+{{--                                                <i class="fas fa-calendar-alt mr-2"></i>License Period--}}
+{{--                                            </h3>--}}
                                             <div class="row">
                                                 <div class="col-12">
                                                     @if ($user->userLicence->activated_at)

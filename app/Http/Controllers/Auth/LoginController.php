@@ -242,7 +242,7 @@ class LoginController extends Controller
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->intended(route('user.dashboard'));
             } else {
-                return redirect()->intended(route('home'));
+                return redirect()->intended(route('subscription'));
             }
         }
 
