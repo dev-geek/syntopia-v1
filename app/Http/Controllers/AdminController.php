@@ -243,6 +243,7 @@ class AdminController extends Controller
     {
         $orders = Order::where('status', '!=', 'Processing')
             ->with('user') // Eager load the user relationship
+            ->where('status', '!=', 'pending') // Exclude Processing status
             ->orderBy('created_at', 'desc')
             ->get();
         return view('admin.orders', compact('orders'));

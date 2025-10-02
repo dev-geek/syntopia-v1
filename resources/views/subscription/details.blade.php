@@ -319,9 +319,9 @@
                 <div class="row">
                     <div class="col-12">
                         <div class="info-card">
-                            <h3 class="card-title">
-                                <i class="fas fa-puzzle-piece mr-2"></i>Active Add-ons
-                            </h3>
+{{--                            <h3 class="card-title">--}}
+{{--                                <i class="fas fa-puzzle-piece mr-2"></i>Active Add-ons--}}
+{{--                            </h3>--}}
                             <div class="row">
                                 <div class="col-12">
                                     <ul class="list-group">
@@ -509,9 +509,9 @@
                                 {{-- First Row: Package and License Information --}}
                                 <div class="col-lg-6 col-md-12 mb-4">
                                     <div class="info-card">
-                                        <h3 class="card-title">
-                                            <i class="fas fa-box mr-2"></i>Package Information
-                                        </h3>
+{{--                                        <h3 class="card-title">--}}
+{{--                                            <i class="fas fa-box mr-2"></i>Package Information--}}
+{{--                                        </h3>--}}
                                         <div class="row">
                                             <div class="col-12">
                                                 @php

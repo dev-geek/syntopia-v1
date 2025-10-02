@@ -66,25 +66,30 @@
                     <i class="bi bi-clock-history mr-4 sidebar-animate-icon{{ request()->routeIs('admin.users-logs') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">User Logs</span>
                 </a>
             </li>
-            <li class="nav-item mb-1">
-                <a href="{{ route('admin.free-plan-attempts.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.free-plan-attempts.*') ? 'active' : '' }}">
-                    <i class="bi bi-shield-exclamation mr-4 sidebar-animate-icon{{ request()->routeIs('admin.free-plan-attempts.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Free Plan Abuse</span>
-                </a>
-            </li>
+{{--            <li class="nav-item mb-1">--}}
+{{--                <a href="{{ route('admin.free-plan-attempts.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.free-plan-attempts.*') ? 'active' : '' }}">--}}
+{{--                    <i class="bi bi-shield-exclamation mr-4 sidebar-animate-icon{{ request()->routeIs('admin.free-plan-attempts.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Free Plan Abuse</span>--}}
+{{--                </a>--}}
+{{--            </li>--}}
         @else
             <li class="nav-item mb-1">
                 <a href="{{ route('user.dashboard') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('user.dashboard') ? 'active' : '' }}">
                     <i class="bi bi-house mr-4 sidebar-animate-icon{{ request()->routeIs('user.dashboard') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-4">Home</span>
                 </a>
             </li>
-            <li class="nav-item mb-1">
-                <a href="{{ route('orders.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('orders.index') ? 'active' : '' }}">
-                    <i class="bi bi-bag mr-4 sidebar-animate-icon{{ request()->routeIs('orders.index') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Orders</span>
-                </a>
-            </li>
+{{--            <li class="nav-item mb-1">--}}
+{{--                <a href="{{ route('orders.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('orders.index') ? 'active' : '' }}">--}}
+{{--                    <i class="bi bi-bag mr-4 sidebar-animate-icon{{ request()->routeIs('orders.index') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Orders</span>--}}
+{{--                </a>--}}
+{{--            </li>--}}
             <li class="nav-item mb-1">
                 <a href="{{ route('user.subscription.details') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('user.subscription.details') ? 'active' : '' }}">
                     <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('user.subscription.details') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Subscriptions</span>
+                </a>
+            </li>
+            <li class="nav-item mb-1">
+                <a href="{{ route('subscription') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('subscription') ? 'active' : '' }}">
+                    <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('subscription') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Plans</span>
                 </a>
             </li>
 

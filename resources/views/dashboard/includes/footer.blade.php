@@ -1,37 +1,37 @@
-        <footer class="main-footer">
-            <div class="footer-content">
-                <div class="footer-left">
-                    <div class="footer-brand">
-                        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp"
-                            alt="Syntopia" class="footer-logo">
-                    </div>
-                </div>
+{{--        <footer class="main-footer">--}}
+{{--            <div class="footer-content">--}}
+{{--                <div class="footer-left">--}}
+{{--                    <div class="footer-brand">--}}
+{{--                        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp"--}}
+{{--                            alt="Syntopia" class="footer-logo">--}}
+{{--                    </div>--}}
+{{--                </div>--}}
 
-                <div class="footer-center">
-                    <div class="footer-links">
-                        <a href="https://live.syntopia.ai/login" target="_blank" class="footer-link">
-                            <i class="fas fa-globe"></i> Website
-                        </a>
-                        <a href="mailto:info@syntopia.ai" class="footer-link">
-                            <i class="fas fa-envelope"></i> Contact
-                        </a>
-                    </div>
-                </div>
+{{--                <div class="footer-center">--}}
+{{--                    <div class="footer-links">--}}
+{{--                        <a href="https://live.syntopia.ai/login" target="_blank" class="footer-link">--}}
+{{--                            <i class="fas fa-globe"></i> Website--}}
+{{--                        </a>--}}
+{{--                        <a href="mailto:info@syntopia.ai" class="footer-link">--}}
+{{--                            <i class="fas fa-envelope"></i> Contact--}}
+{{--                        </a>--}}
+{{--                    </div>--}}
+{{--                </div>--}}
 
-                <div class="footer-right">
-                    <div class="footer-info">
-                        <div class="footer-version">
-                            <i class="fas fa-code-branch"></i>
-                            <span>v1.0.0</span>
-                        </div>
-                        <div class="footer-copyright">
-                            <i class="fas fa-copyright"></i>
-                            <span>2025 Syntopia.</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </footer>
+{{--                <div class="footer-right">--}}
+{{--                    <div class="footer-info">--}}
+{{--                        <div class="footer-version">--}}
+{{--                            <i class="fas fa-code-branch"></i>--}}
+{{--                            <span>v1.0.0</span>--}}
+{{--                        </div>--}}
+{{--                        <div class="footer-copyright">--}}
+{{--                            <i class="fas fa-copyright"></i>--}}
+{{--                            <span>2025 Syntopia.</span>--}}
+{{--                        </div>--}}
+{{--                    </div>--}}
+{{--                </div>--}}
+{{--            </div>--}}
+{{--        </footer>--}}
         </div>
         <!-- ./wrapper -->
 
@@ -92,7 +92,7 @@
                     Swal.fire({
                         icon: 'error',
                         title: 'Subscription Required',
-                        text: 'You need an active plan or add-on to access the software.',
+                        text: 'You need an active plan to access the software.',
                         showCancelButton: true,
                         confirmButtonText: 'View Plans',
                         cancelButtonText: 'Cancel',

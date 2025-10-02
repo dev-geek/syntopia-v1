@@ -13,7 +13,7 @@
 
 <style>
 .password-notification-container {
-    margin: 0 0.5rem;
+    /*margin: 0 0.5rem;*/
 }
 
 .password-notification-box {
@@ -21,33 +21,33 @@
     border: 1px solid #fed7aa;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(254, 215, 170, 0.3);
-    overflow: hidden;
+    /*overflow: hidden;*/
     position: relative;
-    max-width: 400px;
+    max-width: 1000px;
     min-width: 350px;
 }
 
 .password-notification-box::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, #f59e0b, #f97316, #ea580c);
+    /*content: '';*/
+    /*position: absolute;*/
+    /*top: 0;*/
+    /*left: 0;*/
+    /*right: 0;*/
+    /*height: 3px;*/
+    /*background: linear-gradient(90deg, #f59e0b, #f97316, #ea580c);*/
 }
 
 .password-notification-content {
     display: flex;
     align-items: center;
-    padding: 0.75rem;
-    gap: 0.75rem;
+    padding: 1rem;
+    gap: 2rem;
 }
 
 .notification-icon {
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
+    width: 80px;
+    height: 80px;
     background: linear-gradient(135deg, #f59e0b, #f97316);
     border-radius: 8px;
     display: flex;
@@ -58,7 +58,7 @@
 
 .notification-icon i {
     color: white;
-    font-size: 0.875rem;
+    font-size: 3rem;
 }
 
 .notification-text {
@@ -69,8 +69,8 @@
 .notification-message {
     color: #a16207;
     margin: 0;
-    font-size: 0.8rem;
-    line-height: 1.3;
+    font-size: 2rem;
+    line-height: 2;
     font-weight: 500;
 }
 

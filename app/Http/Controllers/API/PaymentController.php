@@ -1724,7 +1724,7 @@ class PaymentController extends Controller
                 ]);
             }
 
-            return redirect()->route('user.dashboard')->with('success', 'Your add-on purchase has been recorded. We will reach out shortly.');
+            return redirect()->route('user.dashboard')->with('success', 'Your add-on purchase is successful.');
         } catch (\Exception $e) {
             Log::error('Add-on success processing failed', [
                 'error' => $e->getMessage(),
