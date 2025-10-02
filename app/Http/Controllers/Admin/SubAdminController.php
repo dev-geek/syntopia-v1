@@ -4,42 +4,31 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Http\Requests\Admin\SubAdminRequest;
+use App\Services\SubAdminService;
 
 class SubAdminController extends Controller
 {
+    public function __construct(protected SubAdminService $subAdminService)
+    {
+    }
+
     public function create()
     {
         return view('admin.subadmins.create');
     }
 
-    public function store(Request $request)
+    public function store(SubAdminRequest $request)
     {
         try {
-            $validated = $request->validate([
-                'name'     => 'required|string|max:255',
-                'email'    => 'required|string|email|max:255|unique:users',
-                'password' => 'required|string|min:6|confirmed',
-                'status'   => 'boolean',
-            ]);
-
-            $user = User::create([
-                'name'               => $validated['name'],
-                'email'              => $validated['email'],
-                'password'           => Hash::make($validated['password']),
-                'subscriber_password' => $validated['password'],
-                'status'             => $validated['status'],
-            ]);
-
-            $user->assignRole('Sub Admin');
+            $this->subAdminService->createSubAdmin($request->validated());
 
             return redirect()->route('admin.subadmins')->with('success', 'Sub Admin created successfully.');
         } catch (\Exception $e) {
             Log::error('Sub Admin creation failed: ' . $e->getMessage());
+
             return back()->withInput()->with('error', 'Failed to create Sub Admin. Try again.');
         }
     }
@@ -71,23 +60,18 @@ class SubAdminController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
+    public function update(SubAdminRequest $request, $id)
     {
         try {
             $subadmin = User::role('Sub Admin')->findOrFail($id);
-
-            $validated = $request->validate([
-                'name'  => 'required|string|max:255',
-                'status' => 'boolean',
-            ]);
-
-            $subadmin->update($validated);
+            $this->subAdminService->updateSubAdmin($subadmin, $request->validated());
 
             return redirect()->route('admin.subadmins')->with('success', 'Sub Admin updated successfully.');
         } catch (ModelNotFoundException $e) {
             return redirect()->route('admin.subadmins')->with('error', 'Sub Admin not found.');
         } catch (\Exception $e) {
             Log::error('Sub Admin update failed: ' . $e->getMessage());
+
             return back()->withInput()->with('error', 'Failed to update Sub Admin.');
         }
     }
