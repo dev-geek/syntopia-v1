@@ -21,7 +21,7 @@ class AdminForgotPasswordController extends Controller
 
     public function checkEmail(Request $request)
     {
-        \Log::info('AdminForgotPasswordController@checkEmail - Request received', [
+        Log::info('AdminForgotPasswordController@checkEmail - Request received', [
             'email' => $request->email,
             'all' => $request->all()
         ]);
@@ -32,7 +32,7 @@ class AdminForgotPasswordController extends Controller
             ]);
 
             if ($validator->fails()) {
-                \Log::warning('AdminForgotPasswordController@checkEmail - Validation failed', [
+                Log::warning('AdminForgotPasswordController@checkEmail - Validation failed', [
                     'errors' => $validator->errors()->toArray()
                 ]);
                 return response()->json([
@@ -42,9 +42,9 @@ class AdminForgotPasswordController extends Controller
             }
 
             $user = User::where('email', $request->email)->first();
-            
+
             if (!$user) {
-                \Log::warning('AdminForgotPasswordController@checkEmail - User not found', [
+                Log::warning('AdminForgotPasswordController@checkEmail - User not found', [
                     'email' => $request->email
                 ]);
                 return response()->json([
@@ -52,27 +52,27 @@ class AdminForgotPasswordController extends Controller
                 ], 404);
             }
 
+            $isSuperAdmin = $user->hasRole('Super Admin');
             $response = [
-                'requires_security_questions' => $user->role == 1,
-                'redirect_url' => $user->role == 1 
+                'requires_security_questions' => $isSuperAdmin,
+                'redirect_url' => $isSuperAdmin
                     ? route('admin.password.request', ['email' => $user->email, 'show_questions' => true])
                     : null
             ];
 
-            \Log::info('AdminForgotPasswordController@checkEmail - Success', [
+            Log::info('AdminForgotPasswordController@checkEmail - Success', [
                 'user_id' => $user->id,
-                'role' => $user->role,
                 'response' => $response
             ]);
 
             return response()->json($response);
 
         } catch (\Exception $e) {
-            \Log::error('AdminForgotPasswordController@checkEmail - Error', [
+            Log::error('AdminForgotPasswordController@checkEmail - Error', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'error' => 'An unexpected error occurred. Please try again.',
                 'debug' => config('app.debug') ? $e->getMessage() : null
@@ -103,7 +103,7 @@ class AdminForgotPasswordController extends Controller
         }
 
         // If it's a super admin, validate security questions
-        if ($user->role == 1) {
+        if ($user->hasRole('Super Admin')) {
             $securityValidator = Validator::make($request->only(['city', 'pet']), [
                 'city' => 'required|string|max:255',
                 'pet' => 'required|string|max:255',
@@ -116,9 +116,9 @@ class AdminForgotPasswordController extends Controller
             }
 
             // Verify security answers (case insensitive)
-            if (strtolower($user->city) !== strtolower($request->city) || 
+            if (strtolower($user->city) !== strtolower($request->city) ||
                 strtolower($user->pet) !== strtolower($request->pet)) {
-                
+
                 return back()
                     ->withInput($request->only('email', 'city', 'pet'))
                     ->withErrors([
@@ -139,7 +139,7 @@ class AdminForgotPasswordController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Password reset error: ' . $e->getMessage());
-            
+
             return back()
                 ->withInput($request->only('email'))
                 ->withErrors([

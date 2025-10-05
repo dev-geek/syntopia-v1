@@ -157,6 +157,7 @@ class RegisterController extends Controller
             'subscriber_password' => $data['password'], // Store plain text for API
         ]);
 
+        // Ensure guard matches when assigning role
         $user->assignRole('User');
 
         return $user;
