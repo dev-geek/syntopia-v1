@@ -8,6 +8,7 @@ use App\Http\Controllers\{
     PaymentGatewaysController,
     ProfileController,
     Admin\SubAdminController,
+    Admin\FreePlanAttemptController,
 };
 
 /*
@@ -50,6 +51,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:Super Admin|Su
     Route::post('/free-plan-attempts/unblock', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'unblock'])->name('free-plan-attempts.unblock');
     Route::post('/free-plan-attempts/block', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'block'])->name('free-plan-attempts.block');
     Route::delete('/free-plan-attempts', [\App\Http\Controllers\Admin\FreePlanAttemptController::class, 'destroy'])->name('free-plan-attempts.destroy');
+    Route::get('/free-plan-attempts/{attempt}', [FreePlanAttemptController::class, 'show'])->name('free-plan-attempts.show');
+    Route::post('/free-plan-attempts/block-identifier', [FreePlanAttemptController::class, 'blockIdentifier'])->name('free-plan-attempts.block-identifier');
+    Route::post('/free-plan-attempts/unblock-identifier', [FreePlanAttemptController::class, 'unblockIdentifier'])->name('free-plan-attempts.unblock-identifier');
+    Route::get('/free-plan-attempts-export', [FreePlanAttemptController::class, 'export'])->name('free-plan-attempts.export');
 
     // Sub Admin Management (Super Admin only)
     Route::middleware('role:Super Admin')->group(function () {
@@ -81,4 +86,5 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
         }
         return redirect()->route('user.profile');
     })->name('profile.redirect');
+
 });

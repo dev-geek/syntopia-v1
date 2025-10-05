@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 use App\Models\UserLog;
 use App\Services\PasswordBindingService;
+use App\Services\FreePlanAbuseService;
 use App\Http\Requests\UpdateProfileRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,6 +14,13 @@ use App\Models\User;
 
 class ProfileController extends Controller
 {
+    private FreePlanAbuseService $freePlanAbuseService;
+
+    public function __construct(FreePlanAbuseService $freePlanAbuseService)
+    {
+        $this->freePlanAbuseService = $freePlanAbuseService;
+    }
+
     public function profile()
     {
         $user = auth()->user()->load('package');
@@ -96,7 +104,30 @@ class ProfileController extends Controller
             abort(404, 'Package not found.');
         }
 
-        $userId = Auth::id();
+        $user = Auth::user();
+        $userId = $user->id;
+
+        // Special handling for free plan
+        if ($package_name === 'free') {
+            // Check if user can use free plan
+            $canUseFreePlan = $this->freePlanAbuseService->canUseFreePlan($user, request());
+
+            if (!$canUseFreePlan['allowed']) {
+                return redirect()->back()
+                    ->with('swal_error', $canUseFreePlan['message']);
+            }
+
+            // Assign free plan
+            $result = $this->freePlanAbuseService->assignFreePlan($user, request());
+
+            if (!$result['success']) {
+                return redirect()->back()
+                    ->with('swal_error', $result['message']);
+            }
+
+            return redirect()->route('subscription')
+                ->with('success', 'Free plan has been assigned successfully!');
+        }
 
         // Get the latest order for the user (excluding Processing status)
         $latest_order = Order::where('user_id', $userId)

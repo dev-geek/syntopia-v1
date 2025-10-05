@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Package extends Model
 {
+    use HasFactory;
     /**
      * The attributes that are mass assignable.
      *

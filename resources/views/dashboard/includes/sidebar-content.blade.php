@@ -64,11 +64,11 @@
                     <i class="bi bi-person-gear mr-4 sidebar-animate-icon{{ request()->routeIs('admin.subadmins.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Sub Admins</span>
                 </a>
             </li>
-{{--            <li class="nav-item mb-1">--}}
-{{--                <a href="{{ route('admin.free-plan-attempts.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.free-plan-attempts.*') ? 'active' : '' }}">--}}
-{{--                    <i class="bi bi-shield-exclamation mr-4 sidebar-animate-icon{{ request()->routeIs('admin.free-plan-attempts.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Free Plan Abuse</span>--}}
-{{--                </a>--}}
-{{--            </li>--}}
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.free-plan-attempts.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.free-plan-attempts.*') ? 'active' : '' }}">
+                    <i class="bi bi-shield-exclamation mr-4 sidebar-animate-icon{{ request()->routeIs('admin.free-plan-attempts.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Free Plan Abuse</span>
+                </a>
+            </li>
         @elseif(auth()->user()->hasRole('Sub Admin'))
             <li class="nav-item mb-1">
                 <a href="{{ route('admin.dashboard') }}" class="nav-link d-flex align-items-center mr-4 {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
@@ -88,6 +88,11 @@
             <li class="nav-item mb-1">
                 <a href="{{ route('admin.users-logs') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.users-logs') ? 'active' : '' }}">
                     <i class="bi bi-clock-history mr-4 sidebar-animate-icon{{ request()->routeIs('admin.users-logs') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">User Logs</span>
+                </a>
+            </li>
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.free-plan-attempts.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.free-plan-attempts.*') ? 'active' : '' }}">
+                    <i class="bi bi-shield-exclamation mr-4 sidebar-animate-icon{{ request()->routeIs('admin.free-plan-attempts.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Free Plan Abuse</span>
                 </a>
             </li>
         @else

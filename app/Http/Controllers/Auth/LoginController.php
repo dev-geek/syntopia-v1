@@ -8,16 +8,29 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use App\Models\User;
+use App\Services\DeviceFingerprintService;
 
 class LoginController extends Controller
 {
     use AuthenticatesUsers;
+
+    private DeviceFingerprintService $deviceFingerprintService;
+
+    public function __construct(DeviceFingerprintService $deviceFingerprintService)
+    {
+        $this->deviceFingerprintService = $deviceFingerprintService;
+        $this->middleware('guest')->except('logout');
+        $this->middleware('auth')->only('logout');
+    }
 
     /**
      * Redirect users after login based on role using Spatie roles.
      */
     protected function authenticated(Request $request, $user)
     {
+        // Record device information for all successful logins
+        $this->deviceFingerprintService->recordUserDeviceInfo($user, $request);
+
         // Check verification status for all users
         if (!$this->isUserVerified($user)) {
             Auth::logout();
@@ -138,11 +151,6 @@ class LoginController extends Controller
         return '/';
     }
 
-    public function __construct()
-    {
-        $this->middleware('guest')->except('logout');
-        $this->middleware('auth')->only('logout');
-    }
 
     /**
      * Show the application's login form.

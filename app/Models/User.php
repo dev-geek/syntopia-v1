@@ -43,6 +43,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'tenant_id',
         'paddle_customer_id',
         'user_license_id',
+        'last_ip',
+        'device_id',
+        'last_device_fingerprint',
+        'last_login_at',
+        'has_used_free_plan',
+        'free_plan_used_at',
     ];
 
     protected $hidden = [
@@ -54,6 +60,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'is_subscribed' => 'boolean',
         'is_active' => 'boolean',
         'password' => 'hashed',
+        'last_login_at' => 'datetime',
+        'has_used_free_plan' => 'boolean',
+        'free_plan_used_at' => 'datetime',
     ];
 
     public function package(): BelongsTo
@@ -321,5 +330,89 @@ class User extends Authenticatable implements MustVerifyEmail
     public function scopeActiveSubAdmins($query)
     {
         return $query->role('Sub Admin')->where('is_active', true);
+    }
+
+    /**
+     * Check if user has used the free plan
+     *
+     * @return bool
+     */
+    public function hasUsedFreePlan(): bool
+    {
+        return $this->has_used_free_plan ||
+               ($this->package && strtolower($this->package->name) === 'free') ||
+               $this->orders()->whereHas('package', function ($query) {
+                   $query->where('name', 'Free');
+               })->exists();
+    }
+
+    /**
+     * Mark user as having used the free plan
+     *
+     * @return void
+     */
+    public function markFreePlanAsUsed(): void
+    {
+        $this->update([
+            'has_used_free_plan' => true,
+            'free_plan_used_at' => now()
+        ]);
+    }
+
+    /**
+     * Update user's device information
+     *
+     * @param string $ip
+     * @param string $userAgent
+     * @param string $deviceFingerprint
+     * @return void
+     */
+    public function updateDeviceInfo(string $ip, string $userAgent, string $deviceFingerprint): void
+    {
+        $this->update([
+            'last_ip' => $ip,
+            'device_id' => hash('sha256', $userAgent),
+            'last_device_fingerprint' => $deviceFingerprint,
+            'last_login_at' => now()
+        ]);
+    }
+
+    /**
+     * Check if user can access free plan
+     *
+     * @return bool
+     */
+    public function canAccessFreePlan(): bool
+    {
+        return !$this->hasUsedFreePlan();
+    }
+
+    /**
+     * Get user's device fingerprint history
+     *
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function getDeviceFingerprintHistory()
+    {
+        return \App\Models\FreePlanAttempt::where('email', $this->email)
+            ->orWhere('data->user_id', $this->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    /**
+     * Check if user's current device is blocked
+     *
+     * @return bool
+     */
+    public function isCurrentDeviceBlocked(): bool
+    {
+        if (!$this->last_device_fingerprint) {
+            return false;
+        }
+
+        return \App\Models\FreePlanAttempt::byDeviceFingerprint($this->last_device_fingerprint)
+            ->blocked()
+            ->exists();
     }
 }

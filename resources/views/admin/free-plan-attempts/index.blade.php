@@ -60,6 +60,11 @@
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Free Plan Attempts</h3>
+                            <div class="card-tools">
+                                <a href="{{ route('admin.free-plan-attempts.export', request()->query()) }}" class="btn btn-sm btn-success">
+                                    <i class="fas fa-download"></i> Export CSV
+                                </a>
+                            </div>
                         </div>
 
                         @include('components.alert-messages')
@@ -119,11 +124,11 @@
                                                 <div class="col-md-2">
                                                     <div class="form-group">
                                                         <label>&nbsp;</label>
-                                                        <div>
+                                                        <div class="btn-group" role="group">
                                                             <button type="submit" class="btn btn-primary">
                                                                 <i class="fas fa-search"></i> Filter
                                                             </button>
-                                                            <a href="{{ route('admin.free-plan-attempts.index') }}" class="btn btn-secondary">
+                                                            <a href="{{ route('admin.free-plan-attempts.index') }}" class="btn btn-secondary ml-2">
                                                                 <i class="fas fa-times"></i> Clear
                                                             </a>
                                                         </div>
@@ -146,14 +151,27 @@
                                             <th>User Agent</th>
                                             <th>Status</th>
                                             <th>Created At</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @forelse($attempts as $attempt)
-                                        <tr>
+                                        <tr class="{{ $attempt->is_blocked ? 'table-danger' : '' }}">
                                             <td>{{ $attempt->id }}</td>
-                                            <td><code class="text-primary">{{ $attempt->ip_address }}</code></td>
-                                            <td>{{ $attempt->email ?? '<span class="text-muted">N/A</span>' }}</td>
+                                            <td>
+                                                <code class="text-primary">{{ $attempt->ip_address }}</code>
+                                                <button class="btn btn-sm btn-outline-primary ml-2" onclick="blockIdentifier('ip', '{{ $attempt->ip_address }}')">
+                                                    <i class="fas fa-ban"></i>
+                                                </button>
+                                            </td>
+                                            <td>
+                                                {{ $attempt->email ?? '<span class="text-muted">N/A</span>' }}
+                                                @if($attempt->email)
+                                                <button class="btn btn-sm btn-outline-primary ml-2" onclick="blockIdentifier('email', '{{ $attempt->email }}')">
+                                                    <i class="fas fa-ban"></i>
+                                                </button>
+                                                @endif
+                                            </td>
                                             <td>
                                                 <span class="text-muted small" title="{{ $attempt->user_agent }}">
                                                     {{ Str::limit($attempt->user_agent, 50) }}
@@ -162,15 +180,42 @@
                                             <td>
                                                 @if($attempt->is_blocked)
                                                     <span class="badge badge-danger">Blocked</span>
+                                                    @if($attempt->blocked_at)
+                                                        <br><small class="text-muted">{{ $attempt->blocked_at->format('M j, Y H:i') }}</small>
+                                                    @endif
                                                 @else
                                                     <span class="badge badge-success">Active</span>
                                                 @endif
                                             </td>
                                             <td>{{ $attempt->created_at->format('Y-m-d H:i:s') }}</td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <a href="{{ route('admin.free-plan-attempts.show', $attempt) }}" class="btn btn-sm btn-info">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    @if($attempt->is_blocked)
+                                                        <form method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" class="d-inline">
+                                                            @csrf
+                                                            <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
+                                                            <button type="submit" class="btn btn-sm btn-success ml-1" onclick="return confirm('Are you sure you want to unblock this attempt?')">
+                                                                <i class="fas fa-unlock"></i>
+                                                            </button>
+                                                        </form>
+                                                    @else
+                                                        <form method="POST" action="{{ route('admin.free-plan-attempts.block') }}" class="d-inline">
+                                                            @csrf
+                                                            <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
+                                                            <button type="submit" class="btn btn-sm btn-warning ml-1" onclick="return confirm('Are you sure you want to block this attempt?')">
+                                                                <i class="fas fa-ban"></i>
+                                                            </button>
+                                                        </form>
+                                                    @endif
+                                                </div>
+                                            </td>
                                         </tr>
                                         @empty
                                         <tr>
-                                            <td colspan="6" class="text-center text-muted py-4">
+                                            <td colspan="7" class="text-center text-muted py-4">
                                                 <i class="fas fa-inbox fa-2x mb-2"></i><br>
                                                 No attempts found matching your criteria.
                                             </td>
@@ -261,8 +306,43 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/swal-utils.js') }}"></script>
 
+<!-- Block Identifier Modal -->
+<div class="modal fade" id="blockModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Block Identifier</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <form method="POST" action="{{ route('admin.free-plan-attempts.block-identifier') }}">
+                @csrf
+                <div class="modal-body">
+                    <input type="hidden" id="blockType" name="type">
+                    <input type="hidden" id="blockValue" name="value">
+                    <div class="form-group">
+                        <label for="blockReason">Reason (optional)</label>
+                        <textarea class="form-control" id="blockReason" name="reason" rows="3" placeholder="Enter reason for blocking..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Block</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     AOS.init({duration: 900, once: true});
 });
+
+function blockIdentifier(type, value) {
+    document.getElementById('blockType').value = type;
+    document.getElementById('blockValue').value = value;
+    $('#blockModal').modal('show');
+}
 </script>

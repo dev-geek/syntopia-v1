@@ -5,16 +5,19 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use App\Services\DeviceFingerprintService;
+use App\Services\FreePlanAbuseService;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class PreventFreePlanAbuse
 {
     private DeviceFingerprintService $deviceFingerprintService;
+    private FreePlanAbuseService $freePlanAbuseService;
 
-    public function __construct(DeviceFingerprintService $deviceFingerprintService)
+    public function __construct(DeviceFingerprintService $deviceFingerprintService, FreePlanAbuseService $freePlanAbuseService)
     {
         $this->deviceFingerprintService = $deviceFingerprintService;
+        $this->freePlanAbuseService = $freePlanAbuseService;
     }
 
     public function handle(Request $request, Closure $next): Response
@@ -33,55 +36,33 @@ class PreventFreePlanAbuse
             'user_agent' => $request->userAgent(),
         ]);
 
-        // Check if already blocked
-        if ($this->deviceFingerprintService->isBlocked($request)) {
-            Log::warning('Registration blocked - device/IP/email already blocked', [
+        // Use the new FreePlanAbuseService for comprehensive checks
+        $abuseCheck = $this->freePlanAbuseService->checkAbusePatterns($request);
+
+        if (!$abuseCheck['allowed']) {
+            Log::warning('Registration blocked due to abuse patterns', [
+                'reason' => $abuseCheck['reason'],
                 'ip' => $ip,
                 'email' => $email,
+                'user_agent' => $request->userAgent(),
             ]);
 
             return redirect()->back()
-                ->withErrors(['email' => config('free_plan_abuse.messages.device_blocked', 'Registration is not allowed from this device. Please contact support if you believe this is an error.')])
+                ->withErrors(['email' => $abuseCheck['message']])
                 ->withInput();
         }
 
-        // Check if exceeded attempts
-        $maxAttempts = config('free_plan_abuse.max_attempts', 3);
-        $trackingDays = config('free_plan_abuse.tracking_period_days', 30);
-        
-        if ($this->deviceFingerprintService->hasRecentAttempts($request, $maxAttempts, $trackingDays)) {
-            Log::warning('Registration blocked - exceeded maximum attempts', [
-                'ip' => $ip,
-                'email' => $email,
-                'max_attempts' => $maxAttempts,
-                'tracking_days' => $trackingDays,
-            ]);
-
-            // Block the device/IP/email
+        // Record the attempt for tracking
+        try {
             $this->deviceFingerprintService->recordAttempt($request);
-            
-            // Find and block the recent attempts
-            $fingerprint = $this->deviceFingerprintService->generateFingerprint($request);
-            
-            \App\Models\FreePlanAttempt::byIp($ip)->update(['is_blocked' => true, 'blocked_at' => now()]);
-            \App\Models\FreePlanAttempt::byDeviceFingerprint($fingerprint)->update(['is_blocked' => true, 'blocked_at' => now()]);
-            if ($email) {
-                \App\Models\FreePlanAttempt::byEmail($email)->update(['is_blocked' => true, 'blocked_at' => now()]);
-            }
-
-            return redirect()->back()
-                ->withErrors(['email' => config('free_plan_abuse.messages.too_many_attempts', 'Too many registration attempts from this device. Please contact support if you need assistance.')])
-                ->withInput();
+        } catch (\Exception $e) {
+            Log::error('Failed to record registration attempt', [
+                'ip' => $ip,
+                'email' => $email,
+                'error' => $e->getMessage()
+            ]);
         }
-
-        // Record the attempt
-        $this->deviceFingerprintService->recordAttempt($request);
-
-        Log::info('Registration attempt recorded', [
-            'ip' => $ip,
-            'email' => $email,
-        ]);
 
         return $next($request);
     }
-} 
+}

@@ -17,6 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Services\MailService;
 use App\Services\DeviceFingerprintService;
+use App\Services\FreePlanAbuseService;
 use App\Models\FreePlanAttempt;
 
 class RegisterController extends Controller
@@ -67,11 +68,13 @@ class RegisterController extends Controller
      * @return void
      */
     protected $deviceFingerprintService;
+    protected $freePlanAbuseService;
 
-    public function __construct(DeviceFingerprintService $deviceFingerprintService)
+    public function __construct(DeviceFingerprintService $deviceFingerprintService, FreePlanAbuseService $freePlanAbuseService)
     {
         $this->middleware('guest');
         $this->deviceFingerprintService = $deviceFingerprintService;
+        $this->freePlanAbuseService = $freePlanAbuseService;
     }
 
     /**
@@ -219,14 +222,24 @@ class RegisterController extends Controller
                 ->withInput();
         }
 
+        // Check for free plan abuse before proceeding
+        $abuseCheck = $this->freePlanAbuseService->checkAbusePatterns($request);
+        if (!$abuseCheck['allowed']) {
+            Log::warning('Registration blocked due to abuse patterns', [
+                'reason' => $abuseCheck['reason'],
+                'ip' => $request->ip(),
+                'email' => $request->input('email'),
+                'user_agent' => $request->userAgent()
+            ]);
+
+            return redirect()->back()
+                ->withErrors(['email' => $abuseCheck['message']])
+                ->withInput();
+        }
+
         // Record the fingerprint attempt
         try {
-            $fingerprintData = $request->only(['fingerprint_id', 'timezone', 'screen_resolution', 'color_depth']);
-            $fingerprintData['ip_address'] = $request->ip();
-            $fingerprintData['user_agent'] = $request->userAgent();
-            $fingerprintData['email'] = $request->input('email');
-
-            FreePlanAttempt::create($fingerprintData);
+            $this->deviceFingerprintService->recordAttempt($request);
         } catch (\Exception $e) {
             Log::error('Failed to record fingerprint attempt: ' . $e->getMessage(), [
                 'exception' => $e,

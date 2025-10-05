@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\PaymentController;
 use App\Http\Controllers\API\TokenDecryptionController;
+use App\Http\Controllers\API\FreePlanController;
 use App\Http\Controllers\SubscriptionController;
 use Illuminate\Http\Request;
 
@@ -67,7 +68,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             ->middleware('throttle:10,1');
 
         Route::post('/cancel', [PaymentController::class, 'cancelSubscription'])
-            ->name('cancel-subscription')
+            ->name('api.cancel-subscription')
             ->middleware('throttle:10,1');
 
         Route::get('/paddle/success', [PaymentController::class, 'paddleSuccess'])->name('paddle.success');
@@ -81,7 +82,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     });
 
     // Orders
-    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('orders.index');
+    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('api.orders.index');
 
     // License management
     Route::prefix('licenses')->name('licenses.')->group(function () {
@@ -89,5 +90,13 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/history', [\App\Http\Controllers\API\LicenseController::class, 'getLicenseHistory'])->name('history');
         Route::post('/activate/{licenseId}', [\App\Http\Controllers\API\LicenseController::class, 'activateLicense'])->name('activate');
         Route::get('/check-access/{packageName}', [\App\Http\Controllers\API\LicenseController::class, 'checkPackageAccess'])->name('check-access');
+    });
+
+    // Free Plan Management Routes
+    Route::prefix('free-plan')->name('free-plan.')->group(function () {
+        Route::get('/eligibility', [FreePlanController::class, 'checkEligibility'])->name('eligibility');
+        Route::post('/assign', [FreePlanController::class, 'assignFreePlan'])->name('assign');
+        Route::get('/status', [FreePlanController::class, 'getStatus'])->name('status');
+        Route::post('/report-suspicious', [FreePlanController::class, 'reportSuspiciousActivity'])->name('report-suspicious');
     });
 });
