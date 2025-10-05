@@ -2,94 +2,153 @@
 @include('dashboard.includes.sidebar')
 
 <!-- Content Wrapper. Contains page content -->
-<div class="content-wrapper ">
-    <section class="content">
-        <div class="row justify-content-center mt-2 ">
-            <div class="col-md-6" style="margin-top: 50px;">
-                <div class="card card-primary">
-                    <div class="card-header">
-                        <h3 class="card-title">Update Sub Admin Record</h3>
-                        <div class="card-tools">
-                            <button type="button" class="btn btn-tool" data-card-widget="collapse" title="Collapse">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <form method="POST" action="{{ route('admin.sub-admins.update', $subadmin->id) }}">
-                        @csrf
-                        @method('PUT')
-
-                        <div class="card-body">
-                            <div class="form-group">
-                                <label>Email</label>
-                                <input type="email" class="form-control" value="{{ $subadmin->email }}" readonly>
-                            </div>
-
-                            <!-- Name with validation -->
-                            <div class="form-group">
-                                <label>Name</label>
-                                <input type="text" name="name"
-                                    class="form-control @error('name') is-invalid @enderror"
-                                    value="{{ old('name', $subadmin->name) }}" required>
-                                @error('name')
-                                    <small class="text-danger">{{ $message }}</small>
-                                @enderror
-                            </div>
-
-                            <!-- Status with validation -->
-                            <div class="form-group">
-                                <label>Status</label>
-                                <select name="status" class="custom-select @error('status') is-invalid @enderror">
-                                    <option value="1"
-                                        {{ old('status', $subadmin->status) == 1 ? 'selected' : '' }}>Active</option>
-                                    <option value="0"
-                                        {{ old('status', $subadmin->status) == 0 ? 'selected' : '' }}>Deactive</option>
-                                </select>
-                                @error('status')
-                                    <small class="text-danger">{{ $message }}</small>
-                                @enderror
-                            </div>
-
-                        </div>
-
-                        <div class="card-footer text-right">
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-save"></i> Update
-                            </button>
-                        </div>
-                    </form>
-
-                    <!-- /.card -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+    <section class="content-header">
+        <div class="container-fluid">
+            <div class="row mb-2">
+                <div class="col-sm-6">
+                    <h1>Edit Sub Admin: {{ $subAdmin->name }}</h1>
+                </div>
+                <div class="col-sm-6">
+                    <ol class="breadcrumb float-sm-right">
+                        <li class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}">Home</a></li>
+                        <li class="breadcrumb-item"><a href="{{ route('admin.subadmins.index') }}">Sub Admins</a></li>
+                        <li class="breadcrumb-item active">Edit</li>
+                    </ol>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <!-- Main content -->
+    <section class="content">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Edit Sub Admin: {{ $subAdmin->name }}</h3>
+                            <div class="card-tools">
+                                <a href="{{ route('admin.subadmins.index') }}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Back to Sub Admins
+                                </a>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                    @if($errors->any())
+                        <div class="alert alert-danger">
+                            <ul class="mb-0">
+                                @foreach($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
+                    <form action="{{ route('admin.subadmins.update', $subAdmin) }}" method="POST">
+                        @csrf
+                        @method('PUT')
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="name">Name <span class="text-danger">*</span></label>
+                                    <input type="text"
+                                           class="form-control @error('name') is-invalid @enderror"
+                                           id="name"
+                                           name="name"
+                                           value="{{ old('name', $subAdmin->name) }}"
+                                           required>
+                                    @error('name')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="email">Email <span class="text-danger">*</span></label>
+                                    <input type="email"
+                                           class="form-control @error('email') is-invalid @enderror"
+                                           id="email"
+                                           name="email"
+                                           value="{{ old('email', $subAdmin->email) }}"
+                                           readonly
+                                           style="background-color: #f8f9fa;">
+                                    <small class="form-text text-muted">
+                                        Email cannot be changed
+                                    </small>
+                                    @error('email')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="password">Password</label>
+                                    <input type="password"
+                                           class="form-control @error('password') is-invalid @enderror"
+                                           id="password"
+                                           name="password">
+                                    <small class="form-text text-muted">
+                                        Leave blank to keep current password
+                                    </small>
+                                    @error('password')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="password_confirmation">Confirm Password</label>
+                                    <input type="password"
+                                           class="form-control"
+                                           id="password_confirmation"
+                                           name="password_confirmation">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <div class="form-check">
+                                        <input type="checkbox"
+                                               class="form-check-input"
+                                               id="is_active"
+                                               name="is_active"
+                                               value="1"
+                                               {{ old('is_active', $subAdmin->is_active) ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="is_active">
+                                            Active Status
+                                        </label>
+                                    </div>
+                                    <small class="form-text text-muted">
+                                        Uncheck to deactivate this Sub Admin
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="d-flex">
+                                <button type="submit" class="btn btn-primary mr-2">
+                                    <i class="fas fa-save"></i> Update Sub Admin
+                                </button>
+                                <a href="{{ route('admin.subadmins.index') }}" class="btn btn-secondary">
+                                    <i class="fas fa-times"></i> Cancel
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
 </div>
-<!-- /.content-wrapper -->
+
 @include('dashboard.includes.footer')
-
-<!-- Control Sidebar -->
-
-<!-- /.control-sidebar -->
-</div>
-<script>
-    $(function() {
-        $("#example1").DataTable({
-            "responsive": true,
-            "lengthChange": false,
-            "autoWidth": false,
-            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-        $('#example2').DataTable({
-            "paging": true,
-            "lengthChange": false,
-            "searching": false,
-            "ordering": true,
-            "info": true,
-            "autoWidth": false,
-            "responsive": true,
-        });
-    });
-</script>
-</body>
-
-</html>

@@ -115,6 +115,22 @@ class PaymentController extends Controller
         return true;
     }
 
+    /**
+     * Standard response when licenses are unavailable across gateways.
+     */
+    private function licenseUnavailableResponse(Request $request)
+    {
+        $friendly = 'There is a technical issue with licenses for this plan. Please try purchasing later or contact support.';
+        if (!$request->expectsJson()) {
+            return redirect()->route('subscription')->with('error', $friendly);
+        }
+        return response()->json([
+            'error' => 'Licenses temporarily unavailable',
+            'message' => $friendly,
+            'action' => 'retry_or_contact_support'
+        ], 409);
+    }
+
 
 
     public function paddleCheckout(Request $request, string $package)
@@ -139,13 +155,9 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Check license availability
+            // Block checkout if no licenses available for selected plan
             if (!$this->checkLicenseAvailability($packageData->name)) {
-                return response()->json([
-                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
-                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
-                    'action' => 'error'
-                ], 503);
+                return $this->licenseUnavailableResponse($request);
             }
 
             // Block further plan changes if an upgrade is currently active
@@ -221,7 +233,12 @@ class PaymentController extends Controller
                         return response()->json(['error' => 'No active price'], 400);
                     }
 
-                    // Create the upgrade checkout
+            // Block if no licenses available before upgrade checkout
+            if (!$this->checkLicenseAvailability($packageData->name)) {
+                return $this->licenseUnavailableResponse($request);
+            }
+
+            // Create the upgrade checkout
                     $checkoutUrl = $this->createPaddleUpgradeCheckout($user, $packageData, $subscriptionId, $price['id']);
 
                     if (!$checkoutUrl) {
@@ -252,13 +269,6 @@ class PaymentController extends Controller
                     return response()->json(['error' => 'Downgrade not implemented yet'], 400);
                 }
             } else {
-                // Only create license for new subscriptions
-                Log::info('Checking license availability from API for new subscription', [
-                    'user_id' => $user->id,
-                    'package_name' => $packageData->name,
-                    'package_price' => $packageData->price
-                ]);
-
             // Do NOT create license before payment. Allocate after success/thank-you.
             $license = null;
             Log::info('Deferring license creation until payment success (Paddle)', [
@@ -600,13 +610,9 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Check license availability
+            // Block checkout if no licenses available for selected plan
             if (!$this->checkLicenseAvailability($packageData->name)) {
-                return response()->json([
-                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
-                    'message' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
-                    'action' => 'error'
-                ], 503);
+                return $this->licenseUnavailableResponse($request);
             }
 
             // Apply upgrade/downgrade restriction
@@ -621,14 +627,18 @@ class PaymentController extends Controller
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
-            // Check license availability from API and update user's license
-            Log::info('Checking license availability from API', [
-                'user_id' => $user->id,
-                'package_name' => $packageData->name,
-                'package_price' => $packageData->price,
-                'is_upgrade' => $isUpgrade,
-                'is_downgrade' => $isDowngrade
-            ]);
+            // Block checkout if no licenses available for selected plan
+            if (!$this->checkLicenseAvailability($packageData->name)) {
+                $friendly = 'There is a technical issue with licenses for this plan. Please try purchasing later or contact support.';
+                if (!$request->expectsJson()) {
+                    return redirect()->route('subscription')->with('error', $friendly);
+                }
+                return response()->json([
+                    'error' => 'Licenses temporarily unavailable',
+                    'message' => $friendly,
+                    'action' => 'retry_or_contact_support'
+                ], 409);
+            }
 
             // Do NOT create license before payment. Allocate after success/thank-you.
             $license = null;
@@ -763,6 +773,19 @@ class PaymentController extends Controller
             // If it's a downgrade, delegate to the specific downgrade method
             if ($isDowngrade) {
                 return $this->payproglobalDowngrade($request, $packageData);
+            }
+
+            // Ensure license availability for the selected plan before starting checkout
+            if (!$this->checkLicenseAvailability($packageData->name)) {
+                Log::warning('Checkout blocked due to no available licenses', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return response()->json([
+                    'error' => 'We\'re experiencing a temporary issue processing your license. Please try again in a few moments, or contact our support team for assistance.',
+                    'message' => 'There is a technical issue with licenses for this plan. Please try purchasing later or contact support.',
+                    'action' => 'retry_or_contact_support'
+                ], 409);
             }
 
             // Defer license creation until payment success for PayPro Global as well

@@ -47,7 +47,7 @@ class RegisterController extends Controller
             $user = Auth::user();
 
             // Redirect based on the user's role using Spatie
-            if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
+            if ($user->hasAnyRole(['Super Admin'])) {
                 return route('admin.dashboard');
             }
 
@@ -88,7 +88,7 @@ class RegisterController extends Controller
         if ($request) {
             $isBlocked = $this->deviceFingerprintService->isBlocked($request);
             $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
-                $request, 
+                $request,
                 config('free_plan_abuse.max_attempts', 3),
                 config('free_plan_abuse.tracking_period_days', 30)
             );
@@ -212,7 +212,7 @@ class RegisterController extends Controller
 
         // Validate the request including fingerprint data
         $validator = $this->validator($request->all(), $request);
-        
+
         if ($validator->fails()) {
             return redirect()->back()
                 ->withErrors($validator)
@@ -225,7 +225,7 @@ class RegisterController extends Controller
             $fingerprintData['ip_address'] = $request->ip();
             $fingerprintData['user_agent'] = $request->userAgent();
             $fingerprintData['email'] = $request->input('email');
-            
+
             FreePlanAttempt::create($fingerprintData);
         } catch (\Exception $e) {
             Log::error('Failed to record fingerprint attempt: ' . $e->getMessage(), [

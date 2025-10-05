@@ -23,7 +23,7 @@ class RedirectIfNotAuthenticated
         $user = Auth::user();
 
         // Check if the user has any role assigned using Spatie
-        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if (!$user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             return redirect()->back()->with('error', 'Unauthorized access.');
         }
 
@@ -35,6 +35,9 @@ class RedirectIfNotAuthenticated
 
             return redirect()->back()->with('error', 'Your account is deactivated. Please contact support.');
         }
+
+        // Sub Admin active status is already checked in LoginController
+        // No need to duplicate the check here
 
         return $next($request);
     }

@@ -12,7 +12,9 @@ use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 
+#[ObservedBy([\App\Observers\SubAdminObserver::class])]
 class User extends Authenticatable implements MustVerifyEmail
 {
     use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes;
@@ -29,6 +31,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'google_id',
         'facebook_id',
         'status',
+        'is_active',
         'email_verified_at',
         'subscriber_password',
         'city',
@@ -49,6 +52,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_subscribed' => 'boolean',
+        'is_active' => 'boolean',
         'password' => 'hashed',
     ];
 
@@ -265,5 +269,57 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isNewCustomer(): bool
     {
         return !$this->isReturningCustomer();
+    }
+
+    /**
+     * Check if user is a Sub Admin
+     *
+     * @return bool
+     */
+    public function isSubAdmin(): bool
+    {
+        return $this->hasRole('Sub Admin');
+    }
+
+    /**
+     * Check if user is a Super Admin
+     *
+     * @return bool
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRole('Super Admin');
+    }
+
+    /**
+     * Check if Sub Admin is active and can login
+     *
+     * @return bool
+     */
+    public function canSubAdminLogin(): bool
+    {
+        return $this->isSubAdmin() && $this->is_active;
+    }
+
+    /**
+     * Scope to get only Sub Admins
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeSubAdmins($query)
+    {
+        return $query->role('Sub Admin');
+    }
+
+    /**
+     * Scope to get only active Sub Admins
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeActiveSubAdmins($query)
+    {
+        return $query->role('Sub Admin')->where('is_active', true);
     }
 }

@@ -3,91 +3,123 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use App\Http\Requests\Admin\SubAdminRequest;
+use App\Models\User;
 use App\Services\SubAdminService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class SubAdminController extends Controller
 {
-    public function __construct(protected SubAdminService $subAdminService)
+    public function __construct(
+        private SubAdminService $subAdminService
+    ) {}
+
+    /**
+     * Display a listing of Sub Admins
+     */
+    public function index()
     {
+        $subAdmins = User::subAdmins()
+            ->with('roles')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return view('admin.subadmins.index', compact('subAdmins'));
     }
 
+    /**
+     * Show the form for creating a new Sub Admin
+     */
     public function create()
     {
         return view('admin.subadmins.create');
     }
 
+    /**
+     * Store a newly created Sub Admin
+     */
     public function store(SubAdminRequest $request)
     {
-        try {
-            $this->subAdminService->createSubAdmin($request->validated());
+        $result = $this->subAdminService->createSubAdmin($request->validated());
 
-            return redirect()->route('admin.subadmins')->with('success', 'Sub Admin created successfully.');
-        } catch (\Exception $e) {
-            Log::error('Sub Admin creation failed: ' . $e->getMessage());
-
-            return back()->withInput()->with('error', 'Failed to create Sub Admin. Try again.');
+        if (!$result['success']) {
+            return back()->with('swal_error', $result['message'])->withInput();
         }
+
+        return redirect()->route('admin.subadmins.index')
+            ->with('success', 'Sub Admin created successfully!');
     }
 
-
-    public function edit($id)
+    /**
+     * Display the specified Sub Admin
+     */
+    public function show(User $subadmin)
     {
-        try {
-            $subadmin = User::findOrFail($id);
+        $this->authorize('view', $subadmin);
 
-            // Check if the user has the correct role
-            if (!$subadmin->hasRole('Sub Admin')) {
-                return redirect()
-                    ->route('admin.subadmins')
-                    ->with('error', 'Invalid subadmin access attempt.');
-            }
-
-            return view('admin.subadmins.edit', compact('subadmin'));
-        } catch (ModelNotFoundException $e) {
-            return redirect()
-                ->route('admin.subadmins')
-                ->with('error', 'Subadmin not found.');
-        } catch (\Exception $e) {
-            Log::error('Error editing subadmin: ' . $e->getMessage());
-
-            return redirect()
-                ->route('admin.subadmins')
-                ->with('error', 'Something went wrong. Please try again later.');
-        }
+        return view('admin.subadmins.show', ['subAdmin' => $subadmin]);
     }
 
-    public function update(SubAdminRequest $request, $id)
+    /**
+     * Show the form for editing the specified Sub Admin
+     */
+    public function edit(User $subadmin)
     {
-        try {
-            $subadmin = User::role('Sub Admin')->findOrFail($id);
-            $this->subAdminService->updateSubAdmin($subadmin, $request->validated());
+        $this->authorize('update', $subadmin);
 
-            return redirect()->route('admin.subadmins')->with('success', 'Sub Admin updated successfully.');
-        } catch (ModelNotFoundException $e) {
-            return redirect()->route('admin.subadmins')->with('error', 'Sub Admin not found.');
-        } catch (\Exception $e) {
-            Log::error('Sub Admin update failed: ' . $e->getMessage());
-
-            return back()->withInput()->with('error', 'Failed to update Sub Admin.');
-        }
+        return view('admin.subadmins.edit', ['subAdmin' => $subadmin]);
     }
 
-    public function destroy($id)
+    /**
+     * Update the specified Sub Admin
+     */
+    public function update(SubAdminRequest $request, User $subadmin)
     {
-        try {
-            $subadmin = User::role('Sub Admin')->findOrFail($id);
-            $subadmin->delete();
+        $this->authorize('update', $subadmin);
 
-            return redirect()->route('admin.subadmins')->with('success', 'Sub Admin deleted successfully.');
-        } catch (ModelNotFoundException $e) {
-            return redirect()->route('admin.subadmins')->with('error', 'Sub Admin not found.');
-        } catch (\Exception $e) {
-            Log::error('Deletion failed: ' . $e->getMessage());
-            return back()->with('error', 'Failed to delete Sub Admin.');
+        $result = $this->subAdminService->updateSubAdmin($subadmin, $request->validated());
+
+        if (!$result['success']) {
+            return back()->with('swal_error', $result['message'])->withInput();
         }
+
+        return redirect()->route('admin.subadmins.index')
+            ->with('success', 'Sub Admin updated successfully!');
+    }
+
+    /**
+     * Toggle Sub Admin active status
+     */
+    public function toggleStatus(User $subadmin)
+    {
+        $this->authorize('update', $subadmin);
+
+        $result = $this->subAdminService->toggleStatus($subadmin);
+
+        if (!$result['success']) {
+            return back()->with('swal_error', $result['message']);
+        }
+
+        $status = $subadmin->fresh()->is_active ? 'activated' : 'deactivated';
+        return back()->with('success', "Sub Admin {$status} successfully!");
+    }
+
+    /**
+     * Remove the specified Sub Admin
+     */
+    public function destroy(User $subadmin)
+    {
+        $this->authorize('delete', $subadmin);
+
+        $result = $this->subAdminService->deleteSubAdmin($subadmin);
+
+        if (!$result['success']) {
+            return back()->with('swal_error', $result['message']);
+        }
+
+        return redirect()->route('admin.subadmins.index')
+            ->with('success', 'Sub Admin deleted successfully!');
     }
 }

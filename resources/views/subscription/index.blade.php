@@ -1748,7 +1748,8 @@
                     .then(response => {
                         if (!response.ok) {
                             return response.json().then(data => {
-                                throw new Error(data.error || `HTTP ${response.status}`);
+                                const msg = data.message || data.error || `HTTP ${response.status}`;
+                                throw new Error(msg);
                             });
                         }
                         return response.json();
@@ -1924,7 +1925,8 @@
                     .then(response => {
                         if (!response.ok) {
                             return response.json().then(data => {
-                                throw new Error(data.error || `HTTP ${response.status}`);
+                                const msg = data.message || data.error || `HTTP ${response.status}`;
+                                throw new Error(msg);
                             });
                         }
                         return response.json();
@@ -1993,8 +1995,8 @@
                         if (!response.ok) {
                             return response.json().then(data => {
                                 console.error('API Error Response:', data);
-                                throw new Error(data.error ||
-                                    `HTTP ${response.status}: ${data.message || 'Unknown error'}`);
+                                const msg = data.message || data.error || `HTTP ${response.status}`;
+                                throw new Error(msg);
                             });
                         }
                         return response.json();

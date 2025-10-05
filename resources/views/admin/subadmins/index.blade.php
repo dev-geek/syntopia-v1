@@ -1,66 +1,6 @@
-@include('dashboard.includes/header')
-@include('dashboard.includes/sidebar')
-<style>
-    .dataTables_wrapper .dataTables_paginate .paginate_button {
-        border-radius: 0.5rem !important;
-        margin: 0 2px;
-        padding: 0.3rem 0.8rem;
-        background: #f8f9fa;
-        color: #0d6efd !important;
-        border: none !important;
-        font-weight: 600;
-        transition: background 0.2s, color 0.2s;
-    }
-    .dataTables_wrapper .dataTables_paginate .paginate_button.current,
-    .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-        background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%) !important;
-        color: #fff !important;
-        font-weight: 700;
-        box-shadow: 0 2px 8px rgba(13,110,253,0.10);
-    }
-    .dataTables_wrapper .dataTables_length select,
-    .dataTables_wrapper .dataTables_filter input {
-        border-radius: 0.5rem;
-        border: 1px solid #dee2e6;
-        padding: 0.3rem 0.7rem;
-        background: #f8fafd;
-        font-size: 1rem;
-        margin-bottom: 0.5rem;
-    }
-    .card .card-body {
-        box-shadow: 0 8px 32px rgba(13,110,253,0.07);
-        border-radius: 1.2rem;
-        padding: 2rem 1.5rem 1.5rem 1.5rem;
-    }
-    table.dataTable {
-        border-radius: 1rem !important;
-        overflow: hidden !important;
-        background: #fff;
-        box-shadow: 0 4px 24px rgba(13,110,253,0.07);
-    }
-    table.dataTable thead th {
-        background: linear-gradient(90deg, #e3eafc 0%, #f1f5fb 100%);
-        color: #0d6efd;
-        font-weight: 800;
-        border-bottom: 2px solid #e3eafc;
-        font-size: 1.08rem;
-        letter-spacing: 0.5px;
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
-    table.dataTable tbody tr {
-        transition: background 0.18s, transform 0.18s;
-    }
-    table.dataTable tbody tr:hover {
-        background: #e9f3ff;
-        transform: scale(1.012);
-        box-shadow: 0 2px 8px rgba(13,110,253,0.07);
-    }
-    table.dataTable td, table.dataTable th {
-        vertical-align: middle;
-        padding: 0.85rem 0.75rem;
-    }
-</style>
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
+
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -68,112 +8,139 @@
         <div class="container-fluid">
             <div class="row mb-2">
                 <div class="col-sm-6">
-                    {{--                    <h1>Users</h1> --}}
+                    <h1>Sub Admins Management</h1>
+                </div>
+                <div class="col-sm-6">
+                    <ol class="breadcrumb float-sm-right">
+                        <li class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}">Home</a></li>
+                        <li class="breadcrumb-item active">Sub Admins</li>
+                    </ol>
                 </div>
             </div>
-        </div><!-- /.container-fluid -->
+        </div>
     </section>
+
     <!-- Main content -->
     <section class="content">
         <div class="container-fluid">
             <div class="row">
                 <div class="col-12">
                     <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">Sub Admins</h3>
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h3 class="card-title">Sub Admins Management</h3>
+                            <a href="{{ route('admin.subadmins.create') }}" class="btn btn-primary">
+                                <i class="fas fa-plus"></i> Add Sub Admin
+                            </a>
                         </div>
-                        {{-- Component --}}
-                        @include('components.alert-messages')
-                        <!-- /.card-header -->
                         <div class="card-body">
-                            <a href="{{ route('admin.sub-admins.create') }}" class="btn btn-success mb-3 float-right"><i
-                                    class="fa fa-plus mx-2"></i> Add</a>
-
-                            <table id="example1" class="table table-bordered table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Name</th>
-                                        <th>Email</th>
-                                        <th>Role</th>
-                                        <th>Status</th>
-                                        @if (Auth::check() && Auth::user()->role == 1)
-                                            <th>
-                                                Action
-                                        @endif
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        @foreach ($users as $user)
-                                            <td>{{ $loop->iteration }}</td>
-                                            <td>{{ $user->name }}</td>
-                                            <td>{{ $user->email }} </td>
-                                            <td>
-                                                @role('Super Admin')
-                                                    Super Admin
-                                                    @elserole('Sub Admin')
-                                                    Sub Admin
-                                                    @elserole('User')
-                                                    User
-                                                @else
-                                                    No Role
-                                                @endrole
-                                            </td>
-
-                                            @if ($user->status == 1)
-                                                <td>Active</td>
-                                            @else
-                                                <td>Deactive</td>
-                                            @endif
-                                            @if (Auth::check() && Auth::user()->role == 1)
-                                                <td>
-                                                    <a href="{{ route('admin.manage.admin.profile', $user->id) }}"><i
-                                                            class="bi bi-pencil-square"></i></a>
-                                            @endif
-                                            </td>
-                                    </tr>
-                                    @endforeach
-                                    </tfoot>
-                            </table>
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
                         </div>
-                        <!-- /.card-body -->
-                    </div>
-                    <!-- /.card -->
-                </div>
-                <!-- /.col -->
-            </div>
-            <!-- /.row -->
-        </div>
-        <!-- /.container-fluid -->
-    </section>
-    <!-- /.content -->
-</div>
-<!-- /.content-wrapper -->
-@include('dashboard.includes/footer')
-<!-- Control Sidebar -->
-<!-- /.control-sidebar -->
-</div>
-<script>
-    $(function() {
-        $("#example1").DataTable({
-            "responsive": true,
-            "lengthChange": false,
-            "autoWidth": false,
-            "buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-        }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
-        $('#example2').DataTable({
-            "paging": true,
-            "lengthChange": false,
-            "searching": false,
-            "ordering": true,
-            "info": true,
-            "autoWidth": false,
-            "responsive": true,
-        });
-    });
-</script>
-</body>
+                    @endif
 
-</html>
+                    @if(session('swal_error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('swal_error') }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    @endif
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped" id="subadminsTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Created At</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($subAdmins as $subAdmin)
+                                    <tr>
+                                        <td>{{ $loop->iteration }}</td>
+                                        <td>{{ $subAdmin->name }}</td>
+                                        <td>{{ $subAdmin->email }}</td>
+                                        <td>
+                                            <span class="badge badge-{{ $subAdmin->is_active ? 'success' : 'danger' }}">
+                                                {{ $subAdmin->is_active ? 'Active' : 'Inactive' }}
+                                            </span>
+                                        </td>
+                                        <td>{{ $subAdmin->created_at->format('M d, Y H:i') }}</td>
+                                        <td>
+                                            <div class="d-flex flex-wrap">
+                                                <a href="{{ route('admin.subadmins.show', $subAdmin) }}"
+                                                   class="btn btn-sm btn-info mr-1" title="View">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                <a href="{{ route('admin.subadmins.edit', $subAdmin) }}"
+                                                   class="btn btn-sm btn-warning mr-1" title="Edit">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <form action="{{ route('admin.subadmins.toggle-status', $subAdmin) }}"
+                                                      method="POST" class="d-inline mr-1">
+                                                    @csrf
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-{{ $subAdmin->is_active ? 'secondary' : 'success' }}"
+                                                            title="{{ $subAdmin->is_active ? 'Deactivate' : 'Activate' }}"
+                                                            data-swal-toggle
+                                                            data-is-active="{{ $subAdmin->is_active ? 'true' : 'false' }}">
+                                                        <i class="fas fa-{{ $subAdmin->is_active ? 'ban' : 'check' }}"></i>
+                                                    </button>
+                                                </form>
+                                                <form action="{{ route('admin.subadmins.destroy', $subAdmin) }}"
+                                                      method="POST" class="d-inline">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-danger"
+                                                            title="Delete"
+                                                            data-swal-delete
+                                                            data-item-name="Sub Admin">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" class="text-center">No Sub Admins found.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+@include('dashboard.includes.footer')
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/swal-confirm.js') }}"></script>
+<script>
+$(document).ready(function() {
+    $('#subadminsTable').DataTable({
+        "responsive": true,
+        "lengthChange": false,
+        "autoWidth": false,
+        "order": [[4, "desc"]], // Order by Created At column (5th column, index 4)
+        "columnDefs": [
+            { "orderable": false, "targets": 5 } // Disable ordering on Actions column
+        ]
+    });
+});
+</script>

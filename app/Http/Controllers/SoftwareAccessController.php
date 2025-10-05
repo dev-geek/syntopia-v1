@@ -20,7 +20,7 @@ class SoftwareAccessController extends Controller
         }
 
         // Check if user has access to software
-        if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+        if ($user->hasRole('Super Admin')) {
             return response()->json(['error' => 'Admins cannot access software directly'], 403);
         }
 
@@ -45,7 +45,7 @@ class SoftwareAccessController extends Controller
         }
 
         // Check if user has access to software
-        if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+        if ($user->hasRole('Super Admin')) {
             return redirect()->back()->with('error', 'Admins cannot access software directly');
         }
 

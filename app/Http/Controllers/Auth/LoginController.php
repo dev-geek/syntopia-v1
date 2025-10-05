@@ -27,7 +27,16 @@ class LoginController extends Controller
         }
 
         // Redirect based on user role
-        if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+        if ($user->hasRole('Super Admin')) {
+            return redirect()->intended(route('admin.dashboard'));
+        }
+
+        // Check if Sub Admin is active
+        if ($user->hasRole('Sub Admin')) {
+            if (!$user->canSubAdminLogin()) {
+                Auth::logout();
+                return redirect()->route('admin-login')->with('error', 'Your account is not active. Please contact support to activate your account.');
+            }
             return redirect()->intended(route('admin.dashboard'));
         }
 
@@ -101,7 +110,7 @@ class LoginController extends Controller
         $user = Auth::user();
 
         if ($user) {
-            if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+            if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
                 return redirect()->route('admin.dashboard');
             }
 
@@ -163,7 +172,7 @@ class LoginController extends Controller
         $request->session()->regenerateToken();
 
         // Redirect based on role
-        if ($user && $user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if ($user && $user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             return redirect()->route('admin-login');
         }
 
@@ -181,9 +190,9 @@ class LoginController extends Controller
             'password' => ['required'],
         ]);
 
-        // Check if the email belongs to a Super Admin
+        // Check if the email belongs to a Super Admin or Sub Admin
         $user = User::where('email', $request->email)->first();
-        if ($user && $user->hasRole('Super Admin')) {
+        if ($user && $user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             // Store email in session and redirect to admin login
             session(['email' => $request->email]);
             return redirect()->route('admin-login');
@@ -209,7 +218,7 @@ class LoginController extends Controller
         // }
 
         // Check verification status BEFORE authentication for non-admin users
-        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if (!$user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             if (!$this->isUserVerified($user)) {
                 session(['email' => $user->email]);
                 return redirect()->route('verification.notice')
@@ -226,7 +235,7 @@ class LoginController extends Controller
 
         // Final redirect based on role
         $user = Auth::user();
-        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             return redirect()->intended(route('admin.dashboard'));
         }
 

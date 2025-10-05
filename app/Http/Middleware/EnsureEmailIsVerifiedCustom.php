@@ -24,7 +24,7 @@ class EnsureEmailIsVerifiedCustom
         }
 
         // Allow access for admins (bypass verification)
-        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if ($user->hasAnyRole(['Super Admin'])) {
             return $next($request);
         }
 

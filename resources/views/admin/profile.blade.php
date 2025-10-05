@@ -5,10 +5,10 @@
 <div class="content-wrapper ">
 
 
-    <section class="content">
-        <div class="row justify-content-center mt-2 ">
-            <div class="col-md-6" style="margin-top: 50px;">
-                <div class="card card-primary">
+    <section class="content pt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-8 col-lg-6">
+                <div class="card card-primary shadow-sm">
                     <div class="card-header">
                         <h3 class="card-title">Edit Profile</h3>
                         <div class="card-tools">
@@ -19,42 +19,44 @@
                     </div>
                     {{-- Component --}}
                     @include('components.alert-messages')
-                    <form method="POST" action="{{ route('profile.update') }}">
+                    <form method="POST" action="{{ route('admin.profile.update') }}">
                         @csrf
+                        @method('PUT')
 
                         <div class="card-body">
-                            <div class="form-group">
-                                <label for="inputName">Email</label>
-                                <input id="email" type="email" class="form-control" name="email"
+                            <div class="form-group mb-3">
+                                <label for="inputName" class="form-label fw-bold">Email Address</label>
+                                <input id="email" type="email" class="form-control form-control-lg" name="email"
                                     value="{{ $user->email }}" disabled>
+                                <small class="form-text text-muted">Email cannot be changed</small>
                             </div>
-                            <div class="form-group">
-                                <label for="inputClientCompany">Name</label>
-                                <input type="text" id="name" type="text"
-                                    class="form-control @error('name') is-invalid @enderror" name="name"
-                                    value="{{ old('name', $user->name) }}" autocomplete="name" autofocus>
+                            <div class="form-group mb-3">
+                                <label for="inputClientCompany" class="form-label fw-bold">Full Name</label>
+                                <input type="text" id="name"
+                                    class="form-control form-control-lg @error('name') is-invalid @enderror" name="name"
+                                    value="{{ old('name', $user->name) }}" autocomplete="name" autofocus placeholder="Enter your full name">
                                 @error('name')
                                     <span class="invalid-feedback" role="alert">
                                         <strong>{{ $message }}</strong>
                                     </span>
                                 @enderror
                             </div>
-                            <div class="form-group">
-                                <label for="inputProjectLeader">Password</label>
+                            <div class="form-group mb-3">
+                                <label for="inputProjectLeader" class="form-label fw-bold">New Password</label>
                                 <input id="password" type="password"
-                                    class="form-control @error('password') is-invalid @enderror" name="password"
-                                    autocomplete="new-password">
+                                    class="form-control form-control-lg @error('password') is-invalid @enderror" name="password"
+                                    autocomplete="new-password" placeholder="Enter new password (leave blank to keep current)">
                                 @error('password')
                                     <span class="invalid-feedback" role="alert">
                                         <strong>{{ $message }}</strong>
                                     </span>
                                 @enderror
                             </div>
-                            <div class="form-group">
-                                <label for="password_confirmation">Confirm Password</label>
+                            <div class="form-group mb-3">
+                                <label for="password_confirmation" class="form-label fw-bold">Confirm New Password</label>
                                 <input id="password_confirmation" type="password"
-                                    class="form-control @error('password_confirmation') is-invalid @enderror"
-                                    name="password_confirmation" autocomplete="new-password">
+                                    class="form-control form-control-lg @error('password_confirmation') is-invalid @enderror"
+                                    name="password_confirmation" autocomplete="new-password" placeholder="Confirm new password">
                                 @error('password_confirmation')
                                     <span class="invalid-feedback" role="alert">
                                         <strong>{{ $message }}</strong>
@@ -62,13 +64,11 @@
                                 @enderror
                             </div>
                         </div>
-                        <div class="row mb-0">
-                            <div class="col-md-2 ml-4">
-                                <div class="d-grid gap-3" style="padding-bottom: 20px;">
-                                    <button type="submit" class="btn btn-primary btn-block">
-                                        {{ __('Update') }}
-                                    </button>
-                                </div>
+                        <div class="card-footer">
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-primary btn-lg px-4">
+                                    <i class="fas fa-save mr-2"></i>{{ __('Update Profile') }}
+                                </button>
                             </div>
                         </div>
                         <!-- /.card-body -->

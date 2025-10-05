@@ -33,7 +33,7 @@
         <div class="text-muted small text-center">{{ Auth::user()->email }}</div>
     </div>
     <ul class="nav nav-pills flex-column mb-auto">
-        @if(auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))
+        @if(auth()->user()->hasRole('Super Admin'))
             <li class="nav-item mb-1">
                 <a href="{{ route('admin.dashboard') }}" class="nav-link d-flex align-items-center mr-4 {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
                     <i class="bi bi-house mr-4 sidebar-animate-icon{{ request()->routeIs('admin.dashboard') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span>Home</span>
@@ -49,21 +49,19 @@
                     <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('admin.orders') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Subscriptions</span>
                 </a>
             </li>
-            @if(auth()->user()->hasRole('Super Admin'))
-                <li class="nav-item mb-1">
-                    <a href="{{ route('admin.subadmins') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.subadmins') ? 'active' : '' }}">
-                        <i class="bi bi-person-badge mr-4 sidebar-animate-icon{{ request()->routeIs('admin.subadmins') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Sub Admin</span>
-                    </a>
-                </li>
-                <li class="nav-item mb-1">
-                    <a href="{{ route('admin.payment-gateways.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.payment-gateways.index') ? 'active' : '' }}">
-                        <i class="bi bi-credit-card mr-4 sidebar-animate-icon{{ request()->routeIs('admin.payment-gateways.index') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Payment Gateways</span>
-                    </a>
-                </li>
-            @endif
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.payment-gateways.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.payment-gateways.index') ? 'active' : '' }}">
+                    <i class="bi bi-credit-card mr-4 sidebar-animate-icon{{ request()->routeIs('admin.payment-gateways.index') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Payment Gateways</span>
+                </a>
+            </li>
             <li class="nav-item mb-1">
                 <a href="{{ route('admin.users-logs') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.users-logs') ? 'active' : '' }}">
                     <i class="bi bi-clock-history mr-4 sidebar-animate-icon{{ request()->routeIs('admin.users-logs') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">User Logs</span>
+                </a>
+            </li>
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.subadmins.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.subadmins.*') ? 'active' : '' }}">
+                    <i class="bi bi-person-gear mr-4 sidebar-animate-icon{{ request()->routeIs('admin.subadmins.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Sub Admins</span>
                 </a>
             </li>
 {{--            <li class="nav-item mb-1">--}}
@@ -71,6 +69,27 @@
 {{--                    <i class="bi bi-shield-exclamation mr-4 sidebar-animate-icon{{ request()->routeIs('admin.free-plan-attempts.*') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Free Plan Abuse</span>--}}
 {{--                </a>--}}
 {{--            </li>--}}
+        @elseif(auth()->user()->hasRole('Sub Admin'))
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.dashboard') }}" class="nav-link d-flex align-items-center mr-4 {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
+                    <i class="bi bi-house mr-4 sidebar-animate-icon{{ request()->routeIs('admin.dashboard') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span>Home</span>
+                </a>
+            </li>
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.users') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.users') ? 'active' : '' }}">
+                    <i class="bi bi-people mr-4 sidebar-animate-icon{{ request()->routeIs('admin.users') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Users</span>
+                </a>
+            </li>
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.orders') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.orders') ? 'active' : '' }}">
+                    <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('admin.orders') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Subscriptions</span>
+                </a>
+            </li>
+            <li class="nav-item mb-1">
+                <a href="{{ route('admin.users-logs') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('admin.users-logs') ? 'active' : '' }}">
+                    <i class="bi bi-clock-history mr-4 sidebar-animate-icon{{ request()->routeIs('admin.users-logs') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">User Logs</span>
+                </a>
+            </li>
         @else
             <li class="nav-item mb-1">
                 <a href="{{ route('user.dashboard') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('user.dashboard') ? 'active' : '' }}">
@@ -100,7 +119,7 @@
             </a>
         </li>
         <li class="nav-item mt-3">
-            <form method="POST" action="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin']) ? 'admin.logout' : 'logout') }}">
+            <form method="POST" action="{{ route(auth()->user()->hasAnyRole(['Super Admin']) ? 'admin.logout' : 'logout') }}">
                 @csrf
                 <button type="submit" class="nav-link d-flex align-items-center w-100 text-start bg-transparent border-0">
                     <i class="bi bi-box-arrow-right mr-4 sidebar-animate-icon" style="font-size:1.2rem;"></i><span class="ms-3">Logout</span>

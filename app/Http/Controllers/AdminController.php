@@ -43,9 +43,16 @@ class AdminController extends Controller
         }
 
         // Check if user has admin role
-        if (!$user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if (!$user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             return back()->withErrors([
                 'email' => 'Access denied. Admin privileges required.',
+            ])->withInput($request->except('password'));
+        }
+
+        // Check if Sub Admin is active
+        if ($user->hasRole('Sub Admin') && !$user->canSubAdminLogin()) {
+            return back()->withErrors([
+                'email' => 'Your account is not active. Please contact support to activate your account.',
             ])->withInput($request->except('password'));
         }
 
@@ -57,7 +64,8 @@ class AdminController extends Controller
         }
 
         // Attempt login
-        if (!Auth::attempt($validated)) {
+        $credentials = $request->only('email', 'password');
+        if (!Auth::attempt($credentials)) {
             return back()->withErrors([
                 'password' => 'The provided password is incorrect.',
             ])->withInput($request->except('password'));
@@ -92,7 +100,7 @@ class AdminController extends Controller
         ]);
 
         // Assign role based on selection
-        $role = $request->role == 1 ? 'Super Admin' : 'Sub Admin';
+        $role = 'Super Admin';
         $user->assignRole($role);
 
         return redirect()->route('admin-login')->with('success', 'Admin account created successfully! Please login.');
@@ -113,15 +121,6 @@ class AdminController extends Controller
         return redirect()->route('admin.users')->with('success', 'User deleted successfully!');
     }
 
-    public function subadmins()
-    {
-       $users = User::role('Sub Admin')
-                    ->with('roles')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
-
-        return view('admin.subadmins', compact('users'));
-    }
 
     public function profile()
     {
@@ -135,12 +134,6 @@ class AdminController extends Controller
         return view('admin.edit', compact('user'));
     }
 
-    public function manageAdminProfile($id)
-    {
-        // Get the user by ID
-        $user = User::findOrFail($id);
-        return view('admin.subadmin', compact('user'));
-    }
 
     public function manageProfileUpdate(Request $request, $id, PasswordBindingService $passwordBindingService)
     {
@@ -190,54 +183,6 @@ class AdminController extends Controller
         // Return a success message
         return redirect()->route('admin.users')->with('success', 'User updated successfully!');
     }
-    public function manageAdminProfileUpdate(Request $request, $id, PasswordBindingService $passwordBindingService)
-    {
-        // Validate the incoming request data
-        $validated = $request->validate([
-            'name' => 'nullable',
-            'role' => 'nullable',
-            'status' => 'nullable',
-            'password' => 'nullable|string|min:8|confirmed',
-        ]);
-
-        // Get the user based on the ID passed
-        $user = User::findOrFail($id); // Find user by ID, or 404 if not found
-
-        // Update the name if it was provided
-        if ($request->has('name') && $request->name != $user->name) {
-            $user->name = $request->name;
-        }
-
-        // Update the role if it was provided and it differs from the current one
-        if ($request->has('role') && $request->role != $user->role) {
-            $user->role = $request->role;
-        }
-
-        // Update the status if it was provided and it differs from the current one
-        if ($request->has('status') && $request->status != $user->status) {
-            $user->status = $request->status;
-        }
-
-        // Handle password update with API binding
-        if ($request->has('password') && $request->password) {
-            // Call password binding API before updating the database
-            $apiResponse = $passwordBindingService->bindPassword($user, $request->password);
-
-            if (!$apiResponse['success']) {
-                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
-            }
-
-            // Only update password if API call was successful
-            $user->password = $request->password;
-            $user->subscriber_password = $request->password;
-        }
-
-        // Save the updated user
-        $user->save();
-
-        // Return a success message
-        return redirect()->route('admin.subadmins')->with('success', 'Sub Admin updated successfully!');
-    }
 
     public function adminOrders()
     {
@@ -274,7 +219,6 @@ class AdminController extends Controller
         return view('admin.forgotpassword'); // Ensure you have a Blade file named `forgotpassword.blade.php`
     }
 
-    public function createOrUpdateSubAdmin() {}
 
     public function storeUser(Request $request, PasswordBindingService $passwordBindingService)
     {
@@ -307,5 +251,28 @@ class AdminController extends Controller
         $user->assignRole('User');
 
         return redirect()->route('admin.users')->with('success', 'User created successfully!');
+    }
+
+    /**
+     * Update admin profile (name and password only)
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = auth()->user();
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'password' => 'nullable|string|min:8|confirmed',
+        ]);
+
+        $user->name = $validated['name'];
+
+        if (!empty($validated['password'])) {
+            $user->password = $validated['password'];
+        }
+
+        $user->save();
+
+        return redirect()->route('admin.profile')->with('success', 'Profile updated successfully!');
     }
 }

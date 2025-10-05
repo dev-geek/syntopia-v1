@@ -33,7 +33,7 @@ class SocialController extends Controller
             if ($user) {
                 // Log in the existing user
                 Auth::login($user);
-                if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+                if ($user->hasAnyRole(['Super Admin'])) {
                     return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
                 }
 
@@ -399,7 +399,7 @@ class SocialController extends Controller
             return redirect()->to($intendedUrl)->with('login_success', $message);
         }
 
-        if ($user->hasAnyRole(['Sub Admin', 'Super Admin'])) {
+        if ($user->hasAnyRole(['Super Admin'])) {
             return redirect()->route('admin.dashboard')->with('login_success', $message);
         }
 

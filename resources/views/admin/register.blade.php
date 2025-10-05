@@ -86,7 +86,6 @@
                         <select class="custom-select" name="role" required>
                             <option value="" disabled selected>Select Role</option>
                             <option value="1">Super Admin</option>
-                            <option value="2">Sub Admin</option>
                         </select>
                     </div>
                     <div class="row">

@@ -22,12 +22,12 @@ class RedirectIfAuthenticated
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
                 $user = Auth::guard($guard)->user();
-                
+
                 // Redirect based on user role
-                if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+                if ($user->hasRole('Super Admin')) {
                     return redirect()->intended(route('admin.profile'));
                 }
-                
+
                 // Default redirect for regular users
                 return redirect()->intended(route('user.profile'));
             }

@@ -14,7 +14,7 @@ class PaymentGatewaySeeder extends Seeder
      */
     public function run(): void
     {
-        $admin = User::role(['Super Admin', 'Sub Admin'])->first();
+        $admin = User::role(['Super Admin'])->first();
 
         if (!$admin) {
             $this->command->warn('No admin user found. Skipping PaymentGatewaySeeder.');

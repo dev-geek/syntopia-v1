@@ -114,10 +114,22 @@
 			<div class="header">
 				<span class="badge">Access Restricted</span>
 			</div>
-			<h1 id="error-title">Registration is not allowed from this device</h1>
-			<p>For your security, we couldn’t complete registration from this device or network.</p>
+			<h1 id="error-title">
+				@if(str_contains($exception?->getMessage() ?? '', 'Registration'))
+					Registration is not allowed from this device
+				@else
+					Access Denied
+				@endif
+			</h1>
+			<p>
+				@if(str_contains($exception?->getMessage() ?? '', 'Registration'))
+					For your security, we couldn't complete registration from this device or network.
+				@else
+					You don't have permission to access this resource.
+				@endif
+			</p>
 			<div class="message">
-				{{ $exception?->getMessage() ?: 'Please contact support if you believe this is an error.' }}
+				{{ $exception?->getMessage() ?: 'This action is unauthorized.' }}
 			</div>
 
 			<div class="actions">

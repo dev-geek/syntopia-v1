@@ -158,7 +158,7 @@ class VerificationController extends Controller
                         ->with('success', 'Email verified successfully!');
                 }
             }
-            if ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin')) {
+            if ($user->hasRole('Super Admin')) {
                 Log::info('[verifyCode] Redirecting to admin.dashboard', ['user_id' => $user->id]);
                 return redirect()->route('admin.dashboard')
                     ->with('success', 'Email verified successfully!');

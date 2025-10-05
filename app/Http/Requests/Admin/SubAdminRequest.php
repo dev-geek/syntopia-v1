@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Admin;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Illuminate\Http\Request;
 
 class SubAdminRequest extends FormRequest
 {
@@ -11,7 +13,7 @@ class SubAdminRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        return auth()->user()->isSuperAdmin();
     }
 
     /**
@@ -21,16 +23,54 @@ class SubAdminRequest extends FormRequest
      */
     public function rules(): array
     {
-        $rules = [
-            'name'   => ['required', 'string', 'max:255'],
-            'status' => ['boolean'],
+        $subAdminId = $this->route('subadmin')?->id;
+
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                Rule::unique('users', 'email')->ignore($subAdminId)
+            ],
+            'password' => [
+                $this->isMethod('POST') ? 'required' : 'nullable',
+                'string',
+                'min:8',
+                'confirmed'
+            ],
+            'is_active' => ['boolean'],
         ];
+    }
 
-        if ($this->isMethod('POST')) {
-            $rules['email']    = ['required', 'string', 'email', 'max:255', 'unique:users'];
-            $rules['password'] = ['required', 'string', 'min:6', 'confirmed'];
-        }
+    /**
+     * Get custom messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'name.required' => 'Name is required.',
+            'name.string' => 'Name must be a string.',
+            'name.max' => 'Name may not be greater than 255 characters.',
+            'email.required' => 'Email address is required.',
+            'email.email' => 'Please enter a valid email address.',
+            'email.unique' => 'This email address is already taken.',
+            'password.required' => 'Password is required.',
+            'password.min' => 'Password must be at least 8 characters.',
+            'password.confirmed' => 'Password confirmation does not match.',
+            'is_active.boolean' => 'Active status must be true or false.',
+        ];
+    }
 
-        return $rules;
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'is_active' => $this->has('is_active') ? (bool) $this->input('is_active') : true,
+        ]);
     }
 }

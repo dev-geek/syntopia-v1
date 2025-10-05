@@ -125,7 +125,7 @@ Route::get('/debug/admin-check', function() {
     try {
         $user = \App\Models\User::where('email', 'like', '%admin%')
             ->orWhereHas('roles', function($q) {
-                $q->whereIn('name', ['Super Admin', 'Sub Admin']);
+                $q->whereIn('name', ['Super Admin']);
             })
             ->first();
 
@@ -135,7 +135,7 @@ Route::get('/debug/admin-check', function() {
                 'name' => $user->name,
                 'email' => $user->email,
                 'status' => $user->status,
-                'has_admin_role' => $user->hasRole(['Super Admin', 'Sub Admin']),
+                'has_admin_role' => $user->hasRole(['Super Admin']),
                 'password_set' => !empty($user->password),
                 'email_verified' => (bool)$user->email_verified_at
             ]);

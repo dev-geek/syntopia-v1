@@ -942,7 +942,7 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
 
             <!-- Right navbar links -->
             <ul class="navbar-nav ml-auto">
-                @if (!Auth::user()->hasRole('Super Admin') && !Auth::user()->hasRole('Sub Admin'))
+                @if (!Auth::user()->hasRole('Super Admin'))
                 <li class="nav-item">
                     <a href="#" class="btn btn-primary header-software-btn" id="accessSoftwareBtn"
                         onclick="checkPasswordAndAccess()">
@@ -995,7 +995,7 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
                 </div>
                 @endif
 
-{{--                @if (!Auth::user()->hasRole('Sub Admin'))--}}
+{{--                @if (!Auth::user()->hasRole('Super Admin'))--}}
 {{--                <li class="nav-item dropdown">--}}
 {{--                    <a class="nav-link position-relative header-bell @if ($userLogs->count()) has-notifications @endif"--}}
 {{--                        data-toggle="dropdown" href="#">--}}
@@ -1024,7 +1024,7 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
 {{--                </li>--}}
 {{--                @endif--}}
                 <!-- User Dropdown -->
-{{--                    @if (auth()->user()->hasRole('Super Admin') || auth()->user()->hasRole('Sub Admin'))--}}
+{{--                    @if (auth()->user()->hasRole('Super Admin'))--}}
 {{--                <li class="nav-item dropdown header-user-dropdown">--}}
 {{--                    <a class="nav-link d-flex align-items-center" data-toggle="dropdown" href="#">--}}
 {{--                        <span class="header-user-name">{{ Auth::user()->name }}</span>--}}
@@ -1045,11 +1045,11 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
 {{--                        </a>--}}
 {{--                        @endif--}}
 {{--                        <div class="dropdown-divider m-0"></div>--}}
-{{--                        <a href="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])? 'admin.logout': 'logout') }}"--}}
+{{--                        <a href="{{ route(auth()->user()->hasAnyRole(['Super Admin'])? 'admin.logout': 'logout') }}"--}}
 {{--                            class="dropdown-footer"--}}
 {{--                            onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>--}}
 {{--                        <form id="logout-form"--}}
-{{--                            action="{{ route(auth()->user()->hasAnyRole(['Sub Admin', 'Super Admin'])? 'admin.logout': 'logout') }}"--}}
+{{--                            action="{{ route(auth()->user()->hasAnyRole(['Super Admin'])? 'admin.logout': 'logout') }}"--}}
 {{--                            method="POST" style="display: none;">--}}
 {{--                            @csrf--}}
 {{--                        </form>--}}

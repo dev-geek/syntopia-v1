@@ -14,10 +14,15 @@
             <!-- alert component -->
              @include('components.alert-messages')
 
-            {{-- Show to role Admin and Sub Admin --}}
-            @hasanyrole(['Super Admin', 'Sub Admin'])
+            {{-- Show to Super Admin --}}
+            @hasrole('Super Admin')
                 @include('dashboard.includes.cards')
-            @endhasanyrole
+            @endhasrole
+
+            {{-- Show to Sub Admin --}}
+            @hasrole('Sub Admin')
+                @include('dashboard.includes.subadmin-cards')
+            @endhasrole
 
             {{-- Show to role User --}}
             @role('User')
