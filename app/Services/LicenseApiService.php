@@ -272,8 +272,7 @@ class LicenseApiService
         // 云端高级直播-一年版 -> Cloud Advanced Live Streaming – 1 Year Plan
 
 		$aliases = [
-			'free' => ['Free', 'free', 'free version', 'free plan', '免费', '免费版'],
-			'trial' => ['trial', 'trial version', '试用', '试用版'],
+			'free' => ['Free', 'free', 'free version', 'free plan', '免费', '免费版','Trial', 'trial', 'trial version', '试用', '试用版'],
 			'starter' => ['Starter','starter', 'starter plan', 'starter package', 'starter tier'],
 			'pro' => ['Pro', 'pro', 'pro plan'],
 			'business' => ['Business', 'business', 'business plan'],
