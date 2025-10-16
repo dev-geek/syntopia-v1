@@ -82,4 +82,9 @@ class FreePlanAttempt extends Model
             'block_reason' => null,
         ]);
     }
-} 
+
+    public function user()
+    {
+        return $this->hasOne(User::class, 'email', 'email');
+    }
+}

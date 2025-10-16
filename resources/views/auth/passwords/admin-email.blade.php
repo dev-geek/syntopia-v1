@@ -83,7 +83,7 @@
             background-color: #6c757d;
             cursor: not-allowed;
         }
-        
+
         /* Loading Spinner */
         .spinner-container {
             display: none;
@@ -97,7 +97,7 @@
             justify-content: center;
             align-items: center;
         }
-        
+
         .spinner {
             width: 50px;
             height: 50px;
@@ -106,19 +106,19 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
+
         .button-content {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
         }
-        
+
         .button-spinner {
             display: none;
             width: 16px;
@@ -133,14 +133,14 @@
     <div id="loadingSpinner" class="spinner-container">
         <div class="spinner"></div>
     </div>
-    
+
     <script>
         function showLoading(show) {
             const spinner = document.getElementById('loadingSpinner');
             const buttonSpinner = document.querySelector('.button-spinner');
             const buttonText = document.querySelector('.button-text');
             const submitButton = document.getElementById('submitButton');
-            
+
             if (show) {
                 spinner.style.display = 'flex';
                 buttonSpinner.style.display = 'block';
@@ -149,11 +149,12 @@
             } else {
                 spinner.style.display = 'none';
                 buttonSpinner.style.display = 'none';
-                buttonText.textContent = submitButton.querySelector('.button-text').textContent.includes('Reset') ? 'Reset Password' : 'Continue';
+                const currentLabel = buttonText.textContent || '';
+                buttonText.textContent = currentLabel.includes('Reset') ? 'Reset Password' : 'Continue';
                 submitButton.disabled = false;
             }
         }
-        
+
         document.addEventListener('DOMContentLoaded', function() {
             const emailInput = document.getElementById('email');
             const securityQuestions = document.getElementById('securityQuestions');
@@ -167,7 +168,8 @@
                 emailInput.value = urlParams.get('email');
                 emailInput.readOnly = true;
                 securityQuestions.style.display = 'block';
-                submitButton.textContent = 'Reset Password';
+                const buttonTextEl = document.querySelector('.button-text');
+                if (buttonTextEl) buttonTextEl.textContent = 'Reset Password';
                 emailVerified = true;
             }
 
@@ -175,7 +177,7 @@
                 if (!emailVerified) {
                     e.preventDefault();
                     showLoading(true);
-                    
+
                     try {
                         const response = await fetch('{{ route("admin.password.check-email") }}', {
                             method: 'POST',
@@ -190,13 +192,14 @@
                         });
 
                         const data = await response.json();
-                        
+
                         if (data.requires_security_questions) {
                             emailInput.readOnly = true;
                             securityQuestions.style.display = 'block';
-                            submitButton.textContent = 'Reset Password';
+                            const buttonTextEl2 = document.querySelector('.button-text');
+                            if (buttonTextEl2) buttonTextEl2.textContent = 'Reset Password';
                             emailVerified = true;
-                            
+
                             // Add email to form
                             const emailField = document.createElement('input');
                             emailField.type = 'hidden';
@@ -221,7 +224,7 @@
     <div class="login-container">
         <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo" class="logo">
         <h2>Admin Password Reset</h2>
-        
+
         @if (session('status'))
             <div class="alert alert-success" role="alert">
                 {{ session('status') }}
@@ -239,8 +242,8 @@
 
             <div class="form-group">
                 <label for="email">Email Address</label>
-                <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" 
-                       name="email" value="{{ old('email', request('email', '')) }}" 
+                <input id="email" type="email" class="form-control @error('email') is-invalid @enderror"
+                       name="email" value="{{ old('email', request('email', '')) }}"
                        required autocomplete="email" autofocus
                        {{ request()->has('email') ? 'readonly' : '' }}>
 
@@ -254,7 +257,7 @@
             <div id="securityQuestions" style="display: none;">
                 <div class="form-group">
                     <label for="city">What city were you born in?</label>
-                    <input id="city" type="text" class="form-control @error('city') is-invalid @enderror" 
+                    <input id="city" type="text" class="form-control @error('city') is-invalid @enderror"
                            name="city" value="{{ old('city') }}">
                     @error('city')
                         <span class="error-message" role="alert">
@@ -265,7 +268,7 @@
 
                 <div class="form-group">
                     <label for="pet">What was your first pet's name?</label>
-                    <input id="pet" type="text" class="form-control @error('pet') is-invalid @enderror" 
+                    <input id="pet" type="text" class="form-control @error('pet') is-invalid @enderror"
                            name="pet" value="{{ old('pet') }}">
                     @error('pet')
                         <span class="error-message" role="alert">

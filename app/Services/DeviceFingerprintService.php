@@ -17,6 +17,26 @@ class DeviceFingerprintService
         return (bool) config('free_plan_abuse.testing_bypass_enabled', false);
     }
 
+    private function isPrivilegedUser(Request $request): bool
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return false;
+            }
+            // Exempt users with Super Admin or Sub Admin roles
+            if (method_exists($user, 'hasAnyRole')) {
+                return $user->hasAnyRole(['Super Admin', 'Sub Admin']);
+            }
+            if (method_exists($user, 'hasRole')) {
+                return $user->hasRole('Super Admin') || $user->hasRole('Sub Admin');
+            }
+        } catch (\Throwable $e) {
+            // ignore and treat as not privileged
+        }
+        return false;
+    }
+
     private function isWhitelisted(Request $request): bool
     {
         $whitelist = (array) config('free_plan_abuse.whitelist', []);
@@ -107,7 +127,7 @@ class DeviceFingerprintService
 
     public function isBlocked(Request $request): bool
     {
-        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request) || $this->isPrivilegedUser($request)) {
             return false;
         }
         $ip = $request->ip();
@@ -161,7 +181,7 @@ class DeviceFingerprintService
 
     public function hasRecentAttempts(Request $request, int $maxAttempts = 3, int $days = 30): bool
     {
-        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request) || $this->isPrivilegedUser($request)) {
             return false;
         }
         $ip = $request->ip();
@@ -204,7 +224,7 @@ class DeviceFingerprintService
     {
         try {
             // In tests, always record attempts regardless of bypass/whitelist to validate behavior
-            if (!$this->appIsTesting() && ($this->isTestingBypassEnabled() || $this->isWhitelisted($request))) {
+            if (!$this->appIsTesting() && ($this->isTestingBypassEnabled() || $this->isWhitelisted($request) || $this->isPrivilegedUser($request))) {
                 return; // do not record attempts when bypassed/whitelisted
             }
             $fingerprint = $this->generateFingerprint($request);
@@ -272,7 +292,7 @@ class DeviceFingerprintService
 
     public function shouldBlock(Request $request, int $maxAttempts = 3, int $days = 30): bool
     {
-        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request)) {
+        if ($this->isTestingBypassEnabled() || $this->isWhitelisted($request) || $this->isPrivilegedUser($request)) {
             return false;
         }
         $ip = $request->ip();

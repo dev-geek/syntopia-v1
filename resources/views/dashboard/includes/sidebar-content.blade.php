@@ -123,7 +123,7 @@
                 <i class="bi bi-person mr-4 sidebar-animate-icon{{ (request()->routeIs('user.profile') || request()->routeIs('admin.profile')) ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Profile</span>
             </a>
         </li>
-        <li class="nav-item mt-3">
+        <li class="nav-item mb-1">
             <form method="POST" action="{{ route(auth()->user()->hasAnyRole(['Super Admin']) ? 'admin.logout' : 'logout') }}">
                 @csrf
                 <button type="submit" class="nav-link d-flex align-items-center w-100 text-start bg-transparent border-0">

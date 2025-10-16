@@ -27,6 +27,16 @@ class PreventFreePlanAbuse
             return $next($request);
         }
 
+        // Exempt Super Admin and Sub Admin
+        try {
+            $user = $request->user();
+            if ($user && (method_exists($user, 'hasAnyRole') ? $user->hasAnyRole(['Super Admin', 'Sub Admin']) : (method_exists($user, 'hasRole') && ($user->hasRole('Super Admin') || $user->hasRole('Sub Admin'))))) {
+                return $next($request);
+            }
+        } catch (\Throwable $e) {
+            // continue with checks on failure
+        }
+
         $ip = $request->ip();
         $email = $request->input('email');
 

@@ -46,10 +46,10 @@ return [
 
     // Error messages
     'messages' => [
-        'too_many_attempts' => 'Too many registration attempts from this device. Please contact support if you need assistance.',
-        'device_blocked' => 'Registration is not allowed from this device. Please contact support if you believe this is an error.',
-        'ip_blocked' => 'Registration is not allowed from this IP address. Please contact support if you believe this is an error.',
-        'email_blocked' => 'This email address has been blocked due to abuse. Please contact support.',
+        'too_many_attempts' => 'We suspect an account has already been registered from this device. If this seems wrong, please contact support.',
+        'device_blocked' => 'We suspect an account has already been registered from this device. If this seems wrong, please contact support.',
+        'ip_blocked' => 'We suspect an account has already been registered from this network. If this seems wrong, please contact support.',
+        'email_blocked' => 'We suspect an account has already been registered with this email. If this seems wrong, please contact support.',
     ],
 
     // Logging configuration

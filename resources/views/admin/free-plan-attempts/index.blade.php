@@ -16,40 +16,52 @@
     <section class="content">
         <div class="container-fluid">
             <!-- Statistics Cards -->
-            <div class="row g-4 mb-4">
-                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up">
+            <div class="row mb-4">
+                <div class="col-12 col-sm-6 col-lg-3 mb-3" data-aos="fade-up">
                     <div class="card dashboard-card bg-gradient-blue h-100">
-                        <div class="card-body text-center">
-                            <div class="icon mb-2"><i class="fas fa-chart-line"></i></div>
-                            <div class="card-title">Total Attempts</div>
-                            <div class="card-number">{{ $stats['total_attempts'] }}</div>
+                        <div class="card-body d-flex flex-column justify-content-between text-center">
+                            <div>
+                                <div class="icon mb-2"><i class="fas fa-chart-line"></i></div>
+                                <div class="card-title">Total Attempts</div>
+                                <div class="card-number">{{ $stats['total_attempts'] }}</div>
+                            </div>
+                            <div class="card-meta"><span class="badge-soft">All time</span></div>
                         </div>
                     </div>
                 </div>
-                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up" data-aos-delay="100">
+                <div class="col-12 col-sm-6 col-lg-3 mb-3" data-aos="fade-up" data-aos-delay="80">
                     <div class="card dashboard-card bg-gradient-red h-100">
-                        <div class="card-body text-center">
-                            <div class="icon mb-2"><i class="fas fa-ban"></i></div>
-                            <div class="card-title">Blocked Attempts</div>
-                            <div class="card-number">{{ $stats['blocked_attempts'] }}</div>
+                        <div class="card-body d-flex flex-column justify-content-between text-center">
+                            <div>
+                                <div class="icon mb-2"><i class="fas fa-shield-alt"></i></div>
+                                <div class="card-title">Blocked Attempts</div>
+                                <div class="card-number">{{ $stats['blocked_attempts'] }}</div>
+                            </div>
+                            <div class="card-meta"><span class="badge-soft">Block Rate: {{ $stats['block_rate'] }}%</span></div>
                         </div>
                     </div>
                 </div>
-                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up" data-aos-delay="200">
+                <div class="col-12 col-sm-6 col-lg-3 mb-3" data-aos="fade-up" data-aos-delay="160">
                     <div class="card dashboard-card bg-gradient-green h-100">
-                        <div class="card-body text-center">
-                            <div class="icon mb-2"><i class="fas fa-network-wired"></i></div>
-                            <div class="card-title">Unique IPs</div>
-                            <div class="card-number">{{ $stats['unique_ips'] }}</div>
+                        <div class="card-body d-flex flex-column justify-content-between text-center">
+                            <div>
+                                <div class="icon mb-2"><i class="fas fa-network-wired"></i></div>
+                                <div class="card-title">Unique IPs</div>
+                                <div class="card-number">{{ $stats['unique_ips'] }}</div>
+                            </div>
+                            <div class="card-meta"><span class="badge-soft">Distinct sources</span></div>
                         </div>
                     </div>
                 </div>
-                <div class="col-12 col-sm-6 col-md-3" data-aos="fade-up" data-aos-delay="300">
+                <div class="col-12 col-sm-6 col-lg-3 mb-3" data-aos="fade-up" data-aos-delay="240">
                     <div class="card dashboard-card bg-gradient-yellow h-100">
-                        <div class="card-body text-center">
-                            <div class="icon mb-2"><i class="fas fa-calendar-week"></i></div>
-                            <div class="card-title">Last 7 Days</div>
-                            <div class="card-number">{{ $stats['recent_attempts'] }}</div>
+                        <div class="card-body d-flex flex-column justify-content-between text-center">
+                            <div>
+                                <div class="icon mb-2"><i class="fas fa-calendar-week"></i></div>
+                                <div class="card-title">Last 7 Days</div>
+                                <div class="card-number">{{ $stats['recent_attempts'] }}</div>
+                            </div>
+                            <div class="card-meta"><span class="badge-soft">Recent activity</span></div>
                         </div>
                     </div>
                 </div>
@@ -61,7 +73,7 @@
                         <div class="card-header">
                             <h3 class="card-title">Free Plan Attempts</h3>
                             <div class="card-tools">
-                                <a href="{{ route('admin.free-plan-attempts.export', request()->query()) }}" class="btn btn-sm btn-success">
+                                <a href="{{ route('admin.free-plan-attempts.export') }}" class="btn btn-sm btn-success">
                                     <i class="fas fa-download"></i> Export CSV
                                 </a>
                             </div>
@@ -70,76 +82,6 @@
                         @include('components.alert-messages')
 
                         <div class="card-body">
-                            <!-- Filters -->
-                            <div class="row mb-3">
-                                <div class="col-12">
-                                    <div class="card card-outline card-primary">
-                                        <div class="card-header">
-                                            <h3 class="card-title">
-                                                <i class="fas fa-filter"></i> Filters
-                                            </h3>
-                                            <div class="card-tools">
-                                                <button type="button" class="btn btn-tool" data-card-widget="collapse">
-                                                    <i class="fas fa-minus"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="card-body">
-                                            <form method="GET" class="row">
-                                                <div class="col-md-3">
-                                                    <div class="form-group">
-                                                        <label>IP Address:</label>
-                                                        <input type="text" name="ip" value="{{ request('ip') }}"
-                                                               class="form-control" placeholder="Enter IP address">
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <div class="form-group">
-                                                        <label>Email:</label>
-                                                        <input type="email" name="email" value="{{ request('email') }}"
-                                                               class="form-control" placeholder="Enter email">
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-2">
-                                                    <div class="form-group">
-                                                        <label>Status:</label>
-                                                        <select name="blocked" class="form-control">
-                                                            <option value="">All</option>
-                                                            <option value="1" {{ request('blocked') === '1' ? 'selected' : '' }}>Blocked</option>
-                                                            <option value="0" {{ request('blocked') === '0' ? 'selected' : '' }}>Not Blocked</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-2">
-                                                    <div class="form-group">
-                                                        <label>Days Back:</label>
-                                                        <select name="days" class="form-control">
-                                                            <option value="7" {{ request('days') == '7' ? 'selected' : '' }}>Last 7 days</option>
-                                                            <option value="30" {{ request('days') == '30' ? 'selected' : '' }}>Last 30 days</option>
-                                                            <option value="90" {{ request('days') == '90' ? 'selected' : '' }}>Last 90 days</option>
-                                                            <option value="" {{ !request('days') ? 'selected' : '' }}>All time</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-2">
-                                                    <div class="form-group">
-                                                        <label>&nbsp;</label>
-                                                        <div class="btn-group" role="group">
-                                                            <button type="submit" class="btn btn-primary">
-                                                                <i class="fas fa-search"></i> Filter
-                                                            </button>
-                                                            <a href="{{ route('admin.free-plan-attempts.index') }}" class="btn btn-secondary ml-2">
-                                                                <i class="fas fa-times"></i> Clear
-                                                            </a>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
                             <!-- Attempts Table -->
                             <div class="table-responsive">
                                 <table id="example1" class="table table-bordered table-striped">
@@ -157,20 +99,12 @@
                                     <tbody>
                                         @forelse($attempts as $attempt)
                                         <tr class="{{ $attempt->is_blocked ? 'table-danger' : '' }}">
-                                            <td>{{ $attempt->id }}</td>
+                                            <td>{{ $loop->iteration }}</td>
                                             <td>
                                                 <code class="text-primary">{{ $attempt->ip_address }}</code>
-                                                <button class="btn btn-sm btn-outline-primary ml-2" onclick="blockIdentifier('ip', '{{ $attempt->ip_address }}')">
-                                                    <i class="fas fa-ban"></i>
-                                                </button>
                                             </td>
                                             <td>
                                                 {{ $attempt->email ?? '<span class="text-muted">N/A</span>' }}
-                                                @if($attempt->email)
-                                                <button class="btn btn-sm btn-outline-primary ml-2" onclick="blockIdentifier('email', '{{ $attempt->email }}')">
-                                                    <i class="fas fa-ban"></i>
-                                                </button>
-                                                @endif
                                             </td>
                                             <td>
                                                 <span class="text-muted small" title="{{ $attempt->user_agent }}">
@@ -194,10 +128,10 @@
                                                         <i class="fas fa-eye"></i>
                                                     </a>
                                                     @if($attempt->is_blocked)
-                                                        <form method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" class="d-inline">
+                                                        <form id="unblockForm-{{ $attempt->id }}" method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" class="d-inline">
                                                             @csrf
                                                             <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
-                                                            <button type="submit" class="btn btn-sm btn-success ml-1" onclick="return confirm('Are you sure you want to unblock this attempt?')">
+                                                            <button type="button" class="btn btn-sm btn-success ml-1" onclick="confirmUnblockAttempt('unblockForm-{{ $attempt->id }}')">
                                                                 <i class="fas fa-unlock"></i>
                                                             </button>
                                                         </form>
@@ -205,9 +139,6 @@
                                                         <form method="POST" action="{{ route('admin.free-plan-attempts.block') }}" class="d-inline">
                                                             @csrf
                                                             <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
-                                                            <button type="submit" class="btn btn-sm btn-warning ml-1" onclick="return confirm('Are you sure you want to block this attempt?')">
-                                                                <i class="fas fa-ban"></i>
-                                                            </button>
                                                         </form>
                                                     @endif
                                                 </div>
@@ -217,7 +148,7 @@
                                         <tr>
                                             <td colspan="7" class="text-center text-muted py-4">
                                                 <i class="fas fa-inbox fa-2x mb-2"></i><br>
-                                                No attempts found matching your criteria.
+                                                No attempts found.
                                             </td>
                                         </tr>
                                         @endforelse
@@ -250,8 +181,32 @@
         background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
         position: relative;
     }
+    .dashboard-card .card-meta { margin-top: 0.75rem; }
+    .badge-soft {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.18);
+        border: 1px solid rgba(255,255,255,0.25);
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    @media (max-width: 575.98px) {
+        .dashboard-card .card-number { font-size: 1.75rem; }
+        .dashboard-card .icon { font-size: 2rem; }
+    }
     .dashboard-card .card-body {
         padding: 2rem 1.5rem 1.5rem 1.5rem;
+    }
+    .dashboard-card,
+    .dashboard-card .card-body,
+    .dashboard-card .icon,
+    .dashboard-card .card-title,
+    .dashboard-card .card-number,
+    .dashboard-card .card-meta,
+    .dashboard-card .badge-soft {
+        color: #fff !important;
     }
     .dashboard-card .icon {
         font-size: 2.5rem;
@@ -274,7 +229,7 @@
     .dashboard-card.bg-gradient-blue { background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%); }
     .dashboard-card.bg-gradient-red { background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); }
     .dashboard-card.bg-gradient-green { background: linear-gradient(135deg, #198754 0%, #20c997 100%); }
-    .dashboard-card.bg-gradient-yellow { background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); color: #222; }
+    .dashboard-card.bg-gradient-yellow { background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); }
     .dashboard-card:hover {
         transform: translateY(-6px) scale(1.03);
         box-shadow: 0 8px 32px rgba(0,0,0,0.13);
@@ -287,6 +242,8 @@
 
 <x-datatable
     tableId="example1"
+    :order="json_encode([[5,'desc']])"
+    :buttons="json_encode([])"
     :language="json_encode([
         'lengthMenu' => 'Show _MENU_ attempts per page',
         'zeroRecords' => 'No attempts found',
@@ -306,21 +263,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/swal-utils.js') }}"></script>
 
-<!-- Block Identifier Modal -->
-<div class="modal fade" id="blockModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Block Identifier</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
-            </div>
-            <form method="POST" action="{{ route('admin.free-plan-attempts.block-identifier') }}">
-                @csrf
-                <div class="modal-body">
-                    <input type="hidden" id="blockType" name="type">
-                    <input type="hidden" id="blockValue" name="value">
+
                     <div class="form-group">
                         <label for="blockReason">Reason (optional)</label>
                         <textarea class="form-control" id="blockReason" name="reason" rows="3" placeholder="Enter reason for blocking..."></textarea>
@@ -344,5 +287,23 @@ function blockIdentifier(type, value) {
     document.getElementById('blockType').value = type;
     document.getElementById('blockValue').value = value;
     $('#blockModal').modal('show');
+}
+</script>
+<script>
+function confirmUnblockAttempt(formId) {
+    Swal.fire({
+        title: 'Unblock Attempt?',
+        text: 'This will allow registrations from this user/device/network again.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, unblock',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.getElementById(formId).submit();
+        }
+    });
 }
 </script>

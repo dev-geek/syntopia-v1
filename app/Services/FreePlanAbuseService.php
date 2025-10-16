@@ -20,18 +20,43 @@ class FreePlanAbuseService
         $this->deviceFingerprintService = $deviceFingerprintService;
     }
 
+    private function isPrivilegedUser(Request $request, ?User $user = null): bool
+    {
+        try {
+            $actor = $user ?: $request->user();
+            if (!$actor) {
+                return false;
+            }
+            if (method_exists($actor, 'hasAnyRole')) {
+                return $actor->hasAnyRole(['Super Admin', 'Sub Admin']);
+            }
+            if (method_exists($actor, 'hasRole')) {
+                return $actor->hasRole('Super Admin') || $actor->hasRole('Sub Admin');
+            }
+        } catch (\Throwable $e) {
+            // ignore and treat as not privileged
+        }
+        return false;
+    }
+
     /**
      * Check if a user can use the free plan
      */
     public function canUseFreePlan(User $user, Request $request): array
     {
         try {
+            if ($this->isPrivilegedUser($request, $user)) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Free plan is available for admin roles.'
+                ];
+            }
             // Check if user has already used free plan
             if ($this->hasUsedFreePlan($user)) {
                 return [
                     'allowed' => false,
                     'reason' => 'already_used',
-                    'message' => 'You have already used the free plan. Please upgrade to a paid plan to continue.',
+                    'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.',
                     'error_code' => 'FREE_PLAN_ALREADY_USED'
                 ];
             }
@@ -100,6 +125,12 @@ class FreePlanAbuseService
     public function checkAbusePatterns(Request $request): array
     {
         try {
+            if ($this->isPrivilegedUser($request)) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Admin roles are exempt from abuse checks.'
+                ];
+            }
             $ip = $request->ip();
             $email = $request->input('email');
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
@@ -226,6 +257,9 @@ class FreePlanAbuseService
     public function recordAttempt(Request $request, ?User $user = null): void
     {
         try {
+            if ($this->isPrivilegedUser($request, $user)) {
+                return;
+            }
             DB::beginTransaction();
 
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
@@ -337,6 +371,32 @@ class FreePlanAbuseService
             // Record the attempt
             $this->recordAttempt($request, $user);
 
+            // Immediately block current identifiers to prevent repeat free plan in same environment
+            try {
+                $ip = $request->ip();
+                $email = $user->email;
+                $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
+                $fingerprintId = $request->cookie('fp_id', '');
+
+                if ($ip) {
+                    $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
+                }
+                if ($email) {
+                    $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
+                }
+                if ($deviceFingerprint) {
+                    $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
+                }
+                if ($fingerprintId) {
+                    $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
+                }
+            } catch (\Throwable $e) {
+                Log::error('Failed to auto-block identifiers after free plan assignment', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
             DB::commit();
 
             Log::info('Free plan assigned successfully', [
@@ -375,7 +435,7 @@ class FreePlanAbuseService
             return [
                 'allowed' => false,
                 'reason' => 'already_used',
-                'message' => 'You have already used the free plan and cannot downgrade to it again.',
+                'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.',
                 'error_code' => 'FREE_PLAN_ALREADY_USED'
             ];
         }

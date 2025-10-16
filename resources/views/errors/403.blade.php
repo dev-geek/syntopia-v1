@@ -116,14 +116,14 @@
 			</div>
 			<h1 id="error-title">
 				@if(str_contains($exception?->getMessage() ?? '', 'Registration'))
-					Registration is not allowed from this device
+					Registration restricted
 				@else
 					Access Denied
 				@endif
 			</h1>
 			<p>
 				@if(str_contains($exception?->getMessage() ?? '', 'Registration'))
-					For your security, we couldn't complete registration from this device or network.
+					We suspect an account has already been registered from this device or network. If this seems wrong, please contact support.
 				@else
 					You don't have permission to access this resource.
 				@endif

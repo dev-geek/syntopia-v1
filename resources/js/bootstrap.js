@@ -11,6 +11,12 @@ window.axios = axios;
 
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
+// Ensure CSRF token header is set for all axios requests
+const tokenMeta = document.head.querySelector('meta[name="csrf-token"]');
+if (tokenMeta && tokenMeta.content) {
+    window.axios.defaults.headers.common['X-CSRF-TOKEN'] = tokenMeta.content;
+}
+
 /**
  * Echo exposes an expressive API for subscribing to channels and listening
  * for events that are broadcast by Laravel. Echo and event broadcasting

@@ -41,7 +41,8 @@
                                 <!-- Basic Information -->
                                 <div class="col-md-6">
                                     <h5><i class="fas fa-info-circle"></i> Basic Information</h5>
-                                    <table class="table table-bordered">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered mb-0">
                                         <tr>
                                             <th width="30%">ID:</th>
                                             <td>{{ $attempt->id }}</td>
@@ -50,20 +51,12 @@
                                             <th>IP Address:</th>
                                             <td>
                                                 <code class="text-primary">{{ $attempt->ip_address }}</code>
-                                                <button class="btn btn-sm btn-outline-danger ml-2" onclick="blockIdentifier('ip', '{{ $attempt->ip_address }}')">
-                                                    <i class="fas fa-ban"></i> Block IP
-                                                </button>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Email:</th>
                                             <td>
                                                 {{ $attempt->email ?: 'N/A' }}
-                                                @if($attempt->email)
-                                                <button class="btn btn-sm btn-outline-danger ml-2" onclick="blockIdentifier('email', '{{ $attempt->email }}')">
-                                                    <i class="fas fa-ban"></i> Block Email
-                                                </button>
-                                                @endif
                                             </td>
                                         </tr>
                                         <tr>
@@ -90,40 +83,35 @@
                                             <th>Updated At:</th>
                                             <td>{{ $attempt->updated_at->format('M j, Y H:i:s') }}</td>
                                         </tr>
-                                    </table>
+                                        </table>
+                                    </div>
                                 </div>
 
                                 <!-- Device Information -->
                                 <div class="col-md-6">
                                     <h5><i class="fas fa-desktop"></i> Device Information</h5>
-                                    <table class="table table-bordered">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered mb-0">
                                         <tr>
                                             <th width="30%">User Agent:</th>
                                             <td>
-                                                <small class="text-muted">{{ $attempt->user_agent }}</small>
+                                                <small class="text-muted text-break">{{ $attempt->user_agent }}</small>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Device Fingerprint:</th>
                                             <td>
-                                                <code class="small">{{ Str::limit($attempt->device_fingerprint, 50) }}</code>
-                                                <button class="btn btn-sm btn-outline-danger ml-2" onclick="blockIdentifier('device_fingerprint', '{{ $attempt->device_fingerprint }}')">
-                                                    <i class="fas fa-ban"></i> Block Device
-                                                </button>
+                                                <code class="small text-break">{{ Str::limit($attempt->device_fingerprint, 50) }}</code>
                                             </td>
                                         </tr>
                                         <tr>
                                             <th>Fingerprint ID:</th>
                                             <td>
-                                                {{ $attempt->fingerprint_id ?: 'N/A' }}
-                                                @if($attempt->fingerprint_id)
-                                                <button class="btn btn-sm btn-outline-danger ml-2" onclick="blockIdentifier('fingerprint_id', '{{ $attempt->fingerprint_id }}')">
-                                                    <i class="fas fa-ban"></i> Block FP ID
-                                                </button>
-                                                @endif
+                                                <span class="text-break">{{ $attempt->fingerprint_id ?: 'N/A' }}</span>
                                             </td>
                                         </tr>
-                                    </table>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
 
@@ -132,7 +120,7 @@
                             <div class="row mt-4">
                                 <div class="col-12">
                                     <h5><i class="fas fa-database"></i> Additional Data</h5>
-                                    <pre class="bg-light p-3 rounded"><code>{{ json_encode($attempt->data, JSON_PRETTY_PRINT) }}</code></pre>
+                                    <pre class="bg-light p-3 rounded overflow-auto" style="white-space: pre-wrap; word-break: break-word; max-height: 50vh;"><code>{{ json_encode($attempt->data, JSON_PRETTY_PRINT) }}</code></pre>
                                 </div>
                             </div>
                             @endif
@@ -141,21 +129,21 @@
                             <div class="row mt-4">
                                 <div class="col-12">
                                     <h5><i class="fas fa-cogs"></i> Actions</h5>
-                                    <div class="btn-group" role="group">
+                                    <div class="d-flex flex-wrap gap-2" role="group">
                                         @if($attempt->is_blocked)
-                                            <form method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" class="d-inline">
+                                            <form id="unblockUserForm" method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" class="d-inline">
                                                 @csrf
                                                 <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
-                                                <button type="submit" class="btn btn-success mr-2" onclick="return confirm('Are you sure you want to unblock this attempt?')">
-                                                    <i class="fas fa-unlock"></i> Unblock Attempt
+                                                <button type="button" class="btn btn-success me-2 mb-2" onclick="confirmUnblockUser('unblockUserForm')">
+                                                    <i class="fas fa-unlock"></i> Unblock User
                                                 </button>
                                             </form>
                                         @else
-                                            <form method="POST" action="{{ route('admin.free-plan-attempts.block') }}" class="d-inline">
+                                            <form id="blockUserForm" method="POST" action="{{ route('admin.free-plan-attempts.block') }}" class="d-inline">
                                                 @csrf
                                                 <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
-                                                <button type="submit" class="btn btn-warning mr-2" onclick="return confirm('Are you sure you want to block this attempt?')">
-                                                    <i class="fas fa-ban"></i> Block Attempt
+                                                <button type="button" class="btn btn-danger mb-2" onclick="confirmBlockUser('blockUserForm')">
+                                                    <i class="fas fa-ban"></i> Block User
                                                 </button>
                                             </form>
                                         @endif
@@ -255,5 +243,39 @@ function blockIdentifier(type, value) {
     document.getElementById('blockType').value = type;
     document.getElementById('blockValue').value = value;
     $('#blockModal').modal('show');
+}
+
+function confirmBlockUser(formId) {
+    Swal.fire({
+        title: 'Block User?',
+        text: 'This will block future registrations from this user/device/network.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, block user',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.getElementById(formId).submit();
+        }
+    });
+}
+
+function confirmUnblockUser(formId) {
+    Swal.fire({
+        title: 'Unblock User?',
+        text: 'This will allow registrations from this user/device/network again.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, unblock user',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.getElementById(formId).submit();
+        }
+    });
 }
 </script>

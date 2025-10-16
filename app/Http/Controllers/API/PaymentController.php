@@ -42,6 +42,24 @@ class PaymentController extends Controller
         $this->deviceFingerprintService = $deviceFingerprintService;
         $this->payProGlobalClient = $payProGlobalClient;
     }
+
+    private function isPrivilegedUser(?\App\Models\User $user): bool
+    {
+        try {
+            if (!$user) {
+                return false;
+            }
+            if (method_exists($user, 'hasAnyRole')) {
+                return $user->hasAnyRole(['Super Admin', 'Sub Admin']);
+            }
+            if (method_exists($user, 'hasRole')) {
+                return $user->hasRole('Super Admin') || $user->hasRole('Sub Admin');
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        return false;
+    }
     private function validatePackageAndGetUser($packageName)
     {
         $user = Auth::user();
@@ -160,8 +178,8 @@ class PaymentController extends Controller
                 return $this->licenseUnavailableResponse($request);
             }
 
-            // Block further plan changes if an upgrade is currently active
-            if (!$this->licenseService->canUserChangePlan($user)) {
+            // Block further plan changes if an upgrade is currently active (except admin roles)
+            if (!($this->isPrivilegedUser($user)) && !$this->licenseService->canUserChangePlan($user)) {
                 return response()->json([
                     'error' => 'Plan Change Restricted',
                     'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
@@ -610,13 +628,11 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
-            // Block checkout if no licenses available for selected plan
             if (!$this->checkLicenseAvailability($packageData->name)) {
                 return $this->licenseUnavailableResponse($request);
             }
 
-            // Apply upgrade/downgrade restriction
-            if (!$this->licenseService->canUserChangePlan($user)) {
+            if (!($this->isPrivilegedUser($user)) && !$this->licenseService->canUserChangePlan($user)) {
                 return response()->json([
                     'error' => 'Plan Change Restricted',
                     'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
@@ -627,7 +643,6 @@ class PaymentController extends Controller
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
-            // Block checkout if no licenses available for selected plan
             if (!$this->checkLicenseAvailability($packageData->name)) {
                 $friendly = 'There is a technical issue with licenses for this plan. Please try purchasing later or contact support.';
                 if (!$request->expectsJson()) {
@@ -640,7 +655,6 @@ class PaymentController extends Controller
                 ], 409);
             }
 
-            // Do NOT create license before payment. Allocate after success/thank-you.
             $license = null;
             Log::info('Deferring license creation until payment success (FastSpring)', [
                 'user_id' => $user->id,
@@ -742,8 +756,7 @@ class PaymentController extends Controller
             $isUpgrade = $request->input('is_upgrade', false);
             $isDowngrade = $request->input('is_downgrade', false);
 
-            // Apply upgrade/downgrade restriction
-            if (!$this->licenseService->canUserChangePlan($user)) {
+            if (!($this->isPrivilegedUser($user)) && !$this->licenseService->canUserChangePlan($user)) {
                 return response()->json([
                     'error' => 'Plan Change Restricted',
                     'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
@@ -770,12 +783,10 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            // If it's a downgrade, delegate to the specific downgrade method
             if ($isDowngrade) {
                 return $this->payproglobalDowngrade($request, $packageData);
             }
 
-            // Ensure license availability for the selected plan before starting checkout
             if (!$this->checkLicenseAvailability($packageData->name)) {
                 Log::warning('Checkout blocked due to no available licenses', [
                     'user_id' => $user->id,
@@ -788,7 +799,6 @@ class PaymentController extends Controller
                 ], 409);
             }
 
-            // Defer license creation until payment success for PayPro Global as well
             Log::info('Deferring license creation until payment success (PayPro Global)', [
                 'user_id' => $user->id,
                 'package_name' => $packageData->name,
@@ -796,7 +806,6 @@ class PaymentController extends Controller
                 'is_downgrade' => $request->input('is_downgrade', false)
             ]);
 
-            // Handle Downgrade separately
             if ($isDowngrade) {
                 $currentLicense = $user->userLicence;
                 if (!$currentLicense || !$currentLicense->subscription_id) {
@@ -835,11 +844,9 @@ class PaymentController extends Controller
                         'new_package' => $packageData->name,
                         'response' => $downgradeResponse
                     ]);
-                    // Update the user's package and license immediately on successful downgrade
-                    // This is a direct API call, so the response should be immediate.
                     $user->update([
                         'package_id' => $packageData->id,
-                        'is_subscribed' => true // Assuming downgrade keeps subscription active
+                        'is_subscribed' => true
                     ]);
 
                     $currentLicense->update([
@@ -851,7 +858,7 @@ class PaymentController extends Controller
                     return response()->json([
                         'success' => true,
                         'message' => 'Your subscription has been successfully downgraded.',
-                        'redirect_url' => route('user.subscription.details') // Redirect to subscription details
+                        'redirect_url' => route('user.subscription.details')
                     ]);
                 } else {
                     Log::error('PayProGlobal downgrade failed', [
@@ -865,7 +872,7 @@ class PaymentController extends Controller
                         'message' => $downgradeResponse['message'] ?? 'Failed to downgrade your subscription. Please try again or contact support.'
                     ], 500);
                 }
-                return; // Ensure the method exits after handling downgrade
+                return;
             }
 
             $productId = config("payment.gateways.PayProGlobal.product_ids.{$processedPackage}");
@@ -878,7 +885,6 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            // Create a pending order
             $pendingOrderId = 'PPG-PENDING-' . Str::random(10);
             $order = Order::create([
                 'user_id' => $user->id,
@@ -895,7 +901,6 @@ class PaymentController extends Controller
                 ]
             ]);
 
-            // Build success URL with all necessary parameters
             $successParams = [
                 'gateway' => 'payproglobal',
                 'user_id' => $user->id,
@@ -907,7 +912,6 @@ class PaymentController extends Controller
 
             $successUrl = route('payments.success', $successParams);
 
-            // Build checkout URL
             $checkoutParams = [
                 'products[1][id]' => $productId,
                 'email' => $user->email,
@@ -954,7 +958,6 @@ class PaymentController extends Controller
 
     private function getSubscriptionId($orderId)
     {
-        // Fetch order details
         $response = Http::withBasicAuth(
             config('payment.gateways.FastSpring.username'),
             config('payment.gateways.FastSpring.password')
@@ -975,7 +978,6 @@ class PaymentController extends Controller
             return ['error' => 'No subscription found for this order.'];
         }
 
-        // Fetch subscription details
         $subscriptionResponse = Http::withBasicAuth(
             config('payment.gateways.FastSpring.username'),
             config('payment.gateways.FastSpring.password')
@@ -986,10 +988,10 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId,
                 'response' => $subscriptionResponse->body(),
             ]);
-            return ['error' => 'Subscription verification failed.']; // Error array
+            return ['error' => 'Subscription verification failed.'];
         }
 
-        return $subscriptionResponse->json(); // Success: subscription array
+        return $subscriptionResponse->json();
     }
 
     public function handleSuccess(Request $request)
