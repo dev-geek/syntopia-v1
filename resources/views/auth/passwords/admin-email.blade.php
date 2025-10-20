@@ -227,13 +227,11 @@
 
         @if (session('status'))
             <div class="alert alert-success" role="alert">
-                {{ session('status') }}
-            </div>
-        @endif
-
-        @if (session('status'))
-            <div class="alert alert-success mb-4" role="alert">
-                {{ session('status') }}
+                @if (is_array(session('status')))
+                    {{ session('status.message') }}
+                @else
+                    {{ session('status') }}
+                @endif
             </div>
         @endif
 
