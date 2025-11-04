@@ -52,10 +52,10 @@ return [
             'api_url' => env('PADDLE_API_URL', 'https://api.paddle.com/'),
             'environment' => env('PADDLE_ENVIRONMENT', 'sandbox'), // sandbox or production
             'product_ids' => [
+                'free' => (int)env('PADDLE_PRODUCT_FREE', 0),
                 'starter' => (int)env('PADDLE_PRODUCT_STARTER', 1),
                 'pro' => (int)env('PADDLE_PRODUCT_PRO', 2),
                 'business' => (int)env('PADDLE_PRODUCT_BUSINESS', 3),
-                'enterprise' => (int)env('PADDLE_PRODUCT_ENTERPRISE', 4),
             ],
             'checkout_url' => 'https://sandbox-checkout.paddle.com',
             'client_side_token' => env('CLIENT_SIDE_TOKEN', 'test_dab715bb779c31552d5b22561f0'),
