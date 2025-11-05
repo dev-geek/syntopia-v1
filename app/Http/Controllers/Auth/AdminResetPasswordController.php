@@ -25,7 +25,7 @@ class AdminResetPasswordController extends Controller
         $user = Auth::user();
 
         if ($user && $user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
-            return route('admin.index');
+            return route('admin.dashboard');
         }
 
         return '/login';
@@ -66,7 +66,7 @@ class AdminResetPasswordController extends Controller
         }
 
         DB::transaction(function () use ($user, $validated) {
-            $user->password = Hash::make($validated['password']);
+            $user->password = $validated['password'];
             $user->subscriber_password = $validated['password'];
             $user->save();
 

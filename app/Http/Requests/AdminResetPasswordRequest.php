@@ -14,6 +14,7 @@ class AdminResetPasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'token' => 'required|string',
             'email' => 'required|email',
             'password' => [
                 'required',
@@ -30,6 +31,7 @@ class AdminResetPasswordRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'token.required' => 'Reset token is missing or invalid.',
             'email.required' => 'Email address is required.',
             'email.email' => 'Please enter a valid email address.',
             'password.required' => 'Password is required.',

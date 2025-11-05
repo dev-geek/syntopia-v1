@@ -109,7 +109,7 @@ class ResetPasswordController extends Controller
             // Update password in database within a transaction
             DB::beginTransaction();
             try {
-                $user->password = Hash::make($validated['password']);
+                $user->password = $validated['password'];
                 $user->subscriber_password = $validated['password'];
                 $user->save();
 
