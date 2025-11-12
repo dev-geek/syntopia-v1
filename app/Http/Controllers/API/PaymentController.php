@@ -2398,11 +2398,46 @@ class PaymentController extends Controller
             $user = Auth::user();
             if (!$user->is_subscribed) {
                 Log::error('User has no active subscription to cancel', ['user_id' => $user->id]);
-                return redirect()->route('user.subscription.details')->with('error', 'No active subscription found to cancel. Please ensure you have an active subscription before attempting to cancel.');
+                $errorMessage = 'No active subscription found to cancel. Please ensure you have an active subscription before attempting to cancel.';
+                
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => $errorMessage
+                    ], 400);
+                }
+                
+                return redirect()->route('user.subscription.details')->with('error', $errorMessage);
             }
 
             // Check if user has subscription_id in user_licences table
             $userLicense = $user->userLicence;
+            
+            $gateway = $user->paymentGateway ? $user->paymentGateway->name : null;
+            $gateway = $gateway ? strtolower($gateway) : null;
+            
+            // For FastSpring, require subscription_id - return error if missing
+            if ($gateway === 'fastspring') {
+                if (!$userLicense || !$userLicense->subscription_id) {
+                    Log::error('FastSpring cancellation requires subscription_id', [
+                        'user_id' => $user->id,
+                        'has_license' => $userLicense !== null,
+                        'subscription_id' => $userLicense?->subscription_id
+                    ]);
+                    
+                    $errorMessage = 'No subscription ID found. Please contact support.';
+                    
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'success' => false,
+                            'error' => $errorMessage
+                        ], 400);
+                    }
+                    
+                    return redirect()->route('user.subscription.details')->with('error', $errorMessage);
+                }
+            }
+            
             if (!$userLicense || !$userLicense->subscription_id) {
                 Log::info('User has subscription but no subscription_id in license, marking as cancelled in database', [
                     'user_id' => $user->id,
@@ -2462,14 +2497,20 @@ class PaymentController extends Controller
             }
 
             $subscriptionId = $userLicense->subscription_id;
-
-            $gateway = $user->paymentGateway ? $user->paymentGateway->name : null;
+            
             if (!$gateway) {
                 Log::error('No payment gateway associated with user', ['user_id' => $user->id]);
-                return redirect()->route('user.subscription.details')->with('error', 'No payment gateway found');
+                $errorMessage = 'No payment gateway found';
+                
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => $errorMessage
+                    ], 400);
+                }
+                
+                return redirect()->route('user.subscription.details')->with('error', $errorMessage);
             }
-
-            $gateway = strtolower($gateway);
 
             if ($gateway === 'fastspring') {
                 $fastSpringClient = new \App\Services\FastSpringClient(

@@ -51,6 +51,8 @@ class FastSpringCancellationTest extends TestCase
             'is_subscribed' => true,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->fastspringGateway->id,
+            'status' => 1,
+            'email_verified_at' => now(),
         ]);
 
         // Create user license
@@ -80,17 +82,19 @@ class FastSpringCancellationTest extends TestCase
             'payment_gateway_id' => $this->fastspringGateway->id
         ]);
 
-        // Mock the HTTP response from FastSpring API
+        // Mock the HTTP response from FastSpring API (DELETE request)
         Http::fake([
-            'api.fastspring.com/subscriptions/*' => Http::response([
-                'subscriptions' => [
-                    [
-                        'subscription' => 'test-subscription-123',
-                        'action' => 'subscription.cancel',
-                        'result' => 'success'
+            'api.fastspring.com/subscriptions/*' => function ($request) {
+                return Http::response([
+                    'subscriptions' => [
+                        [
+                            'subscription' => 'test-subscription-123',
+                            'action' => 'subscription.cancel',
+                            'result' => 'success'
+                        ]
                     ]
-                ]
-            ], 200)
+                ], 200);
+            }
         ]);
 
         // Act as the user
@@ -121,11 +125,13 @@ class FastSpringCancellationTest extends TestCase
         // Mock the HTTP response from FastSpring API to return an error
         // The response should not have 'subscriptions' array with 'result' => 'success'
         Http::fake([
-            'api.fastspring.com/subscriptions/*' => Http::response([
-                'error' => [
-                    'subscription' => 'Subscription not found'
-                ]
-            ], 404)
+            'api.fastspring.com/subscriptions/*' => function ($request) {
+                return Http::response([
+                    'error' => [
+                        'subscription' => 'Subscription not found'
+                    ]
+                ], 404);
+            }
         ]);
 
         // Act as the user
@@ -140,8 +146,9 @@ class FastSpringCancellationTest extends TestCase
             'success' => false
         ]);
         // The error message includes the error from FastSpring
-        $response->assertJsonFragment([
-            'error' => 'Failed to cancel subscription'
+        $response->assertJson([
+            'success' => false,
+            'error' => 'Failed to cancel subscription: Unknown error'
         ]);
 
         // Verify user subscription is still active
