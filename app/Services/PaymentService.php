@@ -45,7 +45,7 @@ class PaymentService
             }
         }
 
-        $activeGateway = PaymentGateways::where('is_active', true)->first(); dd($activeGateway);
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
         if (!$activeGateway) {
             throw new \Exception("No active payment gateway configured");
         }
@@ -61,12 +61,21 @@ class PaymentService
 
         $order = Order::create([
             'user_id' => $user->id,
-            'package' => $packageName,
-            'amount' => $package->price,
+            'package_id' => $package->id,
+            'amount' => $package->getEffectivePrice(),
             'status' => 'pending',
-            'order_id' => 'ORD-' . strtoupper(Str::random(10)),
-            'payment_method' => $user->paymentGateway ? $user->paymentGateway->name : null,
+            'transaction_id' => 'ORD-' . strtoupper(Str::random(10)),
+            'payment_gateway_id' => $user->payment_gateway_id,
         ]);
+
+        if ($package->isFree()) {
+            $order->update(['status' => 'completed']);
+            return [
+                'success' => true,
+                'orderId' => $order->id,
+                'message' => 'Free package activated'
+            ];
+        }
 
         $this->initializeGateway($order);
 

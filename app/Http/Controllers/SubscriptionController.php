@@ -310,7 +310,7 @@ class SubscriptionController extends Controller
                     $order->order_type = 'downgrade';
                     $order->status = 'scheduled_downgrade';
                     $order->transaction_id = 'SCHEDULED-DOWNGRADE-' . uniqid(); // Unique ID for scheduled order
-                    $order->amount = $targetPackage->price;
+                    $order->amount = $targetPackage->getEffectivePrice();
                     $order->currency = 'USD'; // Assuming USD, adjust if dynamic
                     $order->payment_method = $user->paymentGateway->name ?? 'N/A';
                     $order->metadata = [

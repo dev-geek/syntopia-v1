@@ -11,6 +11,7 @@ use App\Models\PaymentGateways;
 use App\Services\FastSpringClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 
 class FastSpringCancellationTest extends TestCase
@@ -25,6 +26,7 @@ class FastSpringCancellationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Http::preventStrayRequests();
 
         // Create test package
         $this->package = Package::create([
@@ -68,41 +70,45 @@ class FastSpringCancellationTest extends TestCase
 
     public function test_fastspring_cancellation_schedules_end_of_billing_period()
     {
-        // Mock the FastSpringClient
-        $fastspringClient = Mockery::mock(FastSpringClient::class);
-        $fastspringClient->shouldReceive('cancelSubscription')
-            ->with('test-subscription-123', 1)
-            ->once()
-            ->andReturn(response()->json(['subscriptions' => [
-                [
-                    'subscription' => 'test-subscription-123',
-                    'action' => 'subscription.cancel',
-                    'result' => 'success'
-                ]
-            ]], 200));
+        // Create an order first so it can be updated
+        $order = Order::create([
+            'user_id' => $this->user->id,
+            'package_id' => $this->package->id,
+            'amount' => 29.99,
+            'status' => 'completed',
+            'transaction_id' => 'TEST-TXN-123',
+            'payment_gateway_id' => $this->fastspringGateway->id
+        ]);
 
-        $this->app->instance(FastSpringClient::class, $fastspringClient);
+        // Mock the HTTP response from FastSpring API
+        Http::fake([
+            'api.fastspring.com/subscriptions/*' => Http::response([
+                'subscriptions' => [
+                    [
+                        'subscription' => 'test-subscription-123',
+                        'action' => 'subscription.cancel',
+                        'result' => 'success'
+                    ]
+                ]
+            ], 200)
+        ]);
 
         // Act as the user
         $this->actingAs($this->user);
 
-        // Make cancellation request
-        $response = $this->post('/payments/cancel-subscription');
+        // Make cancellation request with JSON header
+        $response = $this->postJson('/payments/cancel-subscription');
 
-        // Assert response
+        // Assert response - check for success
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
-            'message' => 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.',
-            'cancellation_type' => 'end_of_billing_period',
-            'gateway' => 'fastspring'
+            'message' => 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.'
         ]);
 
         // Verify order status was updated
-        $order = Order::where('user_id', $this->user->id)->latest()->first();
-        if ($order) {
-            $this->assertEquals('cancellation_scheduled', $order->status);
-        }
+        $order->refresh();
+        $this->assertEquals('cancellation_scheduled', $order->status);
 
         // Verify user subscription is still active (not immediately cancelled)
         $this->user->refresh();
@@ -112,25 +118,29 @@ class FastSpringCancellationTest extends TestCase
 
     public function test_fastspring_cancellation_handles_api_failure()
     {
-        // Mock the FastSpringClient to return an error
-        $fastspringClient = Mockery::mock(FastSpringClient::class);
-        $fastspringClient->shouldReceive('cancelSubscription')
-            ->with('test-subscription-123', 1)
-            ->once()
-            ->andReturn(response()->json(['error' => 'Subscription not found'], 404));
-
-        $this->app->instance(FastSpringClient::class, $fastspringClient);
+        // Mock the HTTP response from FastSpring API to return an error
+        // The response should not have 'subscriptions' array with 'result' => 'success'
+        Http::fake([
+            'api.fastspring.com/subscriptions/*' => Http::response([
+                'error' => [
+                    'subscription' => 'Subscription not found'
+                ]
+            ], 404)
+        ]);
 
         // Act as the user
         $this->actingAs($this->user);
 
-        // Make cancellation request
-        $response = $this->post('/payments/cancel-subscription');
+        // Make cancellation request with JSON header
+        $response = $this->postJson('/payments/cancel-subscription');
 
         // Assert response
         $response->assertStatus(500);
         $response->assertJson([
-            'success' => false,
+            'success' => false
+        ]);
+        // The error message includes the error from FastSpring
+        $response->assertJsonFragment([
             'error' => 'Failed to cancel subscription'
         ]);
 

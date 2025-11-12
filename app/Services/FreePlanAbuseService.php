@@ -56,7 +56,7 @@ class FreePlanAbuseService
                 return [
                     'allowed' => false,
                     'reason' => 'already_used',
-                    'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.',
+                    'message' => 'You have already used the free plan. Please buy a plan.',
                     'error_code' => 'FREE_PLAN_ALREADY_USED'
                 ];
             }
@@ -435,7 +435,7 @@ class FreePlanAbuseService
             return [
                 'allowed' => false,
                 'reason' => 'already_used',
-                'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.',
+                'message' => 'You have already used the free plan. Please buy a plan.',
                 'error_code' => 'FREE_PLAN_ALREADY_USED'
             ];
         }

@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
 use App\Services\SubscriptionService;
 use App\Services\PayProGlobalClient;
 use App\Services\DeviceFingerprintService;
+use App\Services\FreePlanAbuseService;
 use Carbon\Carbon;
 
 class PaymentController extends Controller
@@ -27,13 +28,15 @@ class PaymentController extends Controller
     private $subscriptionService;
     private $deviceFingerprintService;
     private $payProGlobalClient;
+    private $freePlanAbuseService;
 
     public function __construct(
         LicenseService $licenseService,
         LicenseApiService $licenseApiService,
         SubscriptionService $subscriptionService,
         DeviceFingerprintService $deviceFingerprintService,
-        PayProGlobalClient $payProGlobalClient
+        PayProGlobalClient $payProGlobalClient,
+        FreePlanAbuseService $freePlanAbuseService
     )
     {
         $this->licenseService = $licenseService;
@@ -41,6 +44,7 @@ class PaymentController extends Controller
         $this->subscriptionService = $subscriptionService;
         $this->deviceFingerprintService = $deviceFingerprintService;
         $this->payProGlobalClient = $payProGlobalClient;
+        $this->freePlanAbuseService = $freePlanAbuseService;
     }
 
     private function isPrivilegedUser(?\App\Models\User $user): bool
@@ -149,19 +153,115 @@ class PaymentController extends Controller
         ], 409);
     }
 
+    /**
+     * Handle free package assignment without payment gateway
+     */
+    private function handleFreePackageAssignment(Package $package, User $user, Request $request)
+    {
+        try {
+            // Check if user can use free plan (abuse prevention)
+            $eligibilityCheck = $this->freePlanAbuseService->canUseFreePlan($user, $request);
+            if (!$eligibilityCheck['allowed']) {
+                return response()->json([
+                    'error' => $eligibilityCheck['error_code'] ?? 'NOT_ALLOWED',
+                    'message' => $eligibilityCheck['message'] ?? 'You are not allowed to use the free plan.',
+                    'reason' => $eligibilityCheck['reason'] ?? 'not_allowed',
+                    'action' => 'contact_support'
+                ], 403);
+            }
+
+            DB::beginTransaction();
+
+            if (!$this->checkLicenseAvailability($package->name)) {
+                DB::rollBack();
+                return response()->json([
+                    'error' => 'Licenses temporarily unavailable',
+                    'message' => 'There is a technical issue with licenses for this plan. Please try again later or contact support.',
+                    'action' => 'retry_or_contact_support'
+                ], 409);
+            }
+
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'amount' => 0,
+                'currency' => 'USD',
+                'transaction_id' => 'FREE-' . strtoupper(Str::random(10)),
+                'status' => 'completed',
+                'metadata' => [
+                    'package' => $package->name,
+                    'action' => 'free_plan_assignment'
+                ]
+            ]);
+
+            $user->update([
+                'package_id' => $package->id,
+                'is_subscribed' => true,
+                'has_used_free_plan' => true,
+                'free_plan_used_at' => now()
+            ]);
+
+            // Record the free plan attempt for abuse tracking
+            $this->freePlanAbuseService->recordAttempt($request, $user);
+
+            $license = $this->licenseService->createAndActivateLicense(
+                $user,
+                $package,
+                'FREE-' . $user->id . '-' . time(),
+                null,
+                false
+            );
+
+            if (!$license) {
+                DB::rollBack();
+                Log::error('Failed to create license for free package', [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id
+                ]);
+                return response()->json([
+                    'error' => 'License Creation Failed',
+                    'message' => 'Failed to activate your free plan. Please contact support.',
+                    'action' => 'contact_support'
+                ], 500);
+            }
+
+            DB::commit();
+
+            Log::info('Free package assigned successfully', [
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'package_name' => $package->name,
+                'order_id' => $order->id,
+                'license_id' => $license->id
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Free plan activated successfully',
+                'redirect_url' => route('user.dashboard')
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to assign free package', [
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Assignment Failed',
+                'message' => 'Failed to activate your free plan. Please try again or contact support.',
+                'action' => 'retry_or_contact_support'
+            ], 500);
+        }
+    }
+
 
 
     public function paddleCheckout(Request $request, string $package)
     {
         Log::info('[paddleCheckout] called', ['package' => $package, 'user_id' => Auth::id()]);
         Log::info('Paddle checkout started', ['package' => $package, 'user_id' => Auth::id()]);
-
-        // Log Paddle configuration for debugging
-        Log::info('Paddle configuration', [
-            'api_key_exists' => !empty(config('payment.gateways.Paddle.api_key')),
-            'environment' => config('payment.gateways.Paddle.environment', 'sandbox'),
-            'api_url' => config('payment.gateways.Paddle.api_url')
-        ]);
 
         try {
             $processedPackage = $this->processPackageName($package);
@@ -173,6 +273,31 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            if ($packageData->isFree()) {
+                Log::info('Free package detected in paddleCheckout, assigning directly', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return $this->handleFreePackageAssignment($packageData, $user, $request);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error in paddleCheckout before payment gateway logic', [
+                'error' => $e->getMessage(),
+                'package' => $package,
+                'user_id' => Auth::id()
+            ]);
+            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
+        }
+
+        // Log Paddle configuration for debugging
+        Log::info('Paddle configuration', [
+            'api_key_exists' => !empty(config('payment.gateways.Paddle.api_key')),
+            'environment' => config('payment.gateways.Paddle.environment', 'sandbox'),
+            'api_url' => config('payment.gateways.Paddle.api_url')
+        ]);
+
+        try {
             // Block checkout if no licenses available for selected plan
             if (!$this->checkLicenseAvailability($packageData->name)) {
                 return $this->licenseUnavailableResponse($request);
@@ -300,7 +425,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'transaction_id' => 'PADDLE-PENDING-' . Str::random(10),
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
@@ -617,7 +742,6 @@ class PaymentController extends Controller
 
     public function fastspringCheckout(Request $request, $package)
     {
-
         try {
             $processedPackage = $this->processPackageName($package);
             $validation = $this->validatePackageAndGetUser($processedPackage);
@@ -627,6 +751,14 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            if ($packageData->isFree()) {
+                Log::info('Free package detected in fastspringCheckout, assigning directly', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return $this->handleFreePackageAssignment($packageData, $user, $request);
+            }
 
             if (!$this->checkLicenseAvailability($packageData->name)) {
                 return $this->licenseUnavailableResponse($request);
@@ -705,7 +837,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'transaction_id' => 'FS-PENDING-' . Str::random(10),
                 'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
@@ -753,17 +885,6 @@ class PaymentController extends Controller
             $processedPackage = $this->processPackageName($package);
             $user = Auth::user();
 
-            $isUpgrade = $request->input('is_upgrade', false);
-            $isDowngrade = $request->input('is_downgrade', false);
-
-            if (!($this->isPrivilegedUser($user)) && !$this->licenseService->canUserChangePlan($user)) {
-                return response()->json([
-                    'error' => 'Plan Change Restricted',
-                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
-                    'action' => 'info'
-                ], 403);
-            }
-
             if (!$user) {
                 Log::error('User not authenticated for PayProGlobal checkout');
                 return response()->json([
@@ -781,6 +902,25 @@ class PaymentController extends Controller
                     'message' => 'The selected package is not available or doesn\'t exist. Please choose a valid package.',
                     'action' => 'select_valid_package'
                 ], 400);
+            }
+
+            if ($packageData->isFree()) {
+                Log::info('Free package detected in payProGlobalCheckout, assigning directly', [
+                    'user_id' => $user->id,
+                    'package_name' => $packageData->name
+                ]);
+                return $this->handleFreePackageAssignment($packageData, $user, $request);
+            }
+
+            $isUpgrade = $request->input('is_upgrade', false);
+            $isDowngrade = $request->input('is_downgrade', false);
+
+            if (!($this->isPrivilegedUser($user)) && !$this->licenseService->canUserChangePlan($user)) {
+                return response()->json([
+                    'error' => 'Plan Change Restricted',
+                    'message' => 'You already have an active upgraded plan. Further upgrades or changes are not allowed until this plan expires.',
+                    'action' => 'info'
+                ], 403);
             }
 
             if ($isDowngrade) {
@@ -889,7 +1029,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'transaction_id' => $pendingOrderId,
                 'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
@@ -2399,6 +2539,14 @@ class PaymentController extends Controller
                     'subscription_id' => $subscriptionId,
                     'cancellation_type' => 'end_of_billing_period'
                 ]);
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.'
+                    ]);
+                }
+                return redirect()->route('user.subscription.details')->with('success', 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.');
             } elseif ($gateway === 'paddle') {
                 // Use PaddleClient for cancellation with end-of-billing-period by default
                 $paddleClient = new \App\Services\PaddleClient(config('payment.gateways.Paddle.api_key'));
@@ -2448,6 +2596,14 @@ class PaymentController extends Controller
                     'subscription_id' => $subscriptionId,
                     'cancellation_type' => 'end_of_billing_period'
                 ]);
+
+                if ($request->wantsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.'
+                    ]);
+                }
+                return redirect()->route('user.subscription.details')->with('success', 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.');
             } else { // This block will now handle PayProGlobal and any other unhandled gateways
                 // Delegate to SubscriptionService for cancellation, which handles PayProGlobal and other unhandled gateways
                 Log::info('Delegating cancellation to SubscriptionService', [
@@ -3331,7 +3487,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending_upgrade',
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
@@ -3404,7 +3560,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
@@ -3538,7 +3694,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
@@ -3607,7 +3763,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
@@ -3770,7 +3926,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
@@ -4055,7 +4211,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('paddle'),
@@ -4243,7 +4399,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('fastspring'),
@@ -4334,7 +4490,7 @@ class PaymentController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
-                'amount' => $packageData->price,
+                'amount' => $packageData->getEffectivePrice(),
                 'currency' => 'USD',
                 'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
@@ -4934,7 +5090,7 @@ class PaymentController extends Controller
                     'order_type' => 'downgrade',
                     'status' => 'scheduled_downgrade',
                     'transaction_id' => $pendingOrderId,
-                    'amount' => $targetPackage->price,
+                    'amount' => $targetPackage->getEffectivePrice(),
                     'currency' => 'USD',
                     'payment_method' => $user->paymentGateway->name ?? 'Pay Pro Global',
                     'metadata' => [
