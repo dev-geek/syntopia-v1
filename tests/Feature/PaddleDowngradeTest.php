@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\UserLicence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
+use Illuminate\Support\Facades\Http;
 
 class PaddleDowngradeTest extends TestCase
 {
@@ -22,6 +23,7 @@ class PaddleDowngradeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Http::preventStrayRequests();
 
         // Create test packages
         $this->proPackage = Package::create([
@@ -157,24 +159,26 @@ class PaddleDowngradeTest extends TestCase
             'password' => bcrypt('password'),
             'is_subscribed' => true,
             'package_id' => $this->proPackage->id,
-            'payment_gateway_id' => $this->paddleGateway->id
+            'payment_gateway_id' => $this->paddleGateway->id,
+            'paddle_customer_id' => 'cus_test123'
         ]);
 
-        UserLicence::create([
+        $userLicense = UserLicence::create([
             'user_id' => $user->id,
             'subscription_id' => 'sub_test123',
             'license_key' => 'test-license-key',
             'package_id' => $this->proPackage->id,
+            'payment_gateway_id' => $this->paddleGateway->id,
             'activated_at' => now(),
             'is_active' => true
         ]);
 
-        // Mock the Paddle API response
-        $this->mock(\Illuminate\Support\Facades\Http::class, function ($mock) {
-            $mock->shouldReceive('withHeaders')
-                ->andReturnSelf();
-            $mock->shouldReceive('get')
-                ->andReturn(response()->json([
+        $user->update(['user_license_id' => $userLicense->id]);
+
+        // Mock the Paddle API responses - need to match the actual API call pattern
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'sandbox-api.paddle.com/products')) {
+                return Http::response([
                     'data' => [
                         [
                             'id' => 'pro_123',
@@ -187,16 +191,19 @@ class PaddleDowngradeTest extends TestCase
                             ]
                         ]
                     ]
-                ]));
-            $mock->shouldReceive('post')
-                ->andReturn(response()->json([
+                ], 200);
+            }
+            if (str_contains($request->url(), 'sandbox-api.paddle.com/transactions')) {
+                return Http::response([
                     'data' => [
                         'id' => 'txn_123',
                         'checkout' => [
                             'url' => 'https://checkout.paddle.com/test'
                         ]
                     ]
-                ]));
+                ], 200);
+            }
+            return Http::response([], 404);
         });
 
         $response = $this->actingAs($user)
@@ -219,24 +226,26 @@ class PaddleDowngradeTest extends TestCase
             'password' => bcrypt('password'),
             'is_subscribed' => true,
             'package_id' => $this->proPackage->id,
-            'payment_gateway_id' => $this->paddleGateway->id
+            'payment_gateway_id' => $this->paddleGateway->id,
+            'paddle_customer_id' => 'cus_test123'
         ]);
 
-        UserLicence::create([
+        $userLicense = UserLicence::create([
             'user_id' => $user->id,
             'subscription_id' => 'sub_test123',
             'license_key' => 'test-license-key',
             'package_id' => $this->proPackage->id,
+            'payment_gateway_id' => $this->paddleGateway->id,
             'activated_at' => now(),
             'is_active' => true
         ]);
 
-        // Mock the Paddle API response
-        $this->mock(\Illuminate\Support\Facades\Http::class, function ($mock) {
-            $mock->shouldReceive('withHeaders')
-                ->andReturnSelf();
-            $mock->shouldReceive('get')
-                ->andReturn(response()->json([
+        $user->update(['user_license_id' => $userLicense->id]);
+
+        // Mock the Paddle API responses - need to match the actual API call pattern
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'sandbox-api.paddle.com/products')) {
+                return Http::response([
                     'data' => [
                         [
                             'id' => 'pro_123',
@@ -249,16 +258,19 @@ class PaddleDowngradeTest extends TestCase
                             ]
                         ]
                     ]
-                ]));
-            $mock->shouldReceive('post')
-                ->andReturn(response()->json([
+                ], 200);
+            }
+            if (str_contains($request->url(), 'sandbox-api.paddle.com/transactions')) {
+                return Http::response([
                     'data' => [
                         'id' => 'txn_123',
                         'checkout' => [
                             'url' => 'https://checkout.paddle.com/test'
                         ]
                     ]
-                ]));
+                ], 200);
+            }
+            return Http::response([], 404);
         });
 
         $this->actingAs($user)
@@ -270,8 +282,14 @@ class PaddleDowngradeTest extends TestCase
             'user_id' => $user->id,
             'package_id' => $this->starterPackage->id,
             'order_type' => 'downgrade',
-            'subscription_id' => 'sub_test123',
             'status' => 'pending'
         ]);
+
+        // Check that subscription_id is in metadata
+        $order = \App\Models\Order::where('user_id', $user->id)
+            ->where('order_type', 'downgrade')
+            ->first();
+        $this->assertNotNull($order);
+        $this->assertEquals('sub_test123', $order->metadata['subscription_id'] ?? null);
     }
 }

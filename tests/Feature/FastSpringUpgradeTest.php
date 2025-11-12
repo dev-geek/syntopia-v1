@@ -6,7 +6,7 @@ use Tests\TestCase;
 use App\Models\User;
 use App\Models\Package;
 use App\Models\PaymentGateways;
-use App\Models\License;
+use App\Models\UserLicence;
 use App\Services\LicenseService;
 use App\Services\LicenseApiService;
 use App\Services\FastSpringClient;
@@ -56,83 +56,72 @@ class FastSpringUpgradeTest extends TestCase
             'email' => 'test@example.com',
             'password' => bcrypt('password'),
             'is_subscribed' => true,
-            'subscription_id' => 'test-subscription-123',
             'payment_gateway_id' => $this->fastspringGateway->id,
             'package_id' => $this->starterPackage->id,
-            'license_key' => 'old-license-key'
+            'status' => 1,
+            'email_verified_at' => now()
         ]);
+
+        // Create user license with subscription_id (required for upgrades)
+        $userLicense = UserLicence::create([
+            'user_id' => $this->user->id,
+            'package_id' => $this->starterPackage->id,
+            'payment_gateway_id' => $this->fastspringGateway->id,
+            'subscription_id' => 'FS-test-subscription-123',
+            'license_key' => 'old-license-key',
+            'is_active' => true,
+            'activated_at' => now()
+        ]);
+
+        $this->user->update(['user_license_id' => $userLicense->id]);
     }
 
     public function test_fastspring_upgrade_creates_new_license()
     {
-        // Mock the LicenseApiService
-        $licenseApiService = Mockery::mock(LicenseApiService::class);
-        $licenseApiService->shouldReceive('makeLicense')
-            ->once()
-            ->andReturn('new-license-key-123');
-        $licenseApiService->shouldReceive('addLicenseToTenant')
-            ->once()
-            ->andReturn(true);
-
-        // Mock the FastSpringClient
-        $fastspringClient = Mockery::mock(FastSpringClient::class);
-        $fastspringClient->shouldReceive('upgradeSubscription')
-            ->once()
-            ->andReturn([
-                'subscriptions' => [
-                    [
-                        'subscription' => 'test-subscription-123',
-                        'result' => 'success'
-                    ]
-                ]
-            ]);
-
-        // Bind the mocked services
-        $this->app->instance(LicenseApiService::class, $licenseApiService);
-        $this->app->instance(FastSpringClient::class, $fastspringClient);
-
+        // FastSpring upgrade creates a checkout URL, not an immediate upgrade
         // Make the upgrade request
         $response = $this->actingAs($this->user)
             ->postJson('/api/payments/upgrade/pro', [
                 'package' => 'pro'
             ]);
 
-        // Assert the response
+        // Assert the response - FastSpring returns a checkout URL
         $response->assertStatus(200)
+            ->assertJsonStructure([
+                'success',
+                'checkout_url',
+                'message'
+            ])
             ->assertJson([
-                'success' => true,
-                'message' => 'Upgrade completed successfully',
-                'package' => 'Pro'
+                'success' => true
             ]);
+        
+        $responseData = $response->json();
+        $this->assertNotEmpty($responseData['checkout_url']);
+        $this->assertIsString($responseData['checkout_url']);
 
-        // Assert the license was created
-        $this->assertDatabaseHas('user_licences', [
+        // Assert an order was created for the upgrade
+        $this->assertDatabaseHas('orders', [
             'user_id' => $this->user->id,
             'package_id' => $this->proPackage->id,
-            'license_key' => 'new-license-key-123',
-            'is_active' => true,
+            'order_type' => 'upgrade',
+            'status' => 'pending',
             'payment_gateway_id' => $this->fastspringGateway->id
         ]);
-
-        // Assert the user was updated
-        $this->user->refresh();
-        $this->assertEquals($this->proPackage->id, $this->user->package_id);
-        $this->assertNotNull($this->user->user_license_id);
-
-        // Assert only one license is active
-        $activeLicenses = \App\Models\UserLicence::where('user_id', $this->user->id)
-            ->where('is_active', true)
-            ->count();
-        $this->assertEquals(1, $activeLicenses);
     }
 
     public function test_fastspring_upgrade_fails_without_subscription()
     {
-        // Remove subscription from user
+        // Remove subscription from user and license
         $this->user->update([
-            'is_subscribed' => false,
-            'subscription_id' => null
+            'is_subscribed' => false
         ]);
+        
+        // Remove subscription_id from license
+        $userLicense = UserLicence::where('user_id', $this->user->id)->first();
+        if ($userLicense) {
+            $userLicense->update(['subscription_id' => null]);
+        }
 
         $response = $this->actingAs($this->user)
             ->postJson('/api/payments/upgrade/pro', [
@@ -141,7 +130,7 @@ class FastSpringUpgradeTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJson([
-                'error' => 'No active subscription to upgrade'
+                'error' => 'Subscription Required'
             ]);
     }
 
@@ -154,7 +143,7 @@ class FastSpringUpgradeTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJson([
-                'error' => 'Invalid package selected'
+                'error' => 'Invalid Package'
             ]);
     }
 

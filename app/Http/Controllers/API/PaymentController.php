@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use App\Models\{Package, User, PaymentGateways, Order, UserLicence};
 use App\Services\FastSpringClient;
 use App\Services\LicenseService;
@@ -2063,8 +2064,11 @@ class PaymentController extends Controller
                 $receivedSignature = $request->header('Paddle-Signature');
                 $expectedSignature = hash_hmac('sha256', $request->getContent(), config('payment.gateways.Paddle.webhook_secret'));
 
-                if (!hash_equals($expectedSignature, $receivedSignature)) {
-                    Log::error('Invalid Paddle webhook signature');
+                if (!$receivedSignature || !hash_equals($expectedSignature, $receivedSignature)) {
+                    Log::error('Invalid Paddle webhook signature', [
+                        'has_received_signature' => !is_null($receivedSignature),
+                        'has_webhook_secret' => !empty(config('payment.gateways.Paddle.webhook_secret'))
+                    ]);
                     return response()->json(['error' => 'Invalid signature'], 401);
                 }
             }
@@ -2987,17 +2991,23 @@ class PaymentController extends Controller
                         'user_id' => $user->id,
                         'subscription_id' => $userLicense->subscription_id
                     ]);
-                    $userLicense->delete();
+                    $userLicense->forceDelete();
                 }
 
                 // Reset user's subscription data
-                $user->update([
+                $updateData = [
                     'is_subscribed' => false,
-                    'subscription_id' => null,
                     'package_id' => null,
                     'payment_gateway_id' => null,
                     'user_license_id' => null
-                ]);
+                ];
+                
+                // Only update subscription_id if the column exists
+                if (Schema::hasColumn('users', 'subscription_id')) {
+                    $updateData['subscription_id'] = null;
+                }
+                
+                $user->update($updateData);
 
                 // Update all orders with this subscription_id to canceled status
                 $orders = Order::where('user_id', $user->id)

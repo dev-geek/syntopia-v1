@@ -19,6 +19,9 @@ class PaddleUpgradeTest extends TestCase
     {
         parent::setUp();
 
+        // Disable webhook signature verification for tests
+        config(['payment.gateways.Paddle.webhook_secret' => null]);
+
         // Create payment gateway
         PaymentGateways::forceCreate([
             'name' => 'Paddle',

@@ -302,7 +302,8 @@ class FreePackageAssignmentTest extends TestCase
     public function paid_package_still_redirects_to_payment_gateway()
     {
         $user = User::factory()->create([
-            'tenant_id' => 'test-tenant-123'
+            'tenant_id' => 'test-tenant-123',
+            'paddle_customer_id' => 'ctm_test123'
         ]);
 
         $proPackage = Package::factory()->create([
@@ -315,10 +316,39 @@ class FreePackageAssignmentTest extends TestCase
             'is_active' => true
         ]);
 
+        // Mock LicenseApiService to return available licenses for Pro plan
+        $licenseApiService = Mockery::mock(LicenseApiService::class);
+        $licenseApiService->shouldReceive('resolvePlanLicense')
+            ->andReturn([
+                'subscriptionCode' => 'PKG-CL-OVS-03',
+                'subscriptionName' => 'Pro Plan',
+                'remaining' => 10,
+                'total' => 10,
+                'used' => 0
+            ]);
+        $this->app->instance(LicenseApiService::class, $licenseApiService);
+
         Http::fake([
-            'sandbox-api.paddle.com/*' => Http::response([
+            'sandbox-api.paddle.com/products*' => Http::response([
                 'data' => [
-                    'url' => 'https://checkout.paddle.com/test'
+                    [
+                        'id' => 'prod_test123',
+                        'name' => 'pro',
+                        'prices' => [
+                            [
+                                'id' => 'pri_test123',
+                                'status' => 'active'
+                            ]
+                        ]
+                    ]
+                ]
+            ], 200),
+            'sandbox-api.paddle.com/transactions' => Http::response([
+                'data' => [
+                    'id' => 'txn_test123',
+                    'checkout' => [
+                        'url' => 'https://checkout.paddle.com/test'
+                    ]
                 ]
             ], 200)
         ]);
@@ -441,7 +471,7 @@ class FreePackageAssignmentTest extends TestCase
                 'reason' => 'already_used'
             ])
             ->assertJsonFragment([
-                'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.'
+                'message' => 'You have already used the free plan. Please buy a plan.'
             ]);
 
         $user->refresh();

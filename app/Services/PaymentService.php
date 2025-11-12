@@ -287,8 +287,13 @@ class PaymentService
             'Starter' => $this->config['product_ids']['starter'],
             'Pro' => $this->config['product_ids']['pro'],
             'Business' => $this->config['product_ids']['business'],
-            'Enterprise' => $this->config['product_ids']['enterprise'],
         ];
+        
+        // Enterprise is optional - only use if it exists in config
+        if (isset($this->config['product_ids']['enterprise'])) {
+            $mapping['Enterprise'] = $this->config['product_ids']['enterprise'];
+        }
+        
         return $mapping[$package] ?? $this->config['product_ids']['starter'];
     }
 
