@@ -129,11 +129,21 @@ class RegisterController extends Controller
             'status' => ['nullable', 'integer'],
             'subscriber_password' => ['nullable', 'string'],
         ], [
+            'email.required' => 'Email address is required.',
+            'email.email' => 'Please enter a valid email address.',
+            'email.max' => 'Email address must not exceed 255 characters.',
+            'email.unique' => 'This email address is already registered. Please use a different email or try logging in.',
             'password.required' => 'Password is required.',
             'password.string' => 'Password must be a valid string.',
             'password.min' => 'Password must be at least 8 characters.',
             'password.max' => 'Password must not exceed 30 characters.',
             'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
+            'first_name.required' => 'First name is required.',
+            'first_name.string' => 'First name must be a valid text.',
+            'first_name.max' => 'First name must not exceed 255 characters.',
+            'last_name.required' => 'Last name is required.',
+            'last_name.string' => 'Last name must be a valid text.',
+            'last_name.max' => 'Last name must not exceed 255 characters.',
         ]);
 
         return $validator;
@@ -265,6 +275,15 @@ class RegisterController extends Controller
                 'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
             ],
         ], [
+            'email.required' => 'Email address is required.',
+            'email.email' => 'Please enter a valid email address.',
+            'email.unique' => 'This email address is already registered. Please use a different email or try logging in.',
+            'first_name.required' => 'First name is required.',
+            'first_name.string' => 'First name must be a valid text.',
+            'first_name.max' => 'First name must not exceed 255 characters.',
+            'last_name.required' => 'Last name is required.',
+            'last_name.string' => 'Last name must be a valid text.',
+            'last_name.max' => 'Last name must not exceed 255 characters.',
             'password.required' => 'Password is required.',
             'password.string' => 'Password must be a valid string.',
             'password.min' => 'Password must be at least 8 characters.',
@@ -346,8 +365,18 @@ class RegisterController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
+            $errorMessage = 'Registration failed. Please try again.';
+
+            if (str_contains($e->getMessage(), 'Duplicate entry') || str_contains($e->getMessage(), 'unique')) {
+                $errorMessage = 'This email address is already registered. Please use a different email or try logging in.';
+            } elseif (str_contains($e->getMessage(), 'SQLSTATE') || str_contains($e->getMessage(), 'database')) {
+                $errorMessage = 'A database error occurred. Please try again later or contact support if the problem persists.';
+            } elseif (str_contains($e->getMessage(), 'mail') || str_contains($e->getMessage(), 'email')) {
+                $errorMessage = 'There was an issue sending the verification email. Your account may have been created. Please try logging in or contact support.';
+            }
+
             return redirect()->back()
-                ->withErrors(['registration_error' => 'Registration failed. Please try again.'])
+                ->withErrors(['registration_error' => $errorMessage])
                 ->withInput();
         }
     }

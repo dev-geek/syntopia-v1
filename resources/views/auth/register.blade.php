@@ -289,7 +289,13 @@
                 return false;
             }
         });
-    });
+        });
     </script>
+
+    <!-- Spinner Component -->
+    @include('components.spinner-overlay')
+
+    <!-- Spinner Utility Script -->
+    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 </body>
 </html>

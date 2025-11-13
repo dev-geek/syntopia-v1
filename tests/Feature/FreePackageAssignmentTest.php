@@ -12,6 +12,7 @@ use App\Services\LicenseApiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Spatie\Permission\Models\Role;
 use Mockery;
 
 class FreePackageAssignmentTest extends TestCase
@@ -23,6 +24,9 @@ class FreePackageAssignmentTest extends TestCase
         parent::setUp();
         Log::spy();
         Http::preventStrayRequests();
+
+        // Create roles if they don't exist
+        Role::firstOrCreate(['name' => 'User', 'guard_name' => 'web']);
     }
 
     protected function tearDown(): void
@@ -484,6 +488,359 @@ class FreePackageAssignmentTest extends TestCase
         $this->assertNull($order);
 
         Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_with_free_package_name_assigns_free_package_automatically()
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        $this->mockLicenseApiService();
+
+        Http::fake();
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response->assertRedirect(route('user.dashboard'));
+        $response->assertSessionHas('success', 'Free plan has been assigned successfully!');
+
+        $user->refresh();
+        $this->assertEquals($freePackage->id, $user->package_id);
+        $this->assertTrue($user->is_subscribed);
+        $this->assertTrue($user->has_used_free_plan);
+        $this->assertNotNull($user->free_plan_used_at);
+
+        $order = Order::where('user_id', $user->id)
+            ->where('package_id', $freePackage->id)
+            ->first();
+
+        $this->assertNotNull($order);
+        $this->assertEquals('completed', $order->status);
+        $this->assertEquals(0, $order->amount);
+
+        // Note: FreePlanAbuseService::assignFreePlan() doesn't create licenses,
+        // only orders. Licenses are created via LicenseService in payment flows.
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_with_free_package_name_redirects_to_login_if_not_authenticated()
+    {
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        $response = $this->get('/subscription?package_name=free');
+
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHas('info', 'Please log in to get your free plan.');
+        $this->assertEquals(url('/subscription?package_name=free'), session('url.intended'));
+    }
+
+    /** @test */
+    public function subscription_route_with_free_package_name_prevents_duplicate_free_plan_assignment()
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+            'has_used_free_plan' => true,
+        ]);
+        $user->assignRole('User');
+
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        Http::fake();
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response->assertRedirect(route('subscription'));
+        $response->assertSessionHas('error');
+        $errorMessage = session('error');
+        $this->assertStringContainsString('already used', $errorMessage);
+
+        $user->refresh();
+        // User should not have the free package assigned
+        $this->assertNotEquals($freePackage->id, $user->package_id ?? null);
+
+        $order = Order::where('user_id', $user->id)
+            ->where('package_id', $freePackage->id)
+            ->where('status', 'completed')
+            ->first();
+
+        // Should not create a new order
+        $this->assertNull($order);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_prevents_free_plan_if_user_currently_has_free_package()
+    {
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+            'package_id' => $freePackage->id,
+            'is_subscribed' => true,
+        ]);
+        $user->assignRole('User');
+
+        Http::fake();
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response->assertRedirect(route('subscription'));
+        $response->assertSessionHas('error');
+        $errorMessage = session('error');
+        $this->assertStringContainsString('already used', $errorMessage);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_prevents_free_plan_if_user_has_previous_free_package_order()
+    {
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        // Create a previous completed order for free package
+        Order::create([
+            'user_id' => $user->id,
+            'package_id' => $freePackage->id,
+            'amount' => 0,
+            'status' => 'completed',
+            'transaction_id' => 'FREE-PREVIOUS-123',
+        ]);
+
+        $this->mockLicenseApiService();
+        Http::fake();
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response->assertRedirect(route('subscription'));
+        $response->assertSessionHas('error');
+        $errorMessage = session('error');
+        $this->assertStringContainsString('already used', $errorMessage);
+
+        // Should not create a new order
+        $newOrder = Order::where('user_id', $user->id)
+            ->where('package_id', $freePackage->id)
+            ->where('transaction_id', '!=', 'FREE-PREVIOUS-123')
+            ->first();
+
+        $this->assertNull($newOrder);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_prevents_free_plan_if_user_has_zero_amount_completed_order()
+    {
+        $paidPackage = Package::factory()->create([
+            'name' => 'Pro',
+            'price' => 99.99
+        ]);
+
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        // Create a zero-amount completed order (considered as free usage)
+        Order::create([
+            'user_id' => $user->id,
+            'package_id' => $paidPackage->id,
+            'amount' => 0,
+            'status' => 'completed',
+            'transaction_id' => 'ZERO-AMOUNT-123',
+        ]);
+
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        Http::fake();
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response->assertRedirect(route('subscription'));
+        $response->assertSessionHas('error');
+        $errorMessage = session('error');
+        $this->assertStringContainsString('already used', $errorMessage);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_allows_free_plan_only_once_per_user()
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        $this->mockLicenseApiService();
+        Http::fake();
+
+        // First attempt - should succeed
+        $response1 = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response1->assertRedirect(route('user.dashboard'));
+        $response1->assertSessionHas('success');
+
+        $user->refresh();
+        $this->assertEquals($freePackage->id, $user->package_id);
+        $this->assertTrue($user->has_used_free_plan);
+
+        // Second attempt - should fail
+        $response2 = $this->actingAs($user)->get('/subscription?package_name=free');
+
+        $response2->assertRedirect(route('subscription'));
+        $response2->assertSessionHas('error');
+        $errorMessage = session('error');
+        $this->assertNotNull($errorMessage);
+        $this->assertStringContainsString('already used', $errorMessage);
+
+        // Verify only one order was created
+        $orders = Order::where('user_id', $user->id)
+            ->where('package_id', $freePackage->id)
+            ->where('status', 'completed')
+            ->get();
+
+        $this->assertCount(1, $orders);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_with_free_package_name_works_case_insensitive()
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        $freePackage = Package::factory()->create([
+            'name' => 'Free',
+            'price' => 0
+        ]);
+
+        $this->mockLicenseApiService();
+
+        Http::fake();
+
+        // Test with uppercase
+        $response = $this->actingAs($user)->get('/subscription?package_name=FREE');
+
+        $response->assertRedirect(route('user.dashboard'));
+        $response->assertSessionHas('success');
+
+        $user->refresh();
+        $this->assertEquals($freePackage->id, $user->package_id);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_with_free_package_name_works_with_package_isFree_method()
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        // Package with price 0 (not named "Free") should also trigger free plan assignment
+        // Note: FreePlanAbuseService always assigns the "Free" package, not the original package
+        Package::factory()->create([
+            'name' => 'Starter',
+            'price' => 0
+        ]);
+
+        Http::fake();
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=Starter');
+
+        $response->assertRedirect(route('user.dashboard'));
+        $response->assertSessionHas('success');
+
+        $user->refresh();
+
+        // FreePlanAbuseService::assignFreePlan() always creates/finds a "Free" package
+        $freePackage = Package::where('name', 'Free')->first();
+        $this->assertNotNull($freePackage);
+        $this->assertEquals($freePackage->id, $user->package_id);
+
+        Http::assertNothingSent();
+    }
+
+    /** @test */
+    public function subscription_route_with_paid_package_name_shows_subscription_page()
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'test-tenant-123',
+            'status' => 1,
+            'email_verified_at' => now(),
+        ]);
+        $user->assignRole('User');
+
+        $paidPackage = Package::factory()->create([
+            'name' => 'Pro',
+            'price' => 99.99
+        ]);
+
+        $response = $this->actingAs($user)->get('/subscription?package_name=Pro');
+
+        // Should show subscription page, not redirect
+        $response->assertStatus(200);
+        $response->assertViewIs('subscription.index');
+
+        $user->refresh();
+        // User should not have the package assigned yet
+        $this->assertNotEquals($paidPackage->id, $user->package_id ?? null);
     }
 
 }

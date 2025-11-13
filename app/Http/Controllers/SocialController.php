@@ -396,7 +396,15 @@ class SocialController extends Controller
         if (session()->has('url.intended')) {
             $intendedUrl = session('url.intended');
             session()->forget('url.intended');
-            return redirect()->to($intendedUrl)->with('login_success', $message);
+            
+            // Validate URL based on user role
+            // For regular users, only allow safe (non-admin) URLs
+            if ($user->hasRole('User') && !$this->isUrlSafeForUser($intendedUrl)) {
+                // Ignore unsafe intended URL for regular users, fall through to role-based redirect
+            } else {
+                // For admins, allow any URL; for users, only safe URLs
+                return redirect()->to($intendedUrl)->with('login_success', $message);
+            }
         }
 
         if ($user->hasAnyRole(['Super Admin'])) {
@@ -438,6 +446,24 @@ class SocialController extends Controller
             return false;
         }
 
+        return true;
+    }
+
+    /**
+     * Check if a URL is safe for regular users (not admin routes)
+     */
+    private function isUrlSafeForUser(string $url): bool
+    {
+        // Parse the URL to get the path
+        $parsedUrl = parse_url($url);
+        $path = $parsedUrl['path'] ?? '';
+
+        // Block admin routes
+        if (str_starts_with($path, '/admin')) {
+            return false;
+        }
+
+        // Allow other routes (user routes, public routes, etc.)
         return true;
     }
 

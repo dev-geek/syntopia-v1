@@ -408,27 +408,33 @@
                                                 <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
                                             </a>
                                         </span>
-                                        <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
-                                            <a class="btn btn-info disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
-                                                <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
-                                            </a>
-                                        </span>
+                                        @if(!$isFreePackage)
+                                            <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
+                                                <a class="btn btn-info disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
+                                                    <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                                </a>
+                                            </span>
+                                        @endif
                                     @else
                                         <a class="btn btn-success" href="{{ route('subscription', ['type' => 'upgrade']) }}">
                                             <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
                                         </a>
-                                        <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
-                                            <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
-                                        </a>
+                                        @if(!$isFreePackage)
+                                            <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
+                                                <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                            </a>
+                                        @endif
                                     @endif
-                                    @if ($hasScheduledCancellation)
-                                        <button class="btn btn-secondary" disabled>
-                                            <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
-                                        </button>
-                                    @else
-                                        <button class="btn btn-danger" id="cancelSubscriptionBtn">
-                                            <i class="fas fa-times mr-1"></i>Cancel Subscription
-                                        </button>
+                                    @if(!$isFreePackage)
+                                        @if ($hasScheduledCancellation)
+                                            <button class="btn btn-secondary" disabled>
+                                                <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
+                                            </button>
+                                        @else
+                                            <button class="btn btn-danger" id="cancelSubscriptionBtn">
+                                                <i class="fas fa-times mr-1"></i>Cancel Subscription
+                                            </button>
+                                        @endif
                                     @endif
                                 @elseif ($hasActiveSubscription && !$canUpgrade)
                                     @php
@@ -446,27 +452,33 @@
                                                 <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
                                             </a>
                                         </span>
-                                        <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
-                                            <a class="btn btn-info disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
-                                                <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
-                                            </a>
-                                        </span>
+                                        @if(!$isFreePackage)
+                                            <span data-toggle="tooltip" data-placement="bottom" title="{{ $lockTooltip }}">
+                                                <a class="btn btn-info disabled" href="javascript:void(0);" aria-disabled="true" tabindex="-1" style="pointer-events: none;">
+                                                    <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                                </a>
+                                            </span>
+                                        @endif
                                     @else
                                         <a class="btn btn-success" href="{{ route('subscription', ['type' => 'upgrade']) }}">
                                             <i class="fas fa-arrow-up mr-1"></i>Upgrade Subscription
                                         </a>
-                                        <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
-                                            <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
-                                        </a>
+                                        @if(!$isFreePackage)
+                                            <a class="btn btn-info" href="{{ route('subscription', ['type' => 'downgrade']) }}">
+                                                <i class="fas fa-arrow-down mr-1"></i>Downgrade Subscription
+                                            </a>
+                                        @endif
                                     @endif
-                                    @if ($hasScheduledCancellation)
-                                        <button class="btn btn-secondary" disabled>
-                                            <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
-                                        </button>
-                                    @else
-                                        <button class="btn btn-danger" id="cancelSubscriptionBtn">
-                                            <i class="fas fa-times mr-1"></i>Cancel Subscription
-                                        </button>
+                                    @if(!$isFreePackage)
+                                        @if ($hasScheduledCancellation)
+                                            <button class="btn btn-secondary" disabled>
+                                                <i class="fas fa-clock mr-1"></i>Cancellation Scheduled
+                                            </button>
+                                        @else
+                                            <button class="btn btn-danger" id="cancelSubscriptionBtn">
+                                                <i class="fas fa-times mr-1"></i>Cancel Subscription
+                                            </button>
+                                        @endif
                                     @endif
                                 @endif
                             </div>

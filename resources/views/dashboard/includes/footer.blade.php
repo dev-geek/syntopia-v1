@@ -35,11 +35,16 @@
         </div>
         <!-- ./wrapper -->
 
+        <!-- Spinner Component -->
+        @include('components.spinner-overlay')
+
         <!-- REQUIRED SCRIPTS -->
         <!-- jQuery -->
         <script src="{{ asset('plugins/jquery/jquery.min.js') }}"></script>
         <!-- Bootstrap -->
         <script src="{{ asset('plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+        <!-- Spinner Utility Script -->
+        <script src="{{ asset('js/spinner-utils.js') }}"></script>
         <!-- overlayScrollbars -->
         <script src="{{ asset('plugins/overlayScrollbars/js/jquery.overlayScrollbars.min.js') }}"></script>
         <!-- AdminLTE App -->

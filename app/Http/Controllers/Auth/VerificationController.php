@@ -139,12 +139,16 @@ class VerificationController extends Controller
                 if (session()->has('verification_intended_url')) {
                     $intendedUrl = session('verification_intended_url');
                     session()->forget('verification_intended_url');
-                    Log::info('[verifyCode] Redirecting to intended URL', [
-                        'user_id' => $user->id,
-                        'intended_url' => $intendedUrl
-                    ]);
-                    return redirect()->to($intendedUrl)
-                        ->with('success', 'Email verified successfully!');
+                    
+                    // Only redirect if the URL is safe for regular users (not admin routes)
+                    if ($this->isUrlSafeForUser($intendedUrl)) {
+                        Log::info('[verifyCode] Redirecting to intended URL', [
+                            'user_id' => $user->id,
+                            'intended_url' => $intendedUrl
+                        ]);
+                        return redirect()->to($intendedUrl)
+                            ->with('success', 'Email verified successfully!');
+                    }
                 }
 
                 // Check if user has active subscription
@@ -239,6 +243,24 @@ class VerificationController extends Controller
             return false;
         }
 
+        return true;
+    }
+
+    /**
+     * Check if a URL is safe for regular users (not admin routes)
+     */
+    private function isUrlSafeForUser(string $url): bool
+    {
+        // Parse the URL to get the path
+        $parsedUrl = parse_url($url);
+        $path = $parsedUrl['path'] ?? '';
+
+        // Block admin routes
+        if (str_starts_with($path, '/admin')) {
+            return false;
+        }
+
+        // Allow other routes (user routes, public routes, etc.)
         return true;
     }
 

@@ -125,11 +125,19 @@
 				@if(str_contains($exception?->getMessage() ?? '', 'Registration'))
 					We suspect an account has already been registered from this device or network. If this seems wrong, please contact support.
 				@else
-					You don't have permission to access this resource.
+					This area requires special access privileges that your account doesn't currently have. This could be because you need administrator permissions, a different subscription level, or your account hasn't been granted access to this feature yet.
 				@endif
 			</p>
 			<div class="message">
-				{{ $exception?->getMessage() ?: 'This action is unauthorized.' }}
+				@if(str_contains($exception?->getMessage() ?? '', 'Registration'))
+					{{ $exception->getMessage() }}
+				@else
+					@if($exception?->getMessage() && $exception->getMessage() !== 'This action is unauthorized.')
+						{{ $exception->getMessage() }}
+					@else
+						If you believe you should have access to this resource, please contact your administrator or support team. They can review your account and grant the necessary permissions.
+					@endif
+				@endif
 			</div>
 
 			<div class="actions">

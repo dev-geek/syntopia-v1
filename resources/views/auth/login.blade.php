@@ -654,8 +654,14 @@
 
     </script>
 
+    <!-- Spinner Component -->
+    @include('components.spinner-overlay')
+
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <!-- Spinner Utility Script -->
+    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
     <!-- SWAL Error Handling -->
     <script>

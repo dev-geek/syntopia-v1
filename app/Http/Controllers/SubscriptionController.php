@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentGateways;
 use App\Services\SubscriptionService;
+use App\Services\FreePlanAbuseService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,10 +17,12 @@ use Carbon\Carbon;
 class SubscriptionController extends Controller
 {
     private $subscriptionService;
+    private $freePlanAbuseService;
 
-    public function __construct(SubscriptionService $subscriptionService)
+    public function __construct(SubscriptionService $subscriptionService, FreePlanAbuseService $freePlanAbuseService)
     {
         $this->subscriptionService = $subscriptionService;
+        $this->freePlanAbuseService = $freePlanAbuseService;
     }
 
     private function hasActiveSubscription($user)
@@ -203,16 +206,22 @@ class SubscriptionController extends Controller
         return $activeGateway;
     }
 
-    public function handleSubscription()
+    public function handleSubscription(Request $request)
     {
         $user = Auth::user();
         return $this->hasActiveSubscription($user)
             ? redirect()->route('user.dashboard')
-            : $this->index();
+            : $this->index($request);
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        // Check if there's a package_name query parameter
+        $packageName = $request->query('package_name');
+        if ($packageName) {
+            return $this->showSubscriptionWithPackage($request);
+        }
+
         return $this->showSubscriptionPage('new');
     }
 
@@ -220,15 +229,6 @@ class SubscriptionController extends Controller
     {
         $packageName = $request->query('package_name');
         $type = $request->query('type');
-
-        // Check if user is authenticated
-        // This check is removed because the route should be publicly accessible
-        // The 'auth' middleware will handle unauthenticated users accessing protected routes.
-        // if (!auth()->check()) {
-        //     // Store the intended URL to redirect back after login
-        //     session(['url.intended' => $request->fullUrl()]);
-        //     return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
-        // }
 
         // Handle different types
         if ($type === 'upgrade') {
@@ -239,17 +239,41 @@ class SubscriptionController extends Controller
             return $this->showSubscriptionPage('downgrade');
         }
 
-        // Handle package_name parameter (existing logic)
+        // Handle package_name parameter
         if ($packageName) {
             $package = Package::where('name', $packageName)->first();
             if (!$package) {
                 return redirect()->route('subscription')->with('error', 'Invalid package selected.');
             }
 
+            if (strtolower($packageName) === 'free' || $package->isFree()) {
+                if (!auth()->check()) {
+                    session(['url.intended' => $request->fullUrl()]);
+                    return redirect()->route('login')->with('info', 'Please log in to get your free plan.');
+                }
+
+                $user = Auth::user();
+
+                $eligibilityCheck = $this->freePlanAbuseService->canUseFreePlan($user, $request);
+                if (!$eligibilityCheck['allowed']) {
+                    return redirect()->route('subscription')
+                        ->with('error', $eligibilityCheck['message'] ?? 'You are not eligible for the free plan.');
+                }
+
+                $result = $this->freePlanAbuseService->assignFreePlan($user, $request);
+
+                if (!$result['success']) {
+                    return redirect()->route('subscription')
+                        ->with('error', $result['message'] ?? 'Failed to assign free plan. Please try again.');
+                }
+
+                return redirect()->route('user.dashboard')
+                    ->with('success', 'Free plan has been assigned successfully!');
+            }
+
             return $this->showSubscriptionPage('new', $package);
         }
 
-        // Default behavior - show subscription page without specific package
         return $this->showSubscriptionPage('new');
     }
 
@@ -257,7 +281,6 @@ class SubscriptionController extends Controller
     {
 
         if ($request->isMethod('post') && $package) {
-            // Delegate to PaymentController for checkout
             $paymentController = app(PaymentController::class);
             return $paymentController->fastspringCheckout($request, $package);
         }
@@ -281,15 +304,11 @@ class SubscriptionController extends Controller
                 return redirect()->route('user.subscription.details')->with('error', 'Invalid package selected for downgrade.');
             }
 
-            // Check if user's payment gateway is Pay Pro Global
             if ($user->paymentGateway && $user->paymentGateway->name === 'Pay Pro Global') {
-                // Delegate to PaymentController for PayProGlobal downgrade checkout
                 $paymentController = app(PaymentController::class);
                 return $paymentController->payproglobalDowngrade($request);
             }
 
-            // Existing logic for other payment gateways (scheduled downgrade)
-            // Check if there is an active license and its expiry
             $activeLicense = $user->userLicence;
             if (!$activeLicense || !$activeLicense->expires_at) {
                 return redirect()->route('user.subscription.details')->with('error', 'No active subscription found to downgrade.');
@@ -550,6 +569,8 @@ class SubscriptionController extends Controller
 
         return view('subscription.details', [
             'currentPackage' => $package ? $package->name : null,
+            'currentPackageModel' => $package,
+            'isFreePackage' => $package && $package->isFree(),
             'user' => $user,
             'calculatedEndDate' => $calculatedEndDate,
             'hasActiveSubscription' => $hasActiveSubscription,

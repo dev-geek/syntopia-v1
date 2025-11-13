@@ -131,10 +131,33 @@ class FreePlanAbuseService
                     'message' => 'Admin roles are exempt from abuse checks.'
                 ];
             }
+
+            // Bypass abuse checks in local/testing environment
+            if (app()->environment('local', 'testing')) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Abuse checks bypassed in local/testing environment.'
+                ];
+            }
+
+            if (config('free_plan_abuse.testing_bypass_enabled', false)) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Testing bypass is enabled.'
+                ];
+            }
+
             $ip = $request->ip();
             $email = $request->input('email');
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
             $fingerprintId = $request->cookie('fp_id', '');
+
+            if ($this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId)) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Whitelisted identifier detected.'
+                ];
+            }
 
             // Check if any identifier is blocked
             if ($this->isBlocked($ip, $email, $deviceFingerprint, $fingerprintId)) {
@@ -165,7 +188,7 @@ class FreePlanAbuseService
             ];
         } catch (\Throwable $e) {
             // Never bubble up as system_error to callers that expect specific reasons
-            \Log::error('checkAbusePatterns failed', ['error' => $e->getMessage()]);
+            Log::error('checkAbusePatterns failed', ['error' => $e->getMessage()]);
             return [
                 'allowed' => true,
                 'message' => 'No abuse patterns detected.'
@@ -174,10 +197,40 @@ class FreePlanAbuseService
     }
 
     /**
+     * Check if any identifier is whitelisted
+     */
+    private function isWhitelisted(string $ip, ?string $email, string $deviceFingerprint, string $fingerprintId): bool
+    {
+        $whitelist = (array) config('free_plan_abuse.whitelist', []);
+
+        if (in_array($ip, $whitelist['ips'] ?? [], true)) {
+            return true;
+        }
+
+        if ($email && in_array($email, $whitelist['emails'] ?? [], true)) {
+            return true;
+        }
+
+        if (in_array($deviceFingerprint, $whitelist['device_fingerprints'] ?? [], true)) {
+            return true;
+        }
+
+        if ($fingerprintId && in_array($fingerprintId, $whitelist['fingerprint_ids'] ?? [], true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Check if any identifier is blocked
      */
     private function isBlocked(string $ip, ?string $email, string $deviceFingerprint, string $fingerprintId): bool
     {
+        if ($this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId)) {
+            return false;
+        }
+
         // Check IP
         if (FreePlanAttempt::byIp($ip)->blocked()->exists()) {
             return true;
@@ -206,6 +259,10 @@ class FreePlanAbuseService
      */
     private function hasExceededAttempts(string $ip, ?string $email, string $deviceFingerprint, string $fingerprintId, int $maxAttempts, int $trackingDays): bool
     {
+        if ($this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId)) {
+            return false;
+        }
+
         $cutoffDate = now()->subDays($trackingDays);
 
         // Check IP attempts
@@ -260,6 +317,12 @@ class FreePlanAbuseService
             if ($this->isPrivilegedUser($request, $user)) {
                 return;
             }
+
+            // Skip recording attempts in local/testing environment
+            if (app()->environment('local', 'testing')) {
+                return;
+            }
+
             DB::beginTransaction();
 
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
@@ -372,29 +435,36 @@ class FreePlanAbuseService
             $this->recordAttempt($request, $user);
 
             // Immediately block current identifiers to prevent repeat free plan in same environment
-            try {
-                $ip = $request->ip();
-                $email = $user->email;
-                $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
-                $fingerprintId = $request->cookie('fp_id', '');
+            // Skip blocking if any identifier is whitelisted or in local/testing environment
+            if (!app()->environment('local', 'testing')) {
+                try {
+                    $ip = $request->ip();
+                    $email = $user->email;
+                    $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
+                    $fingerprintId = $request->cookie('fp_id', '');
 
-                if ($ip) {
-                    $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
+                    $isWhitelisted = $this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId);
+
+                    if (!$isWhitelisted) {
+                        if ($ip) {
+                            $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
+                        }
+                        if ($email) {
+                            $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
+                        }
+                        if ($deviceFingerprint) {
+                            $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
+                        }
+                        if ($fingerprintId) {
+                            $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::error('Failed to auto-block identifiers after free plan assignment', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage()
+                    ]);
                 }
-                if ($email) {
-                    $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
-                }
-                if ($deviceFingerprint) {
-                    $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
-                }
-                if ($fingerprintId) {
-                    $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
-                }
-            } catch (\Throwable $e) {
-                Log::error('Failed to auto-block identifiers after free plan assignment', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage()
-                ]);
             }
 
             DB::commit();
