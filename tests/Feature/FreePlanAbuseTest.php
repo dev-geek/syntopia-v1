@@ -22,6 +22,10 @@ class FreePlanAbuseTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Disable bypass in testing environment so we can test abuse patterns
+        config(['free_plan_abuse.bypass_in_testing' => false]);
+
         $this->deviceFingerprintService = new DeviceFingerprintService();
         $this->freePlanAbuseService = new FreePlanAbuseService($this->deviceFingerprintService);
     }
@@ -297,6 +301,8 @@ class FreePlanAbuseTest extends TestCase
         $whitelistedIp = '127.0.0.1';
         $request = $this->createMockRequest(['ip' => $whitelistedIp]);
 
+        // Ensure bypass is disabled and whitelist is configured
+        config(['free_plan_abuse.bypass_in_testing' => false]);
         config(['free_plan_abuse.whitelist.ips' => [$whitelistedIp]]);
 
         // Block the IP

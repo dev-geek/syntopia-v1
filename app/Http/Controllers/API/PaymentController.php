@@ -205,25 +205,33 @@ class PaymentController extends Controller
             // Record the free plan attempt for abuse tracking
             $this->freePlanAbuseService->recordAttempt($request, $user);
 
-            $license = $this->licenseService->createAndActivateLicense(
-                $user,
-                $package,
-                'FREE-' . $user->id . '-' . time(),
-                null,
-                false
-            );
+            // For free plans, license creation is optional
+            // If user doesn't have tenant_id, skip license creation (it's not required for free plans)
+            $license = null;
+            if ($user->tenant_id) {
+                $license = $this->licenseService->createAndActivateLicense(
+                    $user,
+                    $package,
+                    'FREE-' . $user->id . '-' . time(),
+                    null,
+                    false
+                );
 
-            if (!$license) {
-                DB::rollBack();
-                Log::error('Failed to create license for free package', [
+                if (!$license) {
+                    // Log warning but don't fail - free plans don't strictly require licenses
+                    Log::warning('Failed to create license for free package, but continuing anyway', [
+                        'user_id' => $user->id,
+                        'package_id' => $package->id,
+                        'reason' => 'License creation failed but free plan assignment continues'
+                    ]);
+                }
+            } else {
+                // User doesn't have tenant_id (e.g., created by admin and verified with "already registered" error)
+                // This is fine for free plans - they don't require a license
+                Log::info('Skipping license creation for free plan - user does not have tenant_id', [
                     'user_id' => $user->id,
                     'package_id' => $package->id
                 ]);
-                return response()->json([
-                    'error' => 'License Creation Failed',
-                    'message' => 'Failed to activate your free plan. Please contact support.',
-                    'action' => 'contact_support'
-                ], 500);
             }
 
             DB::commit();
@@ -233,7 +241,9 @@ class PaymentController extends Controller
                 'package_id' => $package->id,
                 'package_name' => $package->name,
                 'order_id' => $order->id,
-                'license_id' => $license->id
+                'license_id' => $license?->id,
+                'has_license' => $license !== null,
+                'has_tenant_id' => !empty($user->tenant_id)
             ]);
 
             return response()->json([
@@ -2403,23 +2413,23 @@ class PaymentController extends Controller
             if (!$user->is_subscribed) {
                 Log::error('User has no active subscription to cancel', ['user_id' => $user->id]);
                 $errorMessage = 'No active subscription found to cancel. Please ensure you have an active subscription before attempting to cancel.';
-                
+
                 if ($request->wantsJson()) {
                     return response()->json([
                         'success' => false,
                         'error' => $errorMessage
                     ], 400);
                 }
-                
+
                 return redirect()->route('user.subscription.details')->with('error', $errorMessage);
             }
 
             // Check if user has subscription_id in user_licences table
             $userLicense = $user->userLicence;
-            
+
             $gateway = $user->paymentGateway ? $user->paymentGateway->name : null;
             $gateway = $gateway ? strtolower($gateway) : null;
-            
+
             // For FastSpring, require subscription_id - return error if missing
             if ($gateway === 'fastspring') {
                 if (!$userLicense || !$userLicense->subscription_id) {
@@ -2428,20 +2438,20 @@ class PaymentController extends Controller
                         'has_license' => $userLicense !== null,
                         'subscription_id' => $userLicense?->subscription_id
                     ]);
-                    
+
                     $errorMessage = 'No subscription ID found. Please contact support.';
-                    
+
                     if ($request->wantsJson()) {
                         return response()->json([
                             'success' => false,
                             'error' => $errorMessage
                         ], 400);
                     }
-                    
+
                     return redirect()->route('user.subscription.details')->with('error', $errorMessage);
                 }
             }
-            
+
             if (!$userLicense || !$userLicense->subscription_id) {
                 Log::info('User has subscription but no subscription_id in license, marking as cancelled in database', [
                     'user_id' => $user->id,
@@ -2501,18 +2511,18 @@ class PaymentController extends Controller
             }
 
             $subscriptionId = $userLicense->subscription_id;
-            
+
             if (!$gateway) {
                 Log::error('No payment gateway associated with user', ['user_id' => $user->id]);
                 $errorMessage = 'No payment gateway found';
-                
+
                 if ($request->wantsJson()) {
                     return response()->json([
                         'success' => false,
                         'error' => $errorMessage
                     ], 400);
                 }
-                
+
                 return redirect()->route('user.subscription.details')->with('error', $errorMessage);
             }
 
@@ -3001,12 +3011,12 @@ class PaymentController extends Controller
                     'payment_gateway_id' => null,
                     'user_license_id' => null
                 ];
-                
+
                 // Only update subscription_id if the column exists
                 if (Schema::hasColumn('users', 'subscription_id')) {
                     $updateData['subscription_id'] = null;
                 }
-                
+
                 $user->update($updateData);
 
                 // Update all orders with this subscription_id to canceled status

@@ -13,6 +13,14 @@ class FreePlanAbuseApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        
+        // Disable bypass in testing environment so we can test abuse patterns
+        config(['free_plan_abuse.bypass_in_testing' => false]);
+    }
+
     /** @test */
     public function authenticated_user_can_check_free_plan_eligibility()
     {

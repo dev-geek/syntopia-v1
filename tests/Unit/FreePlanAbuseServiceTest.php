@@ -22,6 +22,10 @@ class FreePlanAbuseServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        
+        // Disable bypass in testing environment so we can test abuse patterns
+        config(['free_plan_abuse.bypass_in_testing' => false]);
+        
         $this->deviceFingerprintService = new DeviceFingerprintService();
         $this->freePlanAbuseService = new FreePlanAbuseService($this->deviceFingerprintService);
     }

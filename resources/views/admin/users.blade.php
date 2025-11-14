@@ -38,6 +38,7 @@
                                         <th>Email</th>
                                         <th>Role</th>
                                         <th>Status</th>
+                                        <th class="d-none">Created At</th>
                                         @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
                                             <th>
                                                 Action
@@ -63,6 +64,7 @@
                                         @else
                                             <td>Deactive</td>
                                         @endif
+                                        <td class="d-none">{{ $user->created_at->timestamp }}</td>
                                         @if (Auth::check() && Auth::user()->hasRole('Super Admin'))
                                             <td>
                                                 <a href="{{ route('admin.manage.profile', $user->id) }}"
@@ -101,6 +103,7 @@
 
 <x-datatable
     tableId="example1"
+    :order="json_encode([[4, 'desc']])"
     :language="json_encode([
         'lengthMenu' => 'Show _MENU_ users per page',
         'zeroRecords' => 'No users found',
@@ -116,6 +119,22 @@
         ]
     ])"
 />
+
+<script>
+    // Configure columnDefs for the hidden Created At column
+    $(document).ready(function() {
+        if ($.fn.DataTable && $('#example1').length) {
+            // Wait for DataTable to initialize, then configure columnDefs
+            setTimeout(function() {
+                const table = $('#example1').DataTable();
+                if (table) {
+                    // Hide the Created At column (index 4) and make it non-searchable
+                    table.column(4).visible(false);
+                }
+            }, 100);
+        }
+    });
+</script>
 <!-- Control Sidebar -->
 <!-- /.control-sidebar -->
 </div>
@@ -123,6 +142,39 @@
 <script src="{{ asset('js/swal-utils.js') }}"></script>
 
 <script>
+    // Show spinner on page load if DataTables is initializing
+    document.addEventListener('DOMContentLoaded', function() {
+        // Show spinner during DataTables initialization
+        if (window.SpinnerUtils) {
+            window.SpinnerUtils.show('Loading users...');
+        } else if (document.getElementById('spinnerOverlay')) {
+            const spinner = document.getElementById('spinnerOverlay');
+            spinner.classList.add('active');
+            const spinnerText = document.getElementById('spinnerText');
+            if (spinnerText) spinnerText.textContent = 'Loading users...';
+        } else if (document.getElementById('globalSpinner')) {
+            document.getElementById('globalSpinner').style.display = 'flex';
+        }
+
+        // Hide spinner after DataTables is initialized
+        if (window.jQuery && $.fn.DataTable) {
+            $(document).ready(function() {
+                // DataTables will be initialized by the datatable component
+                // Hide spinner after a short delay to ensure DataTables is ready
+                setTimeout(function() {
+                    if (window.SpinnerUtils) {
+                        window.SpinnerUtils.hide();
+                    } else if (document.getElementById('spinnerOverlay')) {
+                        document.getElementById('spinnerOverlay').classList.remove('active');
+                    } else if (document.getElementById('globalSpinner')) {
+                        document.getElementById('globalSpinner').style.display = 'none';
+                    }
+                }, 500);
+            });
+        }
+    });
+
+    // Handle delete form submissions with spinner
     document.querySelectorAll('.delete-form').forEach(form => {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -130,10 +182,45 @@
             SwalUtils.showDeleteConfirm('This action cannot be undone!')
                 .then((result) => {
                     if (result.isConfirmed) {
+                        // Show spinner when submitting delete form
+                        if (window.SpinnerUtils) {
+                            window.SpinnerUtils.show('Deleting user...');
+                        } else if (document.getElementById('spinnerOverlay')) {
+                            const spinner = document.getElementById('spinnerOverlay');
+                            spinner.classList.add('active');
+                            const spinnerText = document.getElementById('spinnerText');
+                            if (spinnerText) spinnerText.textContent = 'Deleting user...';
+                        } else if (document.getElementById('globalSpinner')) {
+                            document.getElementById('globalSpinner').style.display = 'flex';
+                        }
+
+                        // Submit the form
                         form.submit();
                     }
                 });
         });
+    });
+
+    // Show spinner on link clicks (e.g., Add User, Edit User)
+    document.querySelectorAll('a[href]').forEach(link => {
+        if (!link.hasAttribute('data-no-spinner')) {
+            link.addEventListener('click', function(e) {
+                const href = this.getAttribute('href');
+                const target = this.getAttribute('target');
+
+                // Only show spinner for internal links
+                if (href && href.startsWith('/') && (!target || target === '_self')) {
+                    if (window.SpinnerUtils) {
+                        window.SpinnerUtils.show('Loading...');
+                    } else if (document.getElementById('spinnerOverlay')) {
+                        const spinner = document.getElementById('spinnerOverlay');
+                        spinner.classList.add('active');
+                    } else if (document.getElementById('globalSpinner')) {
+                        document.getElementById('globalSpinner').style.display = 'flex';
+                    }
+                }
+            });
+        }
     });
 </script>
 

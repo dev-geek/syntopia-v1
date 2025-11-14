@@ -132,18 +132,20 @@ class FreePlanAbuseService
                 ];
             }
 
-            // Bypass abuse checks in local/testing environment
-            if (app()->environment('local', 'testing')) {
-                return [
-                    'allowed' => true,
-                    'message' => 'Abuse checks bypassed in local/testing environment.'
-                ];
-            }
-
+            // Check for testing bypass flag first (allows tests to control behavior)
             if (config('free_plan_abuse.testing_bypass_enabled', false)) {
                 return [
                     'allowed' => true,
                     'message' => 'Testing bypass is enabled.'
+                ];
+            }
+
+            // Bypass abuse checks in local/testing environment only if not explicitly disabled
+            // This allows unit tests to test abuse patterns by setting testing_bypass_enabled to false
+            if (app()->environment('local', 'testing') && config('free_plan_abuse.bypass_in_testing', true)) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Abuse checks bypassed in local/testing environment.'
                 ];
             }
 
@@ -421,7 +423,8 @@ class FreePlanAbuseService
             ]);
 
             // Create order record for free plan
-            $user->orders()->create([
+            $order = $user->orders()->create([
+                'user_id' => $user->id, // Explicitly set user_id
                 'package_id' => $freePackage->id,
                 'amount' => 0,
                 'status' => 'completed',
@@ -430,6 +433,10 @@ class FreePlanAbuseService
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
+            
+            if (!$order) {
+                throw new \Exception('Failed to create order record');
+            }
 
             // Record the attempt
             $this->recordAttempt($request, $user);

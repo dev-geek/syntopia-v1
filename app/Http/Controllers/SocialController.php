@@ -58,8 +58,13 @@ class SocialController extends Controller
                         // Generate a compliant password for the existing user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the existing user
-                        $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                        // If user doesn't have tenant_id, create tenant and bind password
+                        // Otherwise, just bind password
+                        if (empty($existingUser->tenant_id)) {
+                            $apiResponse = $passwordBindingService->createTenantAndBindPassword($existingUser, $compliantPassword);
+                        } else {
+                            $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                        }
 
                         if (!$apiResponse['success']) {
                             Log::warning('Failed to bind password for existing user during Google link, proceeding with fallback', [
@@ -84,14 +89,21 @@ class SocialController extends Controller
                             return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Note: You may need to update your password later for full functionality.');
                         }
 
-                        // Success: Update password and link account
-                        $existingUser->update([
+                        // Success: Update password, link account, and set tenant_id if created
+                        $updateData = [
                             'google_id' => $googleUser->id,
                             'email_verified_at' => Carbon::now(),
                             'status' => 1,
                             'password' => Hash::make($compliantPassword),
                             'subscriber_password' => $compliantPassword
-                        ]);
+                        ];
+
+                        // If tenant was created, add tenant_id
+                        if (!empty($apiResponse['data']['tenantId'])) {
+                            $updateData['tenant_id'] = $apiResponse['data']['tenantId'];
+                        }
+
+                        $existingUser->update($updateData);
 
                         Auth::login($existingUser);
                         return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Google successfully!');
@@ -134,10 +146,10 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        // Create tenant and bind password using the same logic as VerificationController
-                        Log::info('[googleAuthentication] Calling callXiaoiceApiWithCreds for new Google user', ['user_id' => $userData->id]);
-                        $apiResponse = $this->callXiaoiceApiWithCreds($userData, $compliantPassword);
-                        Log::info('[googleAuthentication] callXiaoiceApiWithCreds response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+                        // Create tenant and bind password using PasswordBindingService
+                        Log::info('[googleAuthentication] Calling createTenantAndBindPassword for new Google user', ['user_id' => $userData->id]);
+                        $apiResponse = $passwordBindingService->createTenantAndBindPassword($userData, $compliantPassword);
+                        Log::info('[googleAuthentication] createTenantAndBindPassword response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                             DB::rollBack();
@@ -156,9 +168,10 @@ class SocialController extends Controller
                             return redirect()->route('login')->with('error', $errorMsg);
                         }
 
-                        // Update user with tenant_id
+                        // Update user with tenant_id and subscriber_password
                         $userData->update([
                             'tenant_id' => $apiResponse['data']['tenantId'],
+                            'subscriber_password' => $compliantPassword
                         ]);
 
                         DB::commit();
@@ -221,14 +234,24 @@ class SocialController extends Controller
                         // Generate a compliant password for the existing user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the existing user
-                        $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                        // If user doesn't have tenant_id, create tenant and bind password
+                        // Otherwise, just bind password
+                        if (empty($existingUser->tenant_id)) {
+                            $apiResponse = $passwordBindingService->createTenantAndBindPassword($existingUser, $compliantPassword);
+                        } else {
+                            $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                        }
 
                         if (!$apiResponse['success']) {
                             Log::warning('Failed to bind password for existing user during Facebook link, proceeding with fallback', [
                                 'user_id' => $existingUser->id,
                                 'error' => $apiResponse['error_message']
                             ]);
+
+                            // Check if this is a SWAL error
+                            if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                                return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
+                            }
 
                             // Fallback: Link account without updating password
                             $existingUser->update([
@@ -241,14 +264,21 @@ class SocialController extends Controller
                             return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Note: You may need to update your password later for full functionality.');
                         }
 
-                        // Success: Update password and link account
-                        $existingUser->update([
+                        // Success: Update password, link account, and set tenant_id if created
+                        $updateData = [
                             'facebook_id' => $facebookUser->id,
                             'email_verified_at' => Carbon::now(),
                             'status' => 1,
                             'password' => Hash::make($compliantPassword),
                             'subscriber_password' => $compliantPassword
-                        ]);
+                        ];
+
+                        // If tenant was created, add tenant_id
+                        if (!empty($apiResponse['data']['tenantId'])) {
+                            $updateData['tenant_id'] = $apiResponse['data']['tenantId'];
+                        }
+
+                        $existingUser->update($updateData);
 
                         Auth::login($existingUser);
                         return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Facebook successfully!');
@@ -270,57 +300,53 @@ class SocialController extends Controller
                         return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Please update your password in your profile for full functionality.');
                     }
                 } else {
-                    // Create new user
+                    // Create new user with tenant creation
                     try {
+                        DB::beginTransaction();
+
                         // Generate a compliant password for the new user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the new user
-                        $apiResponse = $passwordBindingService->bindPassword(
-                            (new User())->forceFill(['email' => $facebookUser->email]),
-                            $compliantPassword
-                        );
-
-                        if (!$apiResponse['success']) {
-                            Log::warning('Failed to bind password for new Facebook user, proceeding with fallback', [
-                                'email' => $facebookUser->email,
-                                'error' => $apiResponse['error_message']
-                            ]);
-
-                            // Fallback: Create user with temporary password
-                            $tempPassword = $this->generateCompliantPassword();
-                            $newUser = User::create([
-                                'name' => $facebookUser->name,
-                                'email' => $facebookUser->email,
-                                'facebook_id' => $facebookUser->id,
-                                'password' => Hash::make($tempPassword),
-                                'subscriber_password' => $tempPassword,
-                                'email_verified_at' => Carbon::now(),
-                                'status' => 1,
-                                'verification_code' => null
-                            ]);
-
-                            $newUser->assignRole('User');
-                            Auth::login($newUser);
-
-                            return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook. Please update your password in your profile for full functionality.');
-                        }
-
-                        // Success: Create user with proper password
+                        // Create user first
                         $newUser = User::create([
                             'name' => $facebookUser->name,
                             'email' => $facebookUser->email,
                             'facebook_id' => $facebookUser->id,
                             'password' => Hash::make($compliantPassword),
-                            'subscriber_password' => $compliantPassword,
+                            'subscriber_password' => null, // Set to NULL initially, will be set after tenant creation
                             'email_verified_at' => Carbon::now(),
                             'status' => 1,
                             'verification_code' => null
                         ]);
 
                         $newUser->assignRole('User');
-                        Auth::login($newUser);
 
+                        // Create tenant and bind password
+                        Log::info('[handleFacebookCallback] Calling createTenantAndBindPassword for new Facebook user', ['user_id' => $newUser->id]);
+                        $apiResponse = $passwordBindingService->createTenantAndBindPassword($newUser, $compliantPassword);
+                        Log::info('[handleFacebookCallback] createTenantAndBindPassword response', ['user_id' => $newUser->id, 'apiResponse' => $apiResponse]);
+
+                        if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                            DB::rollBack();
+                            Log::error('[handleFacebookCallback] Failed to create tenant for new Facebook user', [
+                                'user_id' => $newUser->id,
+                                'apiResponse' => $apiResponse
+                            ]);
+                            $newUser->delete(); // Delete user data on failure
+                            $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                            return redirect()->route('login')->with('error', $errorMsg);
+                        }
+
+                        // Update user with tenant_id and subscriber_password
+                        $newUser->update([
+                            'tenant_id' => $apiResponse['data']['tenantId'],
+                            'subscriber_password' => $compliantPassword
+                        ]);
+
+                        DB::commit();
+                        Log::info('[handleFacebookCallback] New Facebook user created with tenant', ['user_id' => $newUser->id]);
+
+                        Auth::login($newUser);
                         return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook');
 
                     } catch (\Exception $e) {
@@ -396,14 +422,14 @@ class SocialController extends Controller
         if (session()->has('url.intended')) {
             $intendedUrl = session('url.intended');
             session()->forget('url.intended');
-            
+
             // Validate URL based on user role
             // For regular users, only allow safe (non-admin) URLs
             if ($user->hasRole('User') && !$this->isUrlSafeForUser($intendedUrl)) {
                 // Ignore unsafe intended URL for regular users, fall through to role-based redirect
             } else {
                 // For admins, allow any URL; for users, only safe URLs
-                return redirect()->to($intendedUrl)->with('login_success', $message);
+            return redirect()->to($intendedUrl)->with('login_success', $message);
             }
         }
 
