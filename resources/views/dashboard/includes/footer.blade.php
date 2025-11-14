@@ -93,13 +93,48 @@
         <!-- Password Modal Script -->
         <script>
             (function() {
-                const spinner = document.getElementById('globalSpinner');
-                if (spinner) {
+                // Use both globalSpinner and spinnerOverlay for better compatibility
+                const globalSpinner = document.getElementById('globalSpinner');
+                const spinnerOverlay = document.getElementById('spinnerOverlay');
+
+                if (globalSpinner || spinnerOverlay) {
                     let requestCount = 0;
-                    function show() { spinner.style.display = 'flex'; }
-                    function hide() { spinner.style.display = 'none'; }
-                    function inc() { requestCount++; show(); }
-                    function dec() { requestCount = Math.max(0, requestCount - 1); if (requestCount === 0) hide(); }
+
+                    function show(message = 'Loading...') {
+                        if (globalSpinner) {
+                            globalSpinner.style.display = 'flex';
+                        }
+                        if (spinnerOverlay && window.SpinnerUtils) {
+                            window.SpinnerUtils.show(message);
+                        } else if (spinnerOverlay) {
+                            spinnerOverlay.classList.add('active');
+                            const spinnerText = document.getElementById('spinnerText');
+                            if (spinnerText) spinnerText.textContent = message;
+                            document.body.style.overflow = 'hidden';
+                        }
+                    }
+
+                    function hide() {
+                        if (globalSpinner) {
+                            globalSpinner.style.display = 'none';
+                        }
+                        if (spinnerOverlay && window.SpinnerUtils) {
+                            window.SpinnerUtils.hide();
+                        } else if (spinnerOverlay) {
+                            spinnerOverlay.classList.remove('active');
+                            document.body.style.overflow = '';
+                        }
+                    }
+
+                    function inc() {
+                        requestCount++;
+                        show('Processing...');
+                    }
+
+                    function dec() {
+                        requestCount = Math.max(0, requestCount - 1);
+                        if (requestCount === 0) hide();
+                    }
 
                     // Hook fetch
                     const originalFetch = window.fetch;
@@ -118,7 +153,7 @@
                     document.addEventListener('submit', function(e) {
                         const form = e.target;
                         if (form && !form.hasAttribute('data-no-spinner')) {
-                            show();
+                            show('Submitting...');
                         }
                     }, true);
 
@@ -129,7 +164,7 @@
                         const target = link.getAttribute('target');
                         const noSpinner = link.hasAttribute('data-no-spinner');
                         if (!noSpinner && href && href.startsWith('/') && (!target || target === '_self')) {
-                            show();
+                            show('Loading...');
                         }
                     }, true);
 
@@ -138,6 +173,25 @@
             })();
 
             function checkPasswordAndAccess() {
+                // Check for Free plan first (regardless of subscription status)
+                @if (Auth::user()->package && Auth::user()->package->isFree())
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Upgrade Required',
+                        text: 'You need to upgrade your Free plan to access the software.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Upgrade Plan',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#0d6efd',
+                        cancelButtonColor: '#6c757d'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.href = '{{ route('subscription', ['type' => 'upgrade']) }}';
+                        }
+                    });
+                    return;
+                @endif
+                // Check if user has active subscription (for non-Free plans)
                 @if (!Auth::user()->hasActiveSubscription())
                     Swal.fire({
                         icon: 'error',

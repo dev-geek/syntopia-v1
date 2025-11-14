@@ -61,7 +61,7 @@ class LoginController extends Controller
                 session()->forget('url.intended');
                 // Only redirect if the URL is safe for regular users (not admin routes)
                 if ($this->isUrlSafeForUser($intendedUrl)) {
-                    return redirect()->to($intendedUrl);
+                return redirect()->to($intendedUrl);
                 }
             }
 
@@ -71,7 +71,7 @@ class LoginController extends Controller
                 session()->forget('verification_intended_url');
                 // Only redirect if the URL is safe for regular users (not admin routes)
                 if ($this->isUrlSafeForUser($intendedUrl)) {
-                    return redirect()->to($intendedUrl);
+                return redirect()->to($intendedUrl);
                 }
             }
 
@@ -163,7 +163,7 @@ class LoginController extends Controller
                     session()->forget('url.intended');
                     // Only redirect if the URL is safe for regular users (not admin routes)
                     if ($this->isUrlSafeForUser($intendedUrl)) {
-                        return redirect()->to($intendedUrl);
+                    return redirect()->to($intendedUrl);
                     }
                 }
 
@@ -282,7 +282,7 @@ class LoginController extends Controller
                 session()->forget('url.intended');
                 // Only redirect if the URL is safe for regular users (not admin routes)
                 if ($this->isUrlSafeForUser($intendedUrl)) {
-                    return redirect()->to($intendedUrl);
+                return redirect()->to($intendedUrl);
                 }
             }
 
