@@ -55,6 +55,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/verify-payproglobal/{paymentReference}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])
             ->name('verify-payproglobal');
 
+        // Fallback route for PayProGlobal redirects that go to /api/payment/success
+        Route::match(['get', 'post'], '/payment/success', function (Request $request) {
+            return redirect()->route('payments.success', $request->all());
+        })->name('api.payment.success');
+
         Route::post('/upgrade', [PaymentController::class, 'upgradeSubscription'])
             ->name('upgrade')
             ->middleware('throttle:10,1');

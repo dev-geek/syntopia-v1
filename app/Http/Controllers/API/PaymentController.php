@@ -1061,7 +1061,13 @@ class PaymentController extends Controller
                 'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
             ];
 
-            $successUrl = route('payments.success', $successParams);
+            // Use production URL in production, otherwise use current request domain
+            if (app()->environment('production')) {
+                $baseUrl = 'https://app.syntopia.ai';
+            } else {
+                $baseUrl = $request->getSchemeAndHttpHost() ?: config('app.url');
+            }
+            $successUrl = $baseUrl . route('payments.success', $successParams, false);
 
             $checkoutParams = [
                 'products[1][id]' => $productId,
@@ -1080,7 +1086,7 @@ class PaymentController extends Controller
                 'use-test-mode' => config('payment.gateways.PayProGlobal.test_mode', true) ? 'true' : 'false',
                 'secret-key' => config('payment.gateways.PayProGlobal.webhook_secret'),
                 'success-url' => $successUrl,
-                'cancel-url' => route('payments.popup-cancel')
+                'cancel-url' => $baseUrl . route('payments.popup-cancel', [], false)
             ];
 
             $checkoutUrl = "https://store.payproglobal.com/checkout?" . http_build_query($checkoutParams);
@@ -1088,6 +1094,9 @@ class PaymentController extends Controller
             Log::info('PayProGlobal checkout created', [
                 'user_id' => $user->id,
                 'pending_order_id' => $pendingOrderId,
+                'success_url' => $successUrl,
+                'success_url_route' => route('payments.success', $successParams, false),
+                'base_url' => $baseUrl,
                 'checkout_url' => $checkoutUrl
             ]);
 
