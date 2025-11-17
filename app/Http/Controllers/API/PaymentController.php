@@ -1630,8 +1630,11 @@ class PaymentController extends Controller
 
                 // Check if the request is from a popup (indicated by `popup=true` in success-url)
                 if ($request->query('popup') === 'true') {
-                    // For popup, return a simple view that closes the popup and refreshes the parent
-                    return view('payments.popup-close', ['message' => 'Payment successful! Please wait while we update your subscription.']);
+                    // For popup, return a view that closes the popup and redirects parent to subscriptions page
+                    return view('payments.popup-close', [
+                        'message' => 'Payment successful! Redirecting to subscriptions...',
+                        'redirectUrl' => route('subscription')
+                    ]);
                 }
 
                 Log::info('PayProGlobal: User authenticated before redirect', [

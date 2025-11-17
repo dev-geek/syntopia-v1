@@ -796,8 +796,9 @@
                             // Check if we have a success flag
                             const successUrl = sessionStorage.getItem('payProGlobalSuccessUrl');
                             if (successUrl) {
-                                console.log('Redirecting to success URL:', successUrl);
-                                window.location.href = successUrl;
+                                console.log('Redirecting to subscriptions page after payment success');
+                                // Redirect to subscriptions page instead of success URL
+                                window.location.href = '{{ route('subscription') }}';
                             } else {
                                 showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
                             }
@@ -822,11 +823,15 @@
                                 if (orderId) {
                                     console.log('Found OrderId in thank you URL:', orderId);
                                     sessionStorage.setItem('payProGlobalSuccessUrl',
-                                        `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}`
+                                        `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}&popup=true`
                                     );
 
                                     clearInterval(popupCheckInterval);
-                                    setTimeout(() => popup.close(), 1000);
+                                    setTimeout(() => {
+                                        popup.close();
+                                        // Redirect parent to subscriptions page after popup closes
+                                        window.location.href = '{{ route('subscription') }}';
+                                    }, 1000);
                                 }
                             }
                         } catch (e) {
