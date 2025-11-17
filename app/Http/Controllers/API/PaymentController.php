@@ -1503,11 +1503,13 @@ class PaymentController extends Controller
             } elseif ($gateway === 'payproglobal') {
                 Log::info('PayProGlobal success callback - RAW REQUEST INCOMING', ['request_all' => $request->all()]);
 
+                // PayProGlobal sends data as query parameters in the success URL redirect
+                // Try to get from query parameters first, then from custom JSON field
                 $customData = json_decode($request->input('custom', '{}'), true);
-                $userId = $customData['user_id'] ?? null;
-                $packageSlug = $customData['package'] ?? null;
-                $pendingOrderId = $customData['pending_order_id'] ?? null;
-                $action = $customData['action'] ?? 'new';
+                $userId = $request->query('user_id') ?? $request->input('user_id') ?? $customData['user_id'] ?? null;
+                $packageSlug = $request->query('package') ?? $request->input('package') ?? $customData['package'] ?? null;
+                $pendingOrderId = $request->query('pending_order_id') ?? $request->input('pending_order_id') ?? $customData['pending_order_id'] ?? null;
+                $action = $request->query('action') ?? $request->input('action') ?? $customData['action'] ?? 'new';
 
                 Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
                     'gateway' => $gateway,
@@ -1524,11 +1526,26 @@ class PaymentController extends Controller
                 ]);
 
                 Log::info('PayProGlobal success callback - full request data', ['request_all' => $request->all()]);
+                /** @var array $queryParams */
+                $queryParams = $request->query()->all();
+                Log::info('PayProGlobal success callback - extracted data', [
+                    'user_id' => $userId,
+                    'package_slug' => $packageSlug,
+                    'pending_order_id' => $pendingOrderId,
+                    'action' => $action,
+                    'query_params' => $queryParams,
+                    'input_params' => $request->input()
+                ]);
 
                 if (!$userId || !$packageSlug || !$pendingOrderId) {
                     Log::error('Missing essential PayProGlobal custom data', [
+                        'user_id' => $userId,
+                        'package_slug' => $packageSlug,
+                        'pending_order_id' => $pendingOrderId,
                         'custom_data' => $customData,
                         'request_all' => $request->all(),
+                        'query_params' => $queryParams,
+                        'input_params' => $request->input(),
                         'auth_check_before_redirect' => auth()->check(),
                         'auth_id_before_redirect' => auth()->id()
                     ]);
@@ -1536,8 +1553,24 @@ class PaymentController extends Controller
                 }
 
                 $user = User::find($userId);
-                $package = Package::where('name', $packageSlug)->first();
+                // Try to find package by name (case-insensitive) or slug
+                $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageSlug)])
+                    ->orWhere('name', $packageSlug)
+                    ->first();
                 $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
+
+                Log::info('PayProGlobal success callback - Entity lookup', [
+                    'user_id' => $userId,
+                    'user_found' => (bool) $user,
+                    'package_slug' => $packageSlug,
+                    'package_found' => (bool) $package,
+                    'package_id' => $package ? $package->id : null,
+                    'package_name' => $package ? $package->name : null,
+                    'pending_order_id' => $pendingOrderId,
+                    'pending_order_found' => (bool) $pendingOrder,
+                    'pending_order_status' => $pendingOrder ? $pendingOrder->status : null,
+                    'all_pending_orders_for_user' => $user ? Order::where('user_id', $user->id)->where('status', 'pending')->pluck('transaction_id')->toArray() : []
+                ]);
 
                 if (!$user || !$package || !$pendingOrder) {
                     Log::error('PayProGlobal: User, Package or Pending Order not found', [
@@ -1581,7 +1614,7 @@ class PaymentController extends Controller
                     $finalTransactionId = $payProGlobalSubscriptionId !== 0 ? (string)$payProGlobalSubscriptionId : (string)($payProGlobalOrderId ?? $pendingOrder->transaction_id);
                     Log::debug('PaymentController: finalTransactionId for order', ['id' => $finalTransactionId]);
 
-                    $pendingOrder->update([
+                    $updateResult = $pendingOrder->update([
                         'status' => 'completed',
                         'completed_at' => now(),
                         'transaction_id' => $finalTransactionId,
@@ -1591,8 +1624,11 @@ class PaymentController extends Controller
                         ]),
                     ]);
 
-                    Log::debug('PaymentController: Order updated with subscription_id in metadata', [
+                    Log::info('PaymentController: Order update result', [
                         'order_id' => $pendingOrder->id,
+                        'update_result' => $updateResult,
+                        'new_status' => $pendingOrder->fresh()->status,
+                        'transaction_id' => $finalTransactionId,
                         'metadata' => $pendingOrder->metadata,
                     ]);
 
@@ -1630,10 +1666,18 @@ class PaymentController extends Controller
 
                 // Check if the request is from a popup (indicated by `popup=true` in success-url)
                 if ($request->query('popup') === 'true') {
-                    // For popup, return a view that closes the popup and redirects parent to subscriptions page
+                    // Use production URL in production, otherwise use current request domain
+                    if (app()->environment('production')) {
+                        $baseUrl = 'https://app.syntopia.ai';
+                    } else {
+                        $baseUrl = $request->getSchemeAndHttpHost() ?: config('app.url');
+                    }
+                    $redirectUrl = $baseUrl . route('user.subscription.details', [], false);
+
+                    // For popup, return a view that closes the popup and redirects parent to subscription details page
                     return view('payments.popup-close', [
-                        'message' => 'Payment successful! Redirecting to subscriptions...',
-                        'redirectUrl' => route('subscription')
+                        'message' => 'Payment successful! Redirecting to subscription details...',
+                        'redirectUrl' => $redirectUrl
                     ]);
                 }
 
@@ -1672,7 +1716,8 @@ class PaymentController extends Controller
                 if (!auth()->check()) {
                     return redirect()->route('login')->with('info', $successMessage . ' Please log in to access your dashboard.');
                 }
-                return redirect()->route('user.dashboard')->with('success', $successMessage);
+                // Redirect to subscription details page after payment success
+                return redirect()->route('user.subscription.details')->with('success', $successMessage);
 
             } // Add other payment gateways here
             else {
@@ -2331,23 +2376,95 @@ class PaymentController extends Controller
                     'product_id' => $productId
                 ]);
 
-                // Process the payment
-                $paymentData = [
-                    'order_id' => $orderId,
-                    'user_id' => $user->id,
-                    'package' => $package->name,
-                    'amount' => $orderTotal,
-                    'currency' => $currency,
-                    'customer_email' => $customerEmail,
-                    'product_id' => $productId,
-                    'action' => 'new'
-                ];
+                // Find the pending order for this user and package
+                $pendingOrder = Order::where('user_id', $user->id)
+                    ->where('package_id', $package->id)
+                    ->where('status', 'pending')
+                    ->where('payment_gateway_id', $this->getPaymentGatewayId('payproglobal'))
+                    ->orderBy('created_at', 'desc')
+                    ->first();
 
-                Log::info('PayProGlobal webhook: Processing payment', [
-                    'payment_data' => $paymentData
+                if (!$pendingOrder) {
+                    Log::error('PayProGlobal webhook: Pending order not found', [
+                        'user_id' => $user->id,
+                        'package_id' => $package->id,
+                        'payproglobal_order_id' => $orderId
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'Pending order not found'], 404);
+                }
+
+                Log::info('PayProGlobal webhook: Pending order found', [
+                    'pending_order_id' => $pendingOrder->id,
+                    'pending_transaction_id' => $pendingOrder->transaction_id,
+                    'payproglobal_order_id' => $orderId
                 ]);
 
-                $result = $this->processPayment($paymentData, 'payproglobal');
+                // Update the pending order to completed
+                DB::transaction(function () use ($user, $package, $pendingOrder, $orderId, $orderTotal, $currency) {
+                    $paymentGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
+                    if (!$paymentGateway) {
+                        Log::error('PayProGlobal gateway not found in database.');
+                        throw new \Exception('PayProGlobal gateway not configured.');
+                    }
+
+                    // Refresh order before update
+                    $pendingOrder->refresh();
+
+                    Log::info('PayProGlobal webhook: Updating order', [
+                        'order_id' => $pendingOrder->id,
+                        'current_status' => $pendingOrder->status,
+                        'new_status' => 'completed',
+                        'payproglobal_order_id' => $orderId
+                    ]);
+
+                    // Update order status
+                    $updateResult = $pendingOrder->update([
+                        'status' => 'completed',
+                        'completed_at' => now(),
+                        'transaction_id' => (string)$orderId, // Use PayProGlobal's order ID
+                        'amount' => $orderTotal ?? $pendingOrder->amount,
+                        'currency' => $currency ?? $pendingOrder->currency,
+                        'metadata' => array_merge(($pendingOrder->metadata ?? []), [
+                            'payproglobal_order_id' => $orderId,
+                            'webhook_processed_at' => now()->toDateTimeString()
+                        ]),
+                    ]);
+
+                    // Refresh to verify update
+                    $pendingOrder->refresh();
+
+                    Log::info('PayProGlobal webhook: Order update result', [
+                        'order_id' => $pendingOrder->id,
+                        'update_result' => $updateResult,
+                        'final_status' => $pendingOrder->status,
+                        'transaction_id' => $pendingOrder->transaction_id
+                    ]);
+
+                    // Update user subscription
+                    $user->update([
+                        'package_id' => $package->id,
+                        'is_subscribed' => true,
+                        'payment_gateway_id' => $paymentGateway->id,
+                        'subscription_id' => (string)$orderId
+                    ]);
+
+                    // Create and activate license
+                    $this->licenseService->createAndActivateLicense(
+                        $user,
+                        $package,
+                        null, // productId not needed for license creation
+                        $paymentGateway->id
+                    );
+
+                    Log::info('PayProGlobal webhook: Order completed and license created', [
+                        'order_id' => $pendingOrder->id,
+                        'user_id' => $user->id,
+                        'package' => $package->name,
+                        'order_status' => $pendingOrder->status
+                    ]);
+                });
+
+                $result = true;
 
                 if ($result) {
                     Log::info('PayProGlobal webhook: Payment processed successfully', [
@@ -5214,6 +5331,100 @@ class PaymentController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
             return response()->json(['error' => 'Failed to initiate downgrade checkout.'], 500);
+        }
+    }
+
+    /**
+     * Manually complete a PayProGlobal pending order (for testing in local development)
+     * This simulates what happens when PayProGlobal redirects to the success URL
+     */
+    public function manualCompletePayProGlobalOrder($pendingOrderId)
+    {
+        try {
+            // Only allow in non-production environments
+            if (app()->environment('production')) {
+                return response()->json(['error' => 'This endpoint is not available in production'], 403);
+            }
+
+            Log::info('Manual PayProGlobal order completion requested', [
+                'pending_order_id' => $pendingOrderId
+            ]);
+
+            $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
+
+            if (!$pendingOrder) {
+                return response()->json(['error' => 'Pending order not found'], 404);
+            }
+
+            if ($pendingOrder->status === 'completed') {
+                return response()->json(['message' => 'Order is already completed', 'order' => $pendingOrder], 200);
+            }
+
+            $user = User::find($pendingOrder->user_id);
+            $package = Package::find($pendingOrder->package_id);
+
+            if (!$user || !$package) {
+                return response()->json(['error' => 'User or package not found'], 404);
+            }
+
+            DB::transaction(function () use ($user, $package, $pendingOrder) {
+                $paymentGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
+                if (!$paymentGateway) {
+                    throw new \Exception('PayProGlobal gateway not configured.');
+                }
+
+                // Update order status
+                $pendingOrder->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'transaction_id' => $pendingOrder->transaction_id . '-MANUAL',
+                    'metadata' => array_merge(($pendingOrder->metadata ?? []), [
+                        'manually_completed_at' => now()->toDateTimeString(),
+                        'manual_completion' => true
+                    ]),
+                ]);
+
+                // Update user subscription
+                $user->update([
+                    'package_id' => $package->id,
+                    'is_subscribed' => true,
+                    'payment_gateway_id' => $paymentGateway->id,
+                    'subscription_id' => $pendingOrder->transaction_id
+                ]);
+
+                // Create and activate license
+                $this->licenseService->createAndActivateLicense(
+                    $user,
+                    $package,
+                    null,
+                    $paymentGateway->id
+                );
+
+                Log::info('Manual PayProGlobal order completion successful', [
+                    'order_id' => $pendingOrder->id,
+                    'user_id' => $user->id,
+                    'package' => $package->name
+                ]);
+            });
+
+            $pendingOrder->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order completed successfully',
+                'order' => [
+                    'id' => $pendingOrder->id,
+                    'status' => $pendingOrder->status,
+                    'transaction_id' => $pendingOrder->transaction_id
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Manual PayProGlobal order completion failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Failed to complete order: ' . $e->getMessage()], 500);
         }
     }
 }

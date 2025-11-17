@@ -712,50 +712,29 @@
                             payProGlobalPopup.close();
                         }
 
-                        // Create form to submit to handleSuccess
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = '/payments/success';
-
-                        const csrfInput = document.createElement('input');
-                        csrfInput.type = 'hidden';
-                        csrfInput.name = '_token';
-                        csrfInput.value = csrfToken;
-                        form.appendChild(csrfInput);
-
-                        const gatewayInput = document.createElement('input');
-                        gatewayInput.type = 'hidden';
-                        gatewayInput.name = 'gateway';
-                        gatewayInput.value = 'payproglobal';
-                        form.appendChild(gatewayInput);
-
-                        const orderIdInput = document.createElement('input');
-                        orderIdInput.type = 'hidden';
-                        orderIdInput.name = 'OrderId'; // Use PayProGlobal's format
-                        orderIdInput.value = orderId;
-                        form.appendChild(orderIdInput);
-
-                        const userIdInput = document.createElement('input');
-                        userIdInput.type = 'hidden';
-                        userIdInput.name = 'user_id';
-                        userIdInput.value = userId;
-                        form.appendChild(userIdInput);
-
-                        const packageInput = document.createElement('input');
-                        packageInput.type = 'hidden';
-                        packageInput.name = 'package';
-                        packageInput.value = packageName;
-                        form.appendChild(packageInput);
-
-                        const popupInput = document.createElement('input');
-                        popupInput.type = 'hidden';
-                        popupInput.name = 'popup';
-                        popupInput.value = 'true';
-                        form.appendChild(popupInput);
-
-                        document.body.appendChild(form);
-                        console.log('Submitting PayProGlobal success form');
-                        form.submit();
+                        // Process payment in background and redirect to dashboard
+                        fetch('/payments/success', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: new URLSearchParams({
+                                gateway: 'payproglobal',
+                                OrderId: orderId,
+                                user_id: userId,
+                                package: packageName,
+                                popup: 'true'
+                            })
+                        }).then(() => {
+                            console.log('Payment processed, redirecting to subscription details');
+                            window.location.href = '{{ route('user.subscription.details') }}';
+                        }).catch(error => {
+                            console.error('Payment processing error:', error);
+                            // Redirect anyway to subscription details
+                            window.location.href = '{{ route('user.subscription.details') }}';
+                        });
                     }
                 }
             });
@@ -787,20 +766,39 @@
             // Monitor PayProGlobal popup for URL changes
             function monitorPayProGlobalPopup(popup) {
                 payProGlobalPopup = popup;
+                let thankYouPageDetected = false;
+                let redirectTimeout = null;
+
+                // Set a timeout to redirect after 5 seconds
+                // This handles cases where the popup monitoring fails or PayProGlobal doesn't redirect
+                redirectTimeout = setTimeout(() => {
+                    if (!thankYouPageDetected && !popup.closed) {
+                        console.log('5 second timeout reached, assuming payment successful and redirecting to subscription details');
+                        clearInterval(popupCheckInterval);
+                        if (popup && !popup.closed) {
+                            popup.close();
+                        }
+                        window.location.href = '{{ route('user.subscription.details') }}';
+                    }
+                }, 5000); // 5 seconds timeout
+
                 popupCheckInterval = setInterval(() => {
                     try {
                         if (popup.closed) {
                             clearInterval(popupCheckInterval);
+                            if (redirectTimeout) clearTimeout(redirectTimeout);
                             console.log('PayProGlobal popup closed');
 
                             // Check if we have a success flag
                             const successUrl = sessionStorage.getItem('payProGlobalSuccessUrl');
                             if (successUrl) {
-                                console.log('Redirecting to subscriptions page after payment success');
-                                // Redirect to subscriptions page instead of success URL
-                                window.location.href = '{{ route('subscription') }}';
+                                console.log('Redirecting to subscription details page after payment success');
+                                // Redirect to subscription details page instead of success URL
+                                window.location.href = '{{ route('user.subscription.details') }}';
                             } else {
-                                showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
+                                // Even without success URL, if popup closed, assume success and redirect
+                                console.log('Popup closed, redirecting to subscription details');
+                                window.location.href = '{{ route('user.subscription.details') }}';
                             }
 
                             // Clean up
@@ -815,6 +813,8 @@
                             const popupUrl = popup.location.href;
                             if (popupUrl && popupUrl.includes('/thankyou')) {
                                 console.log('PayProGlobal thank you page detected');
+                                thankYouPageDetected = true;
+                                if (redirectTimeout) clearTimeout(redirectTimeout);
 
                                 // Extract OrderId from the URL
                                 const urlParams = new URLSearchParams(popup.location.search);
@@ -825,21 +825,25 @@
                                     sessionStorage.setItem('payProGlobalSuccessUrl',
                                         `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}&popup=true`
                                     );
-
-                                    clearInterval(popupCheckInterval);
-                                    setTimeout(() => {
-                                        popup.close();
-                                        // Redirect parent to subscriptions page after popup closes
-                                        window.location.href = '{{ route('subscription') }}';
-                                    }, 1000);
                                 }
+
+                                clearInterval(popupCheckInterval);
+                                if (redirectTimeout) clearTimeout(redirectTimeout);
+                                // Immediately redirect to subscription details when thank you page is detected
+                                if (popup && !popup.closed) {
+                                    popup.close();
+                                }
+                                // Redirect immediately without delay
+                                window.location.href = '{{ route('user.subscription.details') }}';
                             }
                         } catch (e) {
-                            // Cross-origin error expected, we'll rely on postMessage
+                            // Cross-origin error expected, we'll rely on postMessage or timeout
+                            // This is normal when popup is on PayProGlobal domain
                         }
                     } catch (error) {
                         console.error('Popup monitoring error:', error);
                         clearInterval(popupCheckInterval);
+                        if (redirectTimeout) clearTimeout(redirectTimeout);
                     }
                 }, 500);
             }
@@ -2375,16 +2379,29 @@
                                 userId: '${userId}',
                                 packageName: '${packageName}'
                             });
-                            window.opener.postMessage({
-                                type: 'payproglobal_success',
-                                orderId: orderId,
-                                userId: '${userId}',
-                                packageName: '${packageName}'
-                            }, '*');
-                            // Close the popup after sending the message
-                            setTimeout(() => window.close(), 1000);
+                            if (window.opener && !window.opener.closed) {
+                                window.opener.postMessage({
+                                    type: 'payproglobal_success',
+                                    orderId: orderId,
+                                    userId: '${userId}',
+                                    packageName: '${packageName}'
+                                }, '*');
+                                // Close the popup after sending the message
+                                setTimeout(() => window.close(), 500);
+                            } else {
+                                // If no opener, redirect current window to subscription details
+                                console.log('No opener found, redirecting current window to subscription details');
+                                window.location.href = '{{ route('user.subscription.details') }}';
+                            }
                         } else {
                             console.error('No OrderId found in thank you page URL');
+                            // Redirect anyway if no OrderId
+                            if (window.opener && !window.opener.closed) {
+                                window.opener.location.href = '{{ route('user.subscription.details') }}';
+                                setTimeout(() => window.close(), 500);
+                            } else {
+                                window.location.href = '{{ route('user.subscription.details') }}';
+                            }
                         }
                     }
                 })();

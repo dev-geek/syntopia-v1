@@ -45,14 +45,37 @@
     </div>
 
     <script>
-        // Close the popup and redirect parent window to subscriptions page
+        // Close the popup and redirect parent window to subscription details page immediately
+        const redirectUrl = '{{ $redirectUrl ?? route('user.subscription.details') }}';
+        
+        // Redirect immediately without any delay
         if (window.opener && !window.opener.closed) {
-            window.opener.location.href = '{{ $redirectUrl ?? route('subscription') }}';
+            try {
+                window.opener.location.href = redirectUrl;
+            } catch (e) {
+                // If opener redirect fails, redirect current window
+                window.location.href = redirectUrl;
+            }
+            // Close popup immediately
             window.close();
         } else {
-            // If no opener, redirect current window
-            window.location.href = '{{ $redirectUrl ?? route('subscription') }}';
+            // If no opener, redirect current window immediately
+            window.location.href = redirectUrl;
         }
+        
+        // Fallback: if redirect doesn't happen within 1 second, force it
+        setTimeout(() => {
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.location.replace(redirectUrl);
+                    window.close();
+                } catch (e) {
+                    window.location.replace(redirectUrl);
+                }
+            } else {
+                window.location.replace(redirectUrl);
+            }
+        }, 1000);
     </script>
 </body>
 </html>
