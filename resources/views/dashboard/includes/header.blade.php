@@ -890,6 +890,7 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
             justify-content: center;
             z-index: 99999;
         }
+
         .global-spinner {
             width: 54px;
             height: 54px;
@@ -897,10 +898,13 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
             border-top-color: #0d6efd;
             border-radius: 50%;
             animation: global-spin 0.8s linear infinite;
-            box-shadow: 0 4px 16px rgba(13,110,253,0.18);
+            box-shadow: 0 4px 16px rgba(13, 110, 253, 0.18);
         }
+
         @keyframes global-spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 
@@ -995,67 +999,70 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
                 </div>
                 @endif
 
-{{--                @if (!Auth::user()->hasRole('Super Admin'))--}}
-{{--                <li class="nav-item dropdown">--}}
-{{--                    <a class="nav-link position-relative header-bell @if ($userLogs->count()) has-notifications @endif"--}}
-{{--                        data-toggle="dropdown" href="#">--}}
-{{--                        <i class="far fa-bell"></i>--}}
-{{--                        @if ($userLogs->count())--}}
-{{--                        <span class="badge navbar-badge">{{ $userLogs->count() }}</span>--}}
-{{--                        @endif--}}
-{{--                    </a>--}}
-{{--                    <div class="dropdown-menu notifications-dropdown dropdown-menu-lg dropdown-menu-right">--}}
-{{--                        <div class="dropdown-header">{{ $userLogs->count() }} Notifications</div>--}}
-{{--                        <div class="dropdown-divider m-0"></div>--}}
-{{--                        @foreach ($userLogs->take(5) as $log)--}}
-{{--                        <div class="notification-item">--}}
-{{--                            <span class="notification-icon"><i class="fas fa-user"></i></span>--}}
-{{--                            <div class="notification-content">--}}
-{{--                                <div class="notification-activity">{{ $log->activity }}</div>--}}
-{{--                                <div class="notification-time">--}}
-{{--                                    {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>--}}
-{{--                            </div>--}}
-{{--                        </div>--}}
-{{--                        <div class="dropdown-divider m-0"></div>--}}
-{{--                        @endforeach--}}
-{{--                        <a href="{{ route('admin.users-logs') }}" class="dropdown-footer notifications-footer">See--}}
-{{--                            All Notifications</a>--}}
-{{--                    </div>--}}
-{{--                </li>--}}
-{{--                @endif--}}
+                {{-- @if (!Auth::user()->hasRole('Super Admin'))--}}
+                {{-- <li class="nav-item dropdown">--}}
+                    {{-- <a
+                        class="nav-link position-relative header-bell @if ($userLogs->count()) has-notifications @endif"
+                        --}} {{-- data-toggle="dropdown" href="#">--}}
+                        {{-- <i class="far fa-bell"></i>--}}
+                        {{-- @if ($userLogs->count())--}}
+                        {{-- <span class="badge navbar-badge">{{ $userLogs->count() }}</span>--}}
+                        {{-- @endif--}}
+                        {{-- </a>--}}
+                    {{-- <div class="dropdown-menu notifications-dropdown dropdown-menu-lg dropdown-menu-right">--}}
+                        {{-- <div class="dropdown-header">{{ $userLogs->count() }} Notifications</div>--}}
+                        {{-- <div class="dropdown-divider m-0"></div>--}}
+                        {{-- @foreach ($userLogs->take(5) as $log)--}}
+                        {{-- <div class="notification-item">--}}
+                            {{-- <span class="notification-icon"><i class="fas fa-user"></i></span>--}}
+                            {{-- <div class="notification-content">--}}
+                                {{-- <div class="notification-activity">{{ $log->activity }}</div>--}}
+                                {{-- <div class="notification-time">--}}
+                                    {{-- {{ $log->created_at->setTimezone('Asia/Karachi')->diffForHumans() }}</div>--}}
+                                {{-- </div>--}}
+                            {{-- </div>--}}
+                        {{-- <div class="dropdown-divider m-0"></div>--}}
+                        {{-- @endforeach--}}
+                        {{-- <a href="{{ route('admin.users-logs') }}"
+                            class="dropdown-footer notifications-footer">See--}}
+                            {{-- All Notifications</a>--}}
+                        {{-- </div>--}}
+                    {{-- </li>--}}
+                {{-- @endif--}}
                 <!-- User Dropdown -->
-{{--                    @if (auth()->user()->hasRole('Super Admin'))--}}
-{{--                <li class="nav-item dropdown header-user-dropdown">--}}
-{{--                    <a class="nav-link d-flex align-items-center" data-toggle="dropdown" href="#">--}}
-{{--                        <span class="header-user-name">{{ Auth::user()->name }}</span>--}}
-{{--                        <i class="fas fa-caret-down"></i>--}}
-{{--                    </a>--}}
-{{--                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">--}}
-{{--                        <div class="dropdown-header">Settings</div>--}}
-{{--                        <div class="dropdown-divider m-0"></div>--}}
+                {{-- @if (auth()->user()->hasRole('Super Admin'))--}}
+                {{-- <li class="nav-item dropdown header-user-dropdown">--}}
+                    {{-- <a class="nav-link d-flex align-items-center" data-toggle="dropdown" href="#">--}}
+                        {{-- <span class="header-user-name">{{ Auth::user()->name }}</span>--}}
+                        {{-- <i class="fas fa-caret-down"></i>--}}
+                        {{-- </a>--}}
+                    {{-- <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">--}}
+                        {{-- <div class="dropdown-header">Settings</div>--}}
+                        {{-- <div class="dropdown-divider m-0"></div>--}}
 
-{{--                        <a href="{{ route('admin.profile') }}" class="dropdown-item">--}}
-{{--                            <i class="fas fa-user-edit"></i>--}}
-{{--                            <span>Edit Profile</span>--}}
-{{--                        </a>--}}
-{{--                        @else--}}
-{{--                        <a href="{{ route('user.profile') }}" class="dropdown-item">--}}
-{{--                            <i class="fas fa-user-edit"></i>--}}
-{{--                            <span>Edit Profile</span>--}}
-{{--                        </a>--}}
-{{--                        @endif--}}
-{{--                        <div class="dropdown-divider m-0"></div>--}}
-{{--                        <a href="{{ route(auth()->user()->hasAnyRole(['Super Admin'])? 'admin.logout': 'logout') }}"--}}
-{{--                            class="dropdown-footer"--}}
-{{--                            onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>--}}
-{{--                        <form id="logout-form"--}}
-{{--                            action="{{ route(auth()->user()->hasAnyRole(['Super Admin'])? 'admin.logout': 'logout') }}"--}}
-{{--                            method="POST" style="display: none;">--}}
-{{--                            @csrf--}}
-{{--                        </form>--}}
-{{--                    </div>--}}
+                        {{-- <a href="{{ route('admin.profile') }}" class="dropdown-item">--}}
+                            {{-- <i class="fas fa-user-edit"></i>--}}
+                            {{-- <span>Edit Profile</span>--}}
+                            {{-- </a>--}}
+                        {{-- @else--}}
+                        {{-- <a href="{{ route('user.profile') }}" class="dropdown-item">--}}
+                            {{-- <i class="fas fa-user-edit"></i>--}}
+                            {{-- <span>Edit Profile</span>--}}
+                            {{-- </a>--}}
+                        {{-- @endif--}}
+                        {{-- <div class="dropdown-divider m-0"></div>--}}
+                        {{-- <a
+                            href="{{ route(auth()->user()->hasAnyRole(['Super Admin'])? 'admin.logout': 'logout') }}"
+                            --}} {{-- class="dropdown-footer" --}} {{--
+                            onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>--}}
+                        {{-- <form id="logout-form" --}} {{--
+                            action="{{ route(auth()->user()->hasAnyRole(['Super Admin'])? 'admin.logout': 'logout') }}"
+                            --}} {{-- method="POST" style="display: none;">--}}
+                            {{-- @csrf--}}
+                            {{-- </form>--}}
+                        {{-- </div>--}}
                 </li>
-{{--                    @endif--}}
+                {{-- @endif--}}
             </ul>
         </nav>
         <!-- /.navbar -->

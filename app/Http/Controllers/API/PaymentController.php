@@ -1002,7 +1002,7 @@ class PaymentController extends Controller
 
                     $currentLicense->update([
                         'package_id' => $packageData->id,
-                        'expires_at' => now()->addMonth(),
+                        'expires_at' => $packageData->isFree() ? null : now()->addMonth(),
                         'is_upgrade_license' => false
                     ]);
 

@@ -197,7 +197,7 @@ class LicenseService
 
                 // Calculate expiration date based on package type
                 // Free packages have no expiration, all others expire in 1 month
-                $expiresAt = strtolower($package->name) === 'free'
+                $expiresAt = $package->isFree()
                     ? null
                     : now()->addMonth();
 

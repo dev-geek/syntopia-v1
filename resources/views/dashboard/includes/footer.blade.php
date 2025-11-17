@@ -173,49 +173,64 @@
             })();
 
             function checkPasswordAndAccess() {
-                // Check for Free plan first (regardless of subscription status)
-                @if (Auth::user()->package && Auth::user()->package->isFree())
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Upgrade Required',
-                        text: 'You need to upgrade your Free plan to access the software.',
-                        showCancelButton: true,
-                        confirmButtonText: 'Upgrade Plan',
-                        cancelButtonText: 'Cancel',
-                        confirmButtonColor: '#0d6efd',
-                        cancelButtonColor: '#6c757d'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            window.location.href = '{{ route('subscription', ['type' => 'upgrade']) }}';
-                        }
-                    });
-                    return;
-                @endif
-                // Check if user has active subscription (for non-Free plans)
-                @if (!Auth::user()->hasActiveSubscription())
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Subscription Required',
-                        text: 'You need an active plan to access the software.',
-                        showCancelButton: true,
-                        confirmButtonText: 'View Plans',
-                        cancelButtonText: 'Cancel',
-                        confirmButtonColor: '#28a745',
-                        cancelButtonColor: '#dc3545'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            window.location.href = '{{ route('subscription') }}';
-                        }
-                    });
-                    return;
-                @endif
-                @if (!Auth::user()->hasValidSubscriberPassword())
-                    // User doesn't have a password, show modal
-                    showPasswordModal();
-                @else
-                    // User has a password, redirect to software
-                    window.open('{{ route('software.access') }}', '_blank');
-                @endif
+                // Show spinner while processing
+                const showSpinner = () => {
+                    if (window.SpinnerUtils) {
+                        window.SpinnerUtils.show('Checking access...');
+                    } else if (document.getElementById('spinnerOverlay')) {
+                        const spinner = document.getElementById('spinnerOverlay');
+                        spinner.classList.add('active');
+                        const spinnerText = document.getElementById('spinnerText');
+                        if (spinnerText) spinnerText.textContent = 'Checking access...';
+                    } else if (document.getElementById('globalSpinner')) {
+                        document.getElementById('globalSpinner').style.display = 'flex';
+                    }
+                };
+
+                const hideSpinner = () => {
+                    if (window.SpinnerUtils) {
+                        window.SpinnerUtils.hide();
+                    } else if (document.getElementById('spinnerOverlay')) {
+                        document.getElementById('spinnerOverlay').classList.remove('active');
+                    } else if (document.getElementById('globalSpinner')) {
+                        document.getElementById('globalSpinner').style.display = 'none';
+                    }
+                };
+
+                showSpinner();
+
+                // Small delay to show spinner, then check access
+                setTimeout(() => {
+                    // Check if user has no package
+                    @if (!Auth::user()->package)
+                        hideSpinner();
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Package Required',
+                            text: 'You need a package to access the software.',
+                            showCancelButton: true,
+                            confirmButtonText: 'View Plans',
+                            cancelButtonText: 'Cancel',
+                            confirmButtonColor: '#0d6efd',
+                            cancelButtonColor: '#6c757d'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                window.location.href = '{{ route('subscription') }}';
+                            }
+                        });
+                        return;
+                    @endif
+                    // User has a package (any package), check password
+                    @if (!Auth::user()->hasValidSubscriberPassword())
+                        hideSpinner();
+                        // User doesn't have a password, show modal
+                        showPasswordModal();
+                    @else
+                        hideSpinner();
+                        // User has a password, redirect to software
+                        window.open('{{ route('software.access') }}', '_blank');
+                    @endif
+                }, 100);
             }
 
             function showPasswordModal() {

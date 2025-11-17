@@ -309,6 +309,7 @@ class LicenseApiService
 
 		// exact code matches for certain tiers (strongest signal)
 		$codeExactMap = [
+			'free' => ['PKG-CL-GLB-01'],
 			'starter' => ['PKG-CL-OVS-02'],
 			'pro' => ['PKG-CL-OVS-03'],
 			'business' => ['PKG-CL-OVS-04'],

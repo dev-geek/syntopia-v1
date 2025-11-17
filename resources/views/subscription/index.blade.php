@@ -130,54 +130,117 @@
                     packageName,
                     action
                 });
-                try {
-                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                        throw new Error('FastSpring is not properly initialized');
-                    }
 
-                    // Show spinner for FastSpring processing
-                    if (window.showSpinner) {
-                        window.showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
-                    }
+                // Show spinner for FastSpring processing
+                if (window.showSpinner) {
+                    window.showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
+                }
 
-                    fastspring.builder.reset();
-                    console.log('FastSpring builder reset');
+                const apiUrl = `/api/payments/fastspring/checkout/${packageName}`;
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+                const requestBody = {
+                    package: packageName,
+                    is_upgrade: action === 'upgrade',
+                    is_downgrade: action === 'downgrade'
+                };
 
-                    if (!packageName || typeof packageName !== 'string') {
-                        throw new Error('Invalid package name: ' + packageName);
-                    }
+                fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
+                            'X-Is-Downgrade': action === 'downgrade' ? 'true' : 'false'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(requestBody)
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                const msg = data.message || data.error || `HTTP ${response.status}`;
+                                throw new Error(msg);
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Check if it's a free package assignment (no checkout_url)
+                        if (data.success && !data.checkout_url) {
+                            // Free package was assigned directly
+                            if (window.hideSpinner) {
+                                window.hideSpinner();
+                            }
+                            if (window.showAlert) {
+                                window.showAlert('success', 'Success', data.message || 'Free plan activated successfully', () => {
+                                    window.location.reload();
+                                });
+                            } else {
+                                window.location.reload();
+                            }
+                            return;
+                        }
 
-                    currentProductPath = packageName.toLowerCase();
-                    sessionStorage.setItem('currentProductPath', currentProductPath);
-                    fastspring.builder.add(currentProductPath);
+                        // Paid package - proceed with FastSpring checkout
+                        if (!data.success || !data.checkout_url) {
+                            throw new Error(data.error || 'No checkout URL provided');
+                        }
 
-                    if (action === 'upgrade' || action === 'downgrade') {
-                        window.fastspringUpgradeContext = {
-                            isUpgrade: action === 'upgrade',
-                            isDowngrade: action === 'downgrade',
-                            currentPackage: currentPackage,
-                            targetPackage: packageName
-                        };
-                        console.log('FastSpring context set:', window.fastspringUpgradeContext);
-                    }
+                        console.log('FastSpring checkout data received:', data);
 
-                    setTimeout(() => {
-                        fastspring.builder.checkout();
-                        console.log('FastSpring checkout launched');
-                        // Hide spinner when checkout is launched
+                        try {
+                            if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                                throw new Error('FastSpring is not properly initialized');
+                            }
+
+                            fastspring.builder.reset();
+                            console.log('FastSpring builder reset');
+
+                            currentProductPath = packageName.toLowerCase();
+                            sessionStorage.setItem('currentProductPath', currentProductPath);
+                            fastspring.builder.add(currentProductPath);
+
+                            if (action === 'upgrade' || action === 'downgrade') {
+                                window.fastspringUpgradeContext = {
+                                    isUpgrade: action === 'upgrade',
+                                    isDowngrade: action === 'downgrade',
+                                    currentPackage: currentPackage,
+                                    targetPackage: packageName
+                                };
+                                console.log('FastSpring context set:', window.fastspringUpgradeContext);
+                            }
+
+                            setTimeout(() => {
+                                fastspring.builder.checkout();
+                                console.log('FastSpring checkout launched');
+                                // Hide spinner when checkout is launched
+                                if (window.hideSpinner) {
+                                    window.hideSpinner();
+                                }
+                            }, 500);
+                        } catch (error) {
+                            console.error('FastSpring checkout initialization error:', error);
+                            if (window.hideSpinner) {
+                                window.hideSpinner();
+                            }
+                            if (window.showAlert) {
+                                window.showAlert('error', 'FastSpring Error', error.message || 'Failed to initialize checkout.');
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('FastSpring processing error:', error);
                         if (window.hideSpinner) {
                             window.hideSpinner();
                         }
-                    }, 500);
-                } catch (error) {
-                    console.error('FastSpring processing error:', error);
-                    if (window.hideSpinner) {
-                        window.hideSpinner();
-                    }
-                    if (window.showAlert) {
-                        window.showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
-                    }
-                }
+                        if (window.showAlert) {
+                            window.showAlert('error', `${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message || 'Failed to process checkout.');
+                        } else if (window.showError) {
+                            window.showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
+                        }
+                    });
             }
 
             function onFSPopupClosed(orderData) {

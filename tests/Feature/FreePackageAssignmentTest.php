@@ -165,11 +165,14 @@ class FreePackageAssignmentTest extends TestCase
         $this->assertNotNull($order);
         $this->assertEquals('completed', $order->status);
         $this->assertEquals(0, $order->amount);
+        $this->assertStringStartsWith('FREE-', $order->transaction_id);
 
         $license = UserLicence::where('user_id', $user->id)->first();
         $this->assertNotNull($license);
         $this->assertEquals($freePackage->id, $license->package_id);
         $this->assertTrue($license->is_active);
+        $this->assertNull($license->expires_at);
+        $this->assertStringStartsWith('FREE-', $license->subscription_id);
 
         Http::assertNothingSent();
     }
