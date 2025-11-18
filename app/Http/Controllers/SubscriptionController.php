@@ -385,8 +385,15 @@ class SubscriptionController extends Controller
         }
     }
 
-    public function subscriptionDetails()
+    public function subscriptionDetails(Request $request)
     {
+        // Handle PayProGlobal payment processing if redirected from PayProGlobal
+        if ($request->query('process_payment') === 'true' && $request->query('gateway') === 'payproglobal') {
+            // Redirect to payments.success to process the payment, then it will redirect back here
+            $paymentController = app(PaymentController::class);
+            return $paymentController->handleSuccess($request);
+        }
+
         $user = Auth::user();
 
         if (!$user->hasRole(['User'])) {

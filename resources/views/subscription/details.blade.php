@@ -962,6 +962,36 @@
             }
         });
     });
+
+    // Handle PayProGlobal payment processing when redirected from PayProGlobal
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const processPayment = urlParams.get('process_payment');
+        const gateway = urlParams.get('gateway');
+        const orderId = urlParams.get('OrderId') || urlParams.get('order_id');
+
+        // If we have PayProGlobal payment parameters, process the payment
+        if (processPayment === 'true' && gateway === 'payproglobal') {
+            console.log('PayProGlobal payment processing detected', {
+                processPayment,
+                gateway,
+                orderId,
+                allParams: Object.fromEntries(urlParams)
+            });
+
+            // Redirect to payments.success to process the payment
+            // It will then redirect back to subscription-details
+            const paymentParams = new URLSearchParams();
+            paymentParams.set('gateway', 'payproglobal');
+            if (urlParams.get('user_id')) paymentParams.set('user_id', urlParams.get('user_id'));
+            if (urlParams.get('package')) paymentParams.set('package', urlParams.get('package'));
+            if (urlParams.get('pending_order_id')) paymentParams.set('pending_order_id', urlParams.get('pending_order_id'));
+            if (urlParams.get('action')) paymentParams.set('action', urlParams.get('action'));
+            if (orderId) paymentParams.set('OrderId', orderId);
+
+            window.location.href = '/payments/success?' + paymentParams.toString();
+        }
+    });
 </script>
 
 <!-- Add SweetAlert CDN -->
