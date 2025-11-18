@@ -1643,11 +1643,12 @@ class PaymentController extends Controller
                     $payProGlobalSubscriptionId = (int)($request->input('ORDER_ITEMS.0.SUBSCRIPTION_ID')
                         ?? $request->input('subscriptionId')
                         ?? $request->input('transactionId')
+                        ?? $request->input('SUBSCRIPTION_ID')
                         ?? $pendingOrder->transaction_id);
 
                     Log::debug('PaymentController: payProGlobalSubscriptionId detected', ['id' => $payProGlobalSubscriptionId]);
 
-                    $payProGlobalOrderId = $request->input('ORDER_ID');
+                    $payProGlobalOrderId = $request->input('ORDER_ID') ?? $request->input('orderId');
                     Log::debug('PaymentController: payProGlobalOrderId detected', ['id' => $payProGlobalOrderId]);
 
                     $finalTransactionId = $payProGlobalSubscriptionId !== 0 ? (string)$payProGlobalSubscriptionId : (string)($payProGlobalOrderId ?? $pendingOrder->transaction_id);
@@ -1689,10 +1690,21 @@ class PaymentController extends Controller
                         'user_subscription_id' => $user->subscription_id,
                     ]);
 
+                    // Use the extracted subscription ID or order ID for license creation
+                    $subscriptionIdForLicense = $payProGlobalSubscriptionId !== 0
+                        ? (string)$payProGlobalSubscriptionId
+                        : ($payProGlobalOrderId ? (string)$payProGlobalOrderId : $finalTransactionId);
+
+                    Log::info('PaymentController: Creating license with subscription ID', [
+                        'subscription_id_for_license' => $subscriptionIdForLicense,
+                        'payproglobal_subscription_id' => $payProGlobalSubscriptionId,
+                        'payproglobal_order_id' => $payProGlobalOrderId
+                    ]);
+
                     $this->licenseService->createAndActivateLicense(
                         $user,
                         $package,
-                        $request->input('products.1.id'),
+                        $subscriptionIdForLicense,
                         $paymentGateway->id
                     );
 
