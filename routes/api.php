@@ -20,9 +20,6 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
     Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal');
 });
 
-// PayProGlobal webhook (direct route for external calls)
-Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal.webhook');
-
 // Token decryption routes (for software auto-login)
 Route::prefix('token')->name('token.')->group(function () {
     Route::match(['POST', 'OPTIONS'], '/decrypt', [TokenDecryptionController::class, 'decryptToken'])->name('decrypt');
