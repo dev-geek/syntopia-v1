@@ -339,11 +339,19 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function hasUsedFreePlan(): bool
     {
-        return $this->has_used_free_plan ||
-               ($this->package && strtolower($this->package->name) === 'free') ||
-               $this->orders()->whereHas('package', function ($query) {
-                   $query->where('name', 'Free');
-               })->exists();
+        // Check if user has the has_used_free_plan flag set
+        if ($this->has_used_free_plan) {
+            return true;
+        }
+
+        // Check if user has a completed order for Free package
+        // This is the authoritative source - if they have a completed order, they've used the free plan
+        return $this->orders()
+            ->where('status', 'completed')
+            ->whereHas('package', function ($query) {
+                $query->where('name', 'Free');
+            })
+            ->exists();
     }
 
     /**

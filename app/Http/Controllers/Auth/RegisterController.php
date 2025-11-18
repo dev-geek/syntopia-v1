@@ -87,25 +87,31 @@ class RegisterController extends Controller
     {
         Log::info('Registration attempt', $data);
 
-        // Check for device fingerprint abuse
+        // Check for device fingerprint abuse (skip for localhost)
         if ($request) {
-            $isBlocked = $this->deviceFingerprintService->isBlocked($request);
-            $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
-                $request,
-                config('free_plan_abuse.max_attempts', 3),
-                config('free_plan_abuse.tracking_period_days', 30)
-            );
+            $ip = $request->ip();
+            $isLocalhost = in_array($ip, ['127.0.0.1', '::1', 'localhost'], true) || 
+                          filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
 
-            if ($isBlocked || $hasRecentAttempts) {
-                Log::warning('Registration blocked due to fingerprint abuse', [
-                    'ip' => $request->ip(),
-                    'email' => $data['email'] ?? null,
-                    'fingerprint_id' => $data['fingerprint_id'] ?? null,
-                    'is_blocked' => $isBlocked,
-                    'has_recent_attempts' => $hasRecentAttempts
-                ]);
+            if (!$isLocalhost) {
+                $isBlocked = $this->deviceFingerprintService->isBlocked($request);
+                $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
+                    $request,
+                    config('free_plan_abuse.max_attempts', 3),
+                    config('free_plan_abuse.tracking_period_days', 30)
+                );
 
-                abort(403, 'Registration is not allowed from this device. Please contact support if you believe this is an error.');
+                if ($isBlocked || $hasRecentAttempts) {
+                    Log::warning('Registration blocked due to fingerprint abuse', [
+                        'ip' => $request->ip(),
+                        'email' => $data['email'] ?? null,
+                        'fingerprint_id' => $data['fingerprint_id'] ?? null,
+                        'is_blocked' => $isBlocked,
+                        'has_recent_attempts' => $hasRecentAttempts
+                    ]);
+
+                    abort(403, 'Registration is not allowed from this device. Please contact support if you believe this is an error.');
+                }
             }
         }
 

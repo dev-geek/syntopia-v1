@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\FreePlanAttempt;
 use App\Models\Package;
+use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -51,8 +52,20 @@ class FreePlanAbuseService
                     'message' => 'Free plan is available for admin roles.'
                 ];
             }
+
             // Check if user has already used free plan
-            if ($this->hasUsedFreePlan($user)) {
+            $hasUsed = $this->hasUsedFreePlan($user);
+
+            Log::info('Free plan eligibility check', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'has_used_free_plan' => $hasUsed,
+                'has_used_free_plan_flag' => $user->has_used_free_plan,
+                'package_id' => $user->package_id,
+                'package_name' => $user->package?->name
+            ]);
+
+            if ($hasUsed) {
                 return [
                     'allowed' => false,
                     'reason' => 'already_used',
@@ -93,30 +106,32 @@ class FreePlanAbuseService
      */
     public function hasUsedFreePlan(User $user): bool
     {
-        // Check if user has the has_used_free_plan flag set
-        if ($user->has_used_free_plan) {
+        $userData = DB::table('users')
+            ->where('id', $user->id)
+            ->first(['has_used_free_plan']);
+
+        if ($userData && $userData->has_used_free_plan) {
+            Log::info('User has used free plan - flag is set', [
+                'user_id' => $user->id,
+                'has_used_free_plan' => $userData->has_used_free_plan
+            ]);
             return true;
         }
 
-        // Check if user has ever had a free package assigned via relation
-        $hasFreePackageHistory = $user->orders()
-            ->whereHas('package', function ($query) {
-                $query->where('name', 'Free');
-            })
+        $hasCompletedFreePackageOrder = DB::table('orders')
+            ->join('packages', 'orders.package_id', '=', 'packages.id')
+            ->where('orders.user_id', $user->id)
+            ->where('orders.status', 'completed')
+            ->where('packages.name', 'Free')
             ->exists();
 
-        // Check if user currently has free package
-        $hasCurrentFreePackage = $user->package &&
-            strtolower($user->package->name) === 'free';
+        if ($hasCompletedFreePackageOrder) {
+            Log::info('User has used free plan - completed order exists', [
+                'user_id' => $user->id
+            ]);
+        }
 
-        // Also consider completed zero-amount orders as free usage
-        $hasZeroAmountCompletedOrder = $user->orders()
-            ->where('status', 'completed')
-            ->where('amount', 0)
-            ->exists();
-
-        // Only package history/current, explicit flag, or zero-amount completed order qualifies as used
-        return $hasFreePackageHistory || $hasCurrentFreePackage || $hasZeroAmountCompletedOrder;
+        return $hasCompletedFreePackageOrder;
     }
 
     /**
@@ -132,7 +147,15 @@ class FreePlanAbuseService
                 ];
             }
 
-            // Check for testing bypass flag first (allows tests to control behavior)
+            // Allow localhost IPs
+            $ip = $request->ip();
+            if ($this->isLocalhost($ip)) {
+                return [
+                    'allowed' => true,
+                    'message' => 'Localhost access is allowed.'
+                ];
+            }
+
             if (config('free_plan_abuse.testing_bypass_enabled', false)) {
                 return [
                     'allowed' => true,
@@ -140,8 +163,6 @@ class FreePlanAbuseService
                 ];
             }
 
-            // Bypass abuse checks in local/testing environment only if not explicitly disabled
-            // This allows unit tests to test abuse patterns by setting testing_bypass_enabled to false
             if (app()->environment('local', 'testing') && config('free_plan_abuse.bypass_in_testing', true)) {
                 return [
                     'allowed' => true,
@@ -149,7 +170,6 @@ class FreePlanAbuseService
                 ];
             }
 
-            $ip = $request->ip();
             $email = $request->input('email');
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
             $fingerprintId = $request->cookie('fp_id', '');
@@ -433,7 +453,7 @@ class FreePlanAbuseService
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
-            
+
             if (!$order) {
                 throw new \Exception('Failed to create order record');
             }
@@ -666,5 +686,20 @@ class FreePlanAbuseService
             'unique_devices' => $uniqueDevices,
             'block_rate' => $totalAttempts > 0 ? round(($blockedAttempts / $totalAttempts) * 100, 2) : 0
         ];
+    }
+
+    /**
+     * Check if IP address is localhost
+     */
+    private function isLocalhost(string $ip): bool
+    {
+        $localhostIps = [
+            '127.0.0.1',
+            '::1',
+            'localhost',
+        ];
+
+        return in_array($ip, $localhostIps, true) ||
+               filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
     }
 }

@@ -174,6 +174,9 @@ class LicenseService
                     ? null
                     : now()->addMonth();
 
+                // Ensure Free packages never have expiration dates
+                $finalExpiresAt = $package->isFree() ? null : $expiresAt;
+
                 // Create the license record
                 $license = UserLicence::create([
                     'user_id' => $user->id,
@@ -182,7 +185,7 @@ class LicenseService
                     'subscription_id' => $subscriptionId,
                     'payment_gateway_id' => $paymentGateway,
                     'activated_at' => now(),
-                    'expires_at' => $expiresAt,
+                    'expires_at' => $finalExpiresAt,
                     'is_active' => true,
                     'is_upgrade_license' => $isUpgradeAttempt, // Set the new flag
                     'metadata' => [
@@ -239,10 +242,18 @@ class LicenseService
      */
     public function getActiveLicense(User $user): ?UserLicence
     {
-        return UserLicence::where('user_id', $user->id)
+        $license = UserLicence::where('user_id', $user->id)
             ->where('is_active', true)
             ->with(['package'])
             ->first();
+
+        // Ensure Free packages never have expiration dates
+        if ($license && $license->package && $license->package->isFree() && $license->expires_at !== null) {
+            $license->update(['expires_at' => null]);
+            $license->refresh();
+        }
+
+        return $license;
     }
 
     /**

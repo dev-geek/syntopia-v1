@@ -160,6 +160,29 @@ class PaymentController extends Controller
     private function handleFreePackageAssignment(Package $package, User $user, Request $request)
     {
         try {
+            // Idempotency check: If user already has free plan, return success
+            $user->refresh();
+            if ($user->has_used_free_plan) {
+                $hasCompletedOrder = DB::table('orders')
+                    ->join('packages', 'orders.package_id', '=', 'packages.id')
+                    ->where('orders.user_id', $user->id)
+                    ->where('orders.status', 'completed')
+                    ->where('packages.name', 'Free')
+                    ->exists();
+
+                if ($hasCompletedOrder) {
+                    Log::info('Free plan already assigned to user (idempotency check)', [
+                        'user_id' => $user->id,
+                        'package_id' => $user->package_id
+                    ]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Free plan is already active',
+                        'redirect_url' => route('user.dashboard')
+                    ]);
+                }
+            }
+
             // Check if user can use free plan (abuse prevention)
             $eligibilityCheck = $this->freePlanAbuseService->canUseFreePlan($user, $request);
             if (!$eligibilityCheck['allowed']) {
@@ -920,6 +943,22 @@ class PaymentController extends Controller
                     'user_id' => $user->id,
                     'package_name' => $packageData->name
                 ]);
+
+                // Check if user already has free plan - return success if they do (idempotency)
+                $user->refresh();
+                if ($user->has_used_free_plan || ($user->package_id && $user->package && $user->package->isFree())) {
+                    Log::info('User already has free plan, returning success (idempotency)', [
+                        'user_id' => $user->id,
+                        'has_used_free_plan' => $user->has_used_free_plan,
+                        'package_id' => $user->package_id
+                    ]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Free plan is already active',
+                        'redirect_url' => route('user.dashboard')
+                    ]);
+                }
+
                 return $this->handleFreePackageAssignment($packageData, $user, $request);
             }
 

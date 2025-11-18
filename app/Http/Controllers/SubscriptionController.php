@@ -395,11 +395,18 @@ class SubscriptionController extends Controller
 
         $activeLicense = $user->userLicence;
         $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
-        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at) {
+
+        // Only calculate expiration if not Free package and expires_at is null
+        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at && !$activeLicense->package->isFree()) {
             try {
                 $calculatedEndDate = $activeLicense->activated_at->copy()->addMonth();
             } catch (\Throwable $e) {
             }
+        }
+
+        // Ensure Free packages never have expiration dates
+        if ($activeLicense && $activeLicense->package->isFree()) {
+            $calculatedEndDate = null;
         }
         $isUpgradeLocked = $activeLicense && $activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture();
 

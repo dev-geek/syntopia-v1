@@ -2004,6 +2004,21 @@
                         return response.json();
                     })
                     .then(data => {
+                        // Check if it's a free package assignment (no transaction_id)
+                        if (data.success && !data.transaction_id) {
+                            // Free package was assigned directly
+                            hideSpinner();
+                            const redirectUrl = data.redirect_url || '{{ route("user.dashboard") }}';
+                            showSuccess('Success', data.message || 'Free plan activated successfully').then(() => {
+                                if (redirectUrl) {
+                                    window.location.href = redirectUrl;
+                                } else {
+                                    window.location.reload();
+                                }
+                            });
+                            return;
+                        }
+
                         if (!data.success || !data.transaction_id) {
                             throw new Error(data.error || 'No transaction ID provided');
                         }
@@ -2095,6 +2110,21 @@
                                 console.error('Downgrade response missing redirect URL:', data);
                                 throw new Error(data.error || 'No redirect URL received.');
                             }
+                        }
+
+                        // Check if it's a free package assignment (no checkout_url)
+                        if (data.success && !data.checkout_url) {
+                            // Free package was assigned directly
+                            hideSpinner();
+                            const redirectUrl = data.redirect_url || '{{ route("user.dashboard") }}';
+                            showSuccess('Success', data.message || 'Free plan activated successfully').then(() => {
+                                if (redirectUrl) {
+                                    window.location.href = redirectUrl;
+                                } else {
+                                    window.location.reload();
+                                }
+                            });
+                            return;
                         }
 
                         if (!data.checkout_url) {

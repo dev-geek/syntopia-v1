@@ -674,7 +674,7 @@
                                                         <p class="text-muted mb-2"><strong>End Date:</strong></p>
                                                         <p class="mb-2">
                                                             <i class="fas fa-question-circle text-muted mr-1"></i>
-                                                            Not available
+                                                            {{ $isFreePackage ? 'None' : 'Not available' }}
                                                         </p>
                                                     @endif
                                                 </div>
