@@ -88,10 +88,14 @@ class PasswordBindingService
                 'user_id' => $user->id,
                 'exception_message' => $e->getMessage()
             ]);
+            $errorMessage = str_contains($e->getMessage(), 'Could not resolve host')
+                ? 'Failed to connect to the authentication service. Please try again later.'
+                : 'An unexpected error occurred. Please try again later.';
+
             return [
                 'success' => false,
                 'data' => null,
-                'error_message' => 'System error: ' . $e->getMessage()
+                'error_message' => $errorMessage
             ];
         }
     }
@@ -256,10 +260,14 @@ class PasswordBindingService
                 'user_id' => $user->id,
                 'exception_message' => $e->getMessage()
             ]);
+            $errorMessage = str_contains($e->getMessage(), 'Could not resolve host')
+                ? 'Failed to connect to the authentication service. Please try again later.'
+                : 'An unexpected error occurred. Please try again later.';
+
             return [
                 'success' => false,
                 'data' => null,
-                'error_message' => 'System error: ' . $e->getMessage()
+                'error_message' => $errorMessage
             ];
         }
     }

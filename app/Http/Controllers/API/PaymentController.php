@@ -2290,7 +2290,7 @@ class PaymentController extends Controller
 
     public function handlePayProGlobalWebhook(Request $request)
     {
-        Log::info('PayProGlobal Webhook Client IP', ['ip' => $request->ip()]);
+        Log::info('PayProGlobal Webhook received', ['ip' => $request->ip(), 'full_request' => $request->all(), 'content' => $request->getContent()]);
 
         $contentType = $request->header('Content-Type');
         $payload = [];
@@ -2418,7 +2418,8 @@ class PaymentController extends Controller
                         'current_status' => $pendingOrder->status,
                         'new_status' => 'completed',
                         'payproglobal_order_id' => $orderId,
-                        'subscription_id' => $subscriptionId
+                        'subscription_id' => $subscriptionId,
+                        'retrieved_pending_order_transaction_id' => $pendingOrder->transaction_id
                     ]);
 
                     // Update order status
