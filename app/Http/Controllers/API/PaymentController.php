@@ -2291,10 +2291,6 @@ class PaymentController extends Controller
     public function handlePayProGlobalWebhook(Request $request)
     {
         Log::info('PayProGlobal Webhook Client IP', ['ip' => $request->ip()]);
-        Log::info('PayProGlobal Webhook Raw Content:', [
-            'content' => $request->getContent(),
-            'headers' => $request->headers->all()
-        ]);
 
         $contentType = $request->header('Content-Type');
         $payload = [];
@@ -2305,18 +2301,11 @@ class PaymentController extends Controller
             parse_str($request->getContent(), $payload);
         }
 
-        Log::info('PayProGlobal Webhook Parsed Data:', ['payload' => $payload]);
-
         try {
             if (empty($payload)) {
                 Log::error('Empty PayProGlobal webhook payload');
                 return response()->json(['success' => false, 'error' => 'Empty payload'], 400);
             }
-            Log::info('PayProGlobal webhook payload extracted', [
-                'payload_count' => count($payload),
-                'payload_keys' => array_keys($payload),
-                'payload' => $payload
-            ]);
 
             // Extract key fields from the webhook
             $orderId = $payload['ORDER_ID'] ?? null;
@@ -2326,35 +2315,45 @@ class PaymentController extends Controller
             $productId = $payload['PRODUCT_ID'] ?? null;
             $orderTotal = $payload['ORDER_TOTAL_AMOUNT'] ?? null;
             $currency = $payload['ORDER_CURRENCY_CODE'] ?? null;
+            $subscriptionId = $payload['SUBSCRIPTION_ID'] ?? null; // Extract SUBSCRIPTION_ID
 
-            Log::info('PayProGlobal webhook fields extracted', [
+            Log::info('PayProGlobal webhook fields extracted (critical for processing)', [
                 'order_id' => $orderId,
                 'ipn_type' => $ipnType,
-                'order_status' => $orderStatus,
                 'customer_email' => $customerEmail,
                 'product_id' => $productId,
-                'order_total' => $orderTotal,
-                'currency' => $currency
+                'subscription_id' => $subscriptionId
             ]);
 
             // Check if this is an OrderCharged event
             if ($ipnType === 'OrderCharged' && $orderId) {
-                Log::info('PayProGlobal OrderCharged event detected', [
+                Log::info('PayProGlobal OrderCharged event detected and processing initiated', [
                     'order_id' => $orderId,
-                    'ipn_type' => $ipnType
+                    'subscription_id' => $subscriptionId,
+                    'customer_email' => $customerEmail
                 ]);
+
+                if (is_null($subscriptionId)) {
+                    Log::error('PayProGlobal webhook: SUBSCRIPTION_ID is missing for OrderCharged event, cannot process subscription.', [
+                        'order_id' => $orderId,
+                        'customer_email' => $customerEmail,
+                        'payload' => $payload // Log full payload for critical missing data
+                    ]);
+                    return response()->json(['success' => false, 'error' => 'Missing subscription ID'], 400);
+                }
 
                 // Find user by email
                 $user = User::where('email', $customerEmail)->first();
                 if (!$user) {
-                    Log::error('PayProGlobal webhook: User not found by email', [
+                    Log::error('PayProGlobal webhook: User not found by email, cannot process order', [
                         'customer_email' => $customerEmail,
-                        'order_id' => $orderId
+                        'order_id' => $orderId,
+                        'subscription_id' => $subscriptionId
                     ]);
                     return response()->json(['success' => false, 'error' => 'User not found'], 404);
                 }
 
-                Log::info('PayProGlobal webhook: User found', [
+                Log::info('PayProGlobal webhook: User found for order processing', [
                     'user_id' => $user->id,
                     'user_email' => $user->email,
                     'order_id' => $orderId
@@ -2363,14 +2362,15 @@ class PaymentController extends Controller
                 // Find package by product ID
                 $package = Package::where('payproglobal_product_id', $productId)->first();
                 if (!$package) {
-                    Log::error('PayProGlobal webhook: Package not found by product ID', [
+                    Log::error('PayProGlobal webhook: Package not found by product ID, cannot process order', [
                         'product_id' => $productId,
-                        'order_id' => $orderId
+                        'order_id' => $orderId,
+                        'subscription_id' => $subscriptionId
                     ]);
                     return response()->json(['success' => false, 'error' => 'Package not found'], 404);
                 }
 
-                Log::info('PayProGlobal webhook: Package found', [
+                Log::info('PayProGlobal webhook: Package found for order processing', [
                     'package_id' => $package->id,
                     'package_name' => $package->name,
                     'product_id' => $productId
@@ -2385,36 +2385,40 @@ class PaymentController extends Controller
                     ->first();
 
                 if (!$pendingOrder) {
-                    Log::error('PayProGlobal webhook: Pending order not found', [
+                    Log::error('PayProGlobal webhook: Pending order not found, potential new order or missed initial setup', [
                         'user_id' => $user->id,
                         'package_id' => $package->id,
-                        'payproglobal_order_id' => $orderId
+                        'payproglobal_order_id' => $orderId,
+                        'subscription_id' => $subscriptionId
                     ]);
+                    // For production, consider if you need to create an order here if it's genuinely a new one.
                     return response()->json(['success' => false, 'error' => 'Pending order not found'], 404);
                 }
 
-                Log::info('PayProGlobal webhook: Pending order found', [
+                Log::info('PayProGlobal webhook: Pending order found for update', [
                     'pending_order_id' => $pendingOrder->id,
                     'pending_transaction_id' => $pendingOrder->transaction_id,
-                    'payproglobal_order_id' => $orderId
+                    'payproglobal_order_id' => $orderId,
+                    'subscription_id' => $subscriptionId
                 ]);
 
                 // Update the pending order to completed
-                DB::transaction(function () use ($user, $package, $pendingOrder, $orderId, $orderTotal, $currency) {
+                DB::transaction(function () use ($user, $package, $pendingOrder, $orderId, $orderTotal, $currency, $subscriptionId) {
                     $paymentGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
                     if (!$paymentGateway) {
-                        Log::error('PayProGlobal gateway not found in database.');
+                        Log::error('PayProGlobal gateway not found in database, critical configuration error.');
                         throw new \Exception('PayProGlobal gateway not configured.');
                     }
 
                     // Refresh order before update
                     $pendingOrder->refresh();
 
-                    Log::info('PayProGlobal webhook: Updating order', [
+                    Log::info('PayProGlobal webhook: Updating order status to completed', [
                         'order_id' => $pendingOrder->id,
                         'current_status' => $pendingOrder->status,
                         'new_status' => 'completed',
-                        'payproglobal_order_id' => $orderId
+                        'payproglobal_order_id' => $orderId,
+                        'subscription_id' => $subscriptionId
                     ]);
 
                     // Update order status
@@ -2426,18 +2430,20 @@ class PaymentController extends Controller
                         'currency' => $currency ?? $pendingOrder->currency,
                         'metadata' => array_merge(($pendingOrder->metadata ?? []), [
                             'payproglobal_order_id' => $orderId,
-                            'webhook_processed_at' => now()->toDateTimeString()
+                            'webhook_processed_at' => now()->toDateTimeString(),
+                            'payproglobal_subscription_id' => $subscriptionId // Store subscription ID in metadata
                         ]),
                     ]);
 
                     // Refresh to verify update
                     $pendingOrder->refresh();
 
-                    Log::info('PayProGlobal webhook: Order update result', [
+                    Log::info('PayProGlobal webhook: Order update result verified', [
                         'order_id' => $pendingOrder->id,
                         'update_result' => $updateResult,
                         'final_status' => $pendingOrder->status,
-                        'transaction_id' => $pendingOrder->transaction_id
+                        'transaction_id' => $pendingOrder->transaction_id,
+                        'subscription_id' => $subscriptionId
                     ]);
 
                     // Update user subscription
@@ -2445,65 +2451,70 @@ class PaymentController extends Controller
                         'package_id' => $package->id,
                         'is_subscribed' => true,
                         'payment_gateway_id' => $paymentGateway->id,
-                        'subscription_id' => (string)$orderId
+                        'subscription_id' => $subscriptionId // Use the extracted subscription ID
                     ]);
 
                     // Create and activate license
                     $this->licenseService->createAndActivateLicense(
                         $user,
                         $package,
-                        null, // productId not needed for license creation
+                        $subscriptionId, // Pass the extracted subscription ID
                         $paymentGateway->id
                     );
 
-                    Log::info('PayProGlobal webhook: Order completed and license created', [
+                    Log::info('PayProGlobal webhook: Order completed and license created successfully', [
                         'order_id' => $pendingOrder->id,
                         'user_id' => $user->id,
                         'package' => $package->name,
-                        'order_status' => $pendingOrder->status
+                        'order_status' => $pendingOrder->status,
+                        'subscription_id' => $subscriptionId
                     ]);
                 });
 
                 $result = true;
 
                 if ($result) {
-                    Log::info('PayProGlobal webhook: Payment processed successfully', [
+                    Log::info('PayProGlobal webhook: Payment processed successfully, license assigned', [
                         'order_id' => $orderId,
-                        'user_id' => $user->id
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId
                     ]);
                     return response()->json(['success' => true, 'message' => 'Payment processed', 'order_id' => $orderId], 200);
                 } else {
-                    Log::error('PayProGlobal webhook: Payment processing failed', [
+                    Log::error('PayProGlobal webhook: Payment processing failed unexpectedly', [
                         'order_id' => $orderId,
-                        'user_id' => $user->id
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId
                     ]);
                     return response()->json(['success' => false, 'error' => 'Payment processing failed'], 500);
                 }
             }
 
-            Log::info('PayProGlobal webhook: Event ignored', [
+            Log::info('PayProGlobal webhook: Event ignored - not an OrderCharged event or missing order ID', [
                 'ipn_type' => $ipnType,
                 'order_id' => $orderId,
-                'reason' => 'Not an OrderCharged event or missing order ID'
+                'subscription_id' => $subscriptionId
             ]);
 
             return response()->json(['success' => false, 'message' => 'Event ignored'], 200);
         } catch (\Exception $e) {
-            Log::error('PayProGlobal webhook processing error', [
+            Log::error('PayProGlobal webhook processing error encountered', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'payload' => $payload // Only log payload on error for debugging
             ]);
 
             // Check if this is a license API failure
             if ($e->getMessage() === 'license_api_failed') {
-                Log::error('License API failed during PayProGlobal webhook processing', [
-                    'payload' => $payload
+                Log::error('License API failed during PayProGlobal webhook processing (retries prevented)', [
+                    'payload' => $payload,
+                    'order_id' => $orderId,
+                    'subscription_id' => $subscriptionId
                 ]);
                 // For webhooks, we return a 200 status to prevent retries, but log the error
                 return response()->json(['success' => false, 'status' => 'failed_license_api'], 200);
             }
-
-            return response()->json(['success' => false, 'error' => 'Processing failed'], 500);
+            return response()->json(['success' => false, 'error' => 'Internal Server Error'], 500);
         }
     }
 
@@ -5389,7 +5400,7 @@ class PaymentController extends Controller
                     'package_id' => $package->id,
                     'is_subscribed' => true,
                     'payment_gateway_id' => $paymentGateway->id,
-                    'subscription_id' => $pendingOrder->transaction_id
+                    'subscription_id' => null // Reverting to null temporarily
                 ]);
 
                 // Create and activate license
@@ -5400,10 +5411,11 @@ class PaymentController extends Controller
                     $paymentGateway->id
                 );
 
-                Log::info('Manual PayProGlobal order completion successful', [
+                Log::info('PayProGlobal webhook: Order completed and license created', [
                     'order_id' => $pendingOrder->id,
                     'user_id' => $user->id,
-                    'package' => $package->name
+                    'package' => $package->name,
+                    'order_status' => $pendingOrder->status
                 ]);
             });
 

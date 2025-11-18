@@ -22,7 +22,7 @@ class LicenseService
     /**
      * Create a new license for a user and activate it
      */
-    public function createAndActivateLicense(User $user, Package $package, string $subscriptionId = null, string $paymentGateway = null, bool $isUpgradeAttempt = false): ?UserLicence
+    public function createAndActivateLicense(User $user, Package $package, ?string $subscriptionId = null, ?string $paymentGateway = null, bool $isUpgradeAttempt = false): ?UserLicence
     {
         try {
             DB::beginTransaction();
@@ -79,9 +79,12 @@ class LicenseService
             $isFastSpring = $paymentGateway == ($fastspringGateway ? $fastspringGateway->id : null);
             $isPaddle = $paymentGateway == ($paddleGateway ? $paddleGateway->id : null);
 
-            // For Paddle, we need subscription_id for upgrades, but can proceed without it for new subscriptions
-            if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring && !$isPaddle) {
-                Log::info('No subscription_id provided, skipping license record creation', [
+            // If no subscriptionId is provided and it's not a recognized gateway that can operate without one for initial purchases,
+            // then we need to skip license record creation. This logic assumes subscriptionId is crucial for recurring billing management.
+            // For one-time purchases via PayProGlobal or FastSpring that might not have a subscriptionId, the controller
+            // should generate a unique identifier to be used as subscriptionId if no actual subscription ID is provided by the gateway.
+            if (!$subscriptionId && !($isPayProGlobal || $isFastSpring || $isPaddle)) {
+                Log::info('No subscription_id provided, skipping license record creation for non-subscription-based or unrecognized gateway.', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
                     'payment_gateway' => $paymentGateway
@@ -100,36 +103,6 @@ class LicenseService
 
                 DB::commit();
                 return null;
-            }
-
-            // For PayProGlobal without subscription_id, use a generated one based on order_id
-            if (!$subscriptionId && $isPayProGlobal) {
-                $subscriptionId = 'PPG-ORDER-' . time() . '-' . $user->id;
-                Log::info('Generated subscription_id for PayProGlobal', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'generated_subscription_id' => $subscriptionId
-                ]);
-            }
-
-            // For FastSpring without subscription_id, use a generated one based on order_id
-            if (!$subscriptionId && $isFastSpring) {
-                $subscriptionId = 'FS-ORDER-' . time() . '-' . $user->id;
-                Log::info('Generated subscription_id for FastSpring', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'generated_subscription_id' => $subscriptionId
-                ]);
-            }
-
-            // For Paddle without subscription_id, use a generated one based on order_id
-            if (!$subscriptionId && $isPaddle) {
-                $subscriptionId = 'PADDLE-ORDER-' . time() . '-' . $user->id;
-                Log::info('Generated subscription_id for Paddle', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'generated_subscription_id' => $subscriptionId
-                ]);
             }
 
             // If package name maps to a specific subscription, require that one
