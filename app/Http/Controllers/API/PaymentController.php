@@ -2315,7 +2315,17 @@ class PaymentController extends Controller
             $productId = $payload['PRODUCT_ID'] ?? null;
             $orderTotal = $payload['ORDER_TOTAL_AMOUNT'] ?? null;
             $currency = $payload['ORDER_CURRENCY_CODE'] ?? null;
-            $subscriptionId = $payload['SUBSCRIPTION_ID'] ?? null; // Extract SUBSCRIPTION_ID
+            $subscriptionId = $payload['SUBSCRIPTION_ID'] ?? null;
+            $checkoutQueryString = $payload['CHECKOUT_QUERY_STRING'] ?? null;
+
+            $customUserId = null;
+            if ($checkoutQueryString) {
+                parse_str($checkoutQueryString, $checkoutParams);
+                if (isset($checkoutParams['custom'])) {
+                    $decodedCustom = json_decode($checkoutParams['custom'], true);
+                    $customUserId = $decodedCustom['user_id'] ?? null;
+                }
+            }
 
             Log::info('PayProGlobal webhook fields extracted (critical for processing)', [
                 'order_id' => $orderId,
@@ -2325,7 +2335,6 @@ class PaymentController extends Controller
                 'subscription_id' => $subscriptionId
             ]);
 
-            // Check if this is an OrderCharged event
             if ($ipnType === 'OrderCharged' && $orderId) {
                 Log::info('PayProGlobal OrderCharged event detected and processing initiated', [
                     'order_id' => $orderId,
@@ -2337,18 +2346,29 @@ class PaymentController extends Controller
                     Log::error('PayProGlobal webhook: SUBSCRIPTION_ID is missing for OrderCharged event, cannot process subscription.', [
                         'order_id' => $orderId,
                         'customer_email' => $customerEmail,
-                        'payload' => $payload // Log full payload for critical missing data
+                        'payload' => $payload
                     ]);
                     return response()->json(['success' => false, 'error' => 'Missing subscription ID'], 400);
                 }
 
-                // Find user by email
-                $user = User::where('email', $customerEmail)->first();
+                // Find user by email (fallback) or by custom user ID
+                $user = null;
+                if ($customUserId) {
+                    $user = User::find($customUserId);
+                }
+
                 if (!$user) {
-                    Log::error('PayProGlobal webhook: User not found by email, cannot process order', [
+                    // Fallback to customer email if customUserId did not yield a user
+                    $user = User::where('email', $customerEmail)->first();
+                }
+
+                if (!$user) {
+                    Log::error('PayProGlobal webhook: User not found by email or custom user ID, cannot process order', [
                         'customer_email' => $customerEmail,
+                        'custom_user_id' => $customUserId,
                         'order_id' => $orderId,
-                        'subscription_id' => $subscriptionId
+                        'subscription_id' => $subscriptionId,
+                        'payload' => $payload
                     ]);
                     return response()->json(['success' => false, 'error' => 'User not found'], 404);
                 }
@@ -2356,6 +2376,7 @@ class PaymentController extends Controller
                 Log::info('PayProGlobal webhook: User found for order processing', [
                     'user_id' => $user->id,
                     'user_email' => $user->email,
+                    'found_by' => $customUserId ? 'custom_user_id' : 'customer_email',
                     'order_id' => $orderId
                 ]);
 
