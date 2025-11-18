@@ -23,9 +23,6 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
 // PayProGlobal webhook (direct route for external calls)
 Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal.webhook');
 
-// Test endpoint
-Route::post('/payproglobal/test', [PaymentController::class, 'testPayProGlobalWebhook'])->name('payproglobal.test');
-
 // Token decryption routes (for software auto-login)
 Route::prefix('token')->name('token.')->group(function () {
     Route::match(['POST', 'OPTIONS'], '/decrypt', [TokenDecryptionController::class, 'decryptToken'])->name('decrypt');
@@ -80,10 +77,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/verify-order/{transactionId}', [PaymentController::class, 'verifyOrder'])->name('verify-order');
         Route::get('/payproglobal/latest-order', [PaymentController::class, 'getLatestPayProGlobalOrder'])
             ->name('payproglobal.latest-order');
-
-        // Test endpoint for debugging
-        Route::get('/test-paddle-config', [PaymentController::class, 'testPaddleConfiguration'])
-            ->name('test.paddle-config');
     });
 
     // Orders
