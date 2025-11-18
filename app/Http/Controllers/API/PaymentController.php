@@ -2370,11 +2370,13 @@ class PaymentController extends Controller
             $checkoutQueryString = $payload['CHECKOUT_QUERY_STRING'] ?? null;
 
             $customUserId = null;
+            $customPackageName = null;
             if ($checkoutQueryString) {
                 parse_str($checkoutQueryString, $checkoutParams);
                 if (isset($checkoutParams['custom'])) {
                     $decodedCustom = json_decode($checkoutParams['custom'], true);
                     $customUserId = $decodedCustom['user_id'] ?? null;
+                    $customPackageName = $decodedCustom['package'] ?? null;
                 }
             }
 
@@ -2431,13 +2433,59 @@ class PaymentController extends Controller
                     'order_id' => $orderId
                 ]);
 
-                // Find package by product ID
-                $package = Package::where('payproglobal_product_id', $productId)->first();
+                $package = null;
+                $foundByMethod = null;
+
+                // Method 1: Map product ID from config to package name
+                if ($productId) {
+                    $productIds = config('payment.gateways.PayProGlobal.product_ids', []);
+                    $packageName = null;
+
+                    foreach ($productIds as $key => $configProductId) {
+                        if ((int)$configProductId === (int)$productId) {
+                            $packageName = ucfirst($key);
+                            break;
+                        }
+                    }
+
+                    if ($packageName) {
+                        $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
+                        if ($package) {
+                            $foundByMethod = 'config_mapping';
+                        }
+                    }
+                }
+
+                // Method 2: Use ORDER_ITEM_NAME from webhook
+                if (!$package && isset($payload['ORDER_ITEM_NAME'])) {
+                    $orderItemName = $payload['ORDER_ITEM_NAME'];
+                    $package = Package::whereRaw('LOWER(name) = ?', [strtolower($orderItemName)])->first();
+                    if ($package) {
+                        $foundByMethod = 'order_item_name';
+                    }
+                }
+
+                // Method 3: Use package name from custom data in checkout query string
+                if (!$package && $customPackageName) {
+                    $package = Package::whereRaw('LOWER(name) = ?', [strtolower($customPackageName)])->first();
+                    if ($package) {
+                        $foundByMethod = 'custom_data';
+                    }
+                }
+
                 if (!$package) {
+                    // Get all available package names for debugging
+                    $availablePackages = Package::pluck('name')->toArray();
+
                     Log::error('PayProGlobal webhook: Package not found by product ID, cannot process order', [
                         'product_id' => $productId,
                         'order_id' => $orderId,
-                        'subscription_id' => $subscriptionId
+                        'subscription_id' => $subscriptionId,
+                        'order_item_name' => $payload['ORDER_ITEM_NAME'] ?? null,
+                        'custom_package_name' => $customPackageName,
+                        'config_product_ids' => config('payment.gateways.PayProGlobal.product_ids', []),
+                        'available_packages' => $availablePackages,
+                        'attempted_methods' => 'config_mapping, order_item_name, custom_data'
                     ]);
                     return response()->json(['success' => false, 'error' => 'Package not found'], 404);
                 }
@@ -2445,7 +2493,8 @@ class PaymentController extends Controller
                 Log::info('PayProGlobal webhook: Package found for order processing', [
                     'package_id' => $package->id,
                     'package_name' => $package->name,
-                    'product_id' => $productId
+                    'product_id' => $productId,
+                    'found_by_method' => $foundByMethod
                 ]);
 
                 // Find the pending order for this user and package

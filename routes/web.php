@@ -39,7 +39,7 @@ Route::post('/check-email', [LoginController::class, 'checkEmail'])->name('check
 Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payments.success');
 Route::match(['get', 'post'], '/payments/addon-success', [PaymentController::class, 'handleAddonSuccess'])->name('payments.addon-success');
 Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name('payments.cancel');
-Route::get('/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
+Route::match(['get', 'post'], '/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
 Route::get('/payments/license-error', [PaymentController::class, 'handleLicenseError'])->name('payments.license-error');
 Route::post('/payments/addon-debug-log', [PaymentController::class, 'addonDebugLog'])->name('payments.addon-debug-log');
 
@@ -108,7 +108,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/update-password', [ProfileController::class, 'updatePassword'])->name('update-password');
 
     // Subscription management
-    Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])
+    Route::match(['get', 'post'], '/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])
         ->name('user.subscription.details');
     Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgrade'])->name('subscription.upgrade');
     Route::get('/subscription/downgrade', [SubscriptionController::class, 'downgrade'])->name('subscription.downgrade');
