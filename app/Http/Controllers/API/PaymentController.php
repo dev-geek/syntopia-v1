@@ -1740,7 +1740,7 @@ class PaymentController extends Controller
                     'auth_id_before_final_redirect' => auth()->id()
                 ]);
 
-                // If user is not authenticated but we have the user object, log them in
+                // Ensure user is logged in before redirecting
                 if (!auth()->check() && $user) {
                     auth()->login($user);
                     Log::info('PayProGlobal: User logged in during success callback', [
@@ -1764,11 +1764,25 @@ class PaymentController extends Controller
                     }
                 }
 
-                if (!auth()->check()) {
-                    return redirect()->route('login')->with('info', $successMessage . ' Please log in to access your dashboard.');
+                // Always redirect to subscription details page after payment success
+                // Use absolute URL to ensure proper redirect and maintain session
+                if (app()->environment('production')) {
+                    $redirectUrl = 'https://app.syntopia.ai' . route('user.subscription.details', [], false);
+                } else {
+                    $redirectUrl = ($request->getSchemeAndHttpHost() ?: config('app.url')) . route('user.subscription.details', [], false);
                 }
-                // Redirect to subscription details page after payment success
-                return redirect()->route('user.subscription.details')->with('success', $successMessage);
+
+                // Add success message to session before redirect
+                session()->flash('success', $successMessage);
+
+                Log::info('PayProGlobal: Redirecting to subscription details', [
+                    'user_id' => $user->id,
+                    'auth_check' => auth()->check(),
+                    'redirect_url' => $redirectUrl
+                ]);
+
+                // Use absolute redirect to ensure it works even if PayProGlobal shows their thank you page first
+                return redirect($redirectUrl);
 
             } // Add other payment gateways here
             else {
