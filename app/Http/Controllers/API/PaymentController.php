@@ -947,7 +947,7 @@ class PaymentController extends Controller
                 'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
             ];
 
-            $successUrl = route('payments.success', $successParams);
+            $successUrl = url(route('payments.success', $successParams));
 
             $checkoutParams = [
                 'products[1][id]' => $productId,
@@ -1380,11 +1380,12 @@ class PaymentController extends Controller
             } elseif ($gateway === 'payproglobal') {
                 Log::info('PayProGlobal success callback - RAW REQUEST INCOMING', ['request_all' => $request->all()]);
 
+                // For redirects, user_id is in query parameters; for webhooks, it's in custom field
                 $customData = json_decode($request->input('custom', '{}'), true);
-                $userId = $customData['user_id'] ?? null;
-                $packageSlug = $customData['package'] ?? null;
-                $pendingOrderId = $customData['pending_order_id'] ?? null;
-                $action = $customData['action'] ?? 'new';
+                $userId = $request->query('user_id') ?? $customData['user_id'] ?? null;
+                $packageSlug = $request->query('package') ?? $customData['package'] ?? null;
+                $pendingOrderId = $request->query('pending_order_id') ?? $customData['pending_order_id'] ?? null;
+                $action = $request->query('action') ?? $customData['action'] ?? 'new';
 
                 Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
                     'gateway' => $gateway,
@@ -1428,6 +1429,18 @@ class PaymentController extends Controller
                         'auth_id_before_redirect' => auth()->id()
                     ]);
                     return redirect()->route('subscription')->with('error', 'Payment processing error (data mismatch).');
+                }
+
+                // Log the user in immediately to preserve session after redirect from PayPro Global
+                $wasAuthenticated = auth()->check();
+                $previousAuthId = auth()->id();
+                if (!$wasAuthenticated || $previousAuthId !== $user->id) {
+                    auth()->login($user);
+                    Log::info('PayProGlobal: User logged in from redirect', [
+                        'user_id' => $user->id,
+                        'was_authenticated' => $wasAuthenticated,
+                        'previous_auth_id' => $previousAuthId
+                    ]);
                 }
 
                 if ($pendingOrder->status === 'completed') {
@@ -1519,19 +1532,9 @@ class PaymentController extends Controller
                     'auth_id_before_final_redirect' => auth()->id()
                 ]);
 
-                // If user is not authenticated but we have the user object, log them in
-                if (!auth()->check() && $user) {
-                    auth()->login($user);
-                    Log::info('PayProGlobal: User logged in during success callback', [
-                        'user_id' => $user->id,
-                        'Auth::check()' => auth()->check(),
-                        'Auth::id()' => auth()->id()
-                    ]);
-                }
-
                 // Determine the success message based on the action (e.g., downgrade)
                 $successMessage = 'Your subscription is now active!';
-                if (($customData['action'] ?? '') === 'downgrade') {
+                if ($action === 'downgrade') {
                     $scheduledActivationDate = null;
                     if ($pendingOrder && is_array($pendingOrder->metadata) && isset($pendingOrder->metadata['scheduled_activation_date'])) {
                         $scheduledActivationDate = Carbon::parse($pendingOrder->metadata['scheduled_activation_date']);

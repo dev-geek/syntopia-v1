@@ -609,6 +609,10 @@
                     sessionStorage.setItem('payProGlobalUserId', userId);
                     sessionStorage.setItem('payProGlobalPackageName', packageName);
                     sessionStorage.setItem('payProGlobalAction', action);
+                    
+                    // Store success URL for fallback redirect if PayPro Global redirects to marketplace
+                    const successUrl = `/payments/success?gateway=payproglobal&user_id=${userId}&package=${packageName}&popup=true&pending_order_id=${data.pending_order_id}&action=${action}`;
+                    sessionStorage.setItem('payProGlobalSuccessUrl', successUrl);
 
                     // Always open PayProGlobal checkout in the same tab
                     window.location.href = data.checkout_url;
