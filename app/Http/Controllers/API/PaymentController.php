@@ -1456,22 +1456,36 @@ class PaymentController extends Controller
                 $wasAuthenticated = Auth::guard('web')->check();
                 $previousAuthId = Auth::guard('web')->id();
 
+                // Clear any intended URLs that might redirect to admin routes
+                $request->session()->forget('url.intended');
+                $request->session()->forget('verification_intended_url');
+
                 if (!$wasAuthenticated || $previousAuthId !== $user->id) {
-                    // Only log in if user is not authenticated or is a different user
-                    Auth::guard('web')->login($user, false);
+                    // Only log in if user has "User" role (not admin)
+                    if ($user->hasRole('User')) {
+                        // Only log in if user is not authenticated or is a different user
+                        Auth::guard('web')->login($user, false);
 
-                    // Ensure session is saved and committed (without regenerating to preserve session)
-                    $request->session()->save();
+                        // Ensure session is saved and committed (without regenerating to preserve session)
+                        $request->session()->save();
 
-                    Log::info('PayProGlobal: User logged in from redirect', [
-                        'user_id' => $user->id,
-                        'was_authenticated' => $wasAuthenticated,
-                        'previous_auth_id' => $previousAuthId,
-                        'auth_check_after_login' => Auth::guard('web')->check(),
-                        'auth_id_after_login' => Auth::guard('web')->id(),
-                        'session_id' => $request->session()->getId(),
-                        'has_auth_token' => !empty($authToken)
-                    ]);
+                        Log::info('PayProGlobal: User logged in from redirect', [
+                            'user_id' => $user->id,
+                            'was_authenticated' => $wasAuthenticated,
+                            'previous_auth_id' => $previousAuthId,
+                            'auth_check_after_login' => Auth::guard('web')->check(),
+                            'auth_id_after_login' => Auth::guard('web')->id(),
+                            'session_id' => $request->session()->getId(),
+                            'has_auth_token' => !empty($authToken)
+                        ]);
+                    } else {
+                        // If user is admin, don't auto-login - redirect to login page
+                        Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
+                            'user_id' => $user->id,
+                            'user_roles' => $user->getRoleNames()
+                        ]);
+                        return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
+                    }
                 } else {
                     // User is already authenticated with correct ID - just ensure session is saved
                     $request->session()->save();
@@ -1588,13 +1602,31 @@ class PaymentController extends Controller
 
                 // Final check before redirect - ensure user is still authenticated using web guard
                 if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
-                    // Re-login if session was lost
-                    Auth::guard('web')->login($user, false);
-                    $request->session()->save();
-                    Log::warning('PayProGlobal: User session lost before redirect, re-logged in', [
-                        'user_id' => $user->id,
-                        'session_id' => $request->session()->getId()
-                    ]);
+                    // Only log in if user has "User" role (not admin)
+                    if ($user->hasRole('User')) {
+                        // Clear any intended URLs that might redirect to admin routes
+                        $request->session()->forget('url.intended');
+                        $request->session()->forget('verification_intended_url');
+
+                        // Re-login if session was lost
+                        Auth::guard('web')->login($user, false);
+                        $request->session()->save();
+                        Log::warning('PayProGlobal: User session lost before redirect, re-logged in', [
+                            'user_id' => $user->id,
+                            'session_id' => $request->session()->getId()
+                        ]);
+                    } else {
+                        // If user is admin, don't auto-login - redirect to login page
+                        Log::warning('PayProGlobal: Attempted to auto-login non-User role', [
+                            'user_id' => $user->id,
+                            'user_roles' => $user->getRoleNames()
+                        ]);
+                        return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
+                    }
+                } else {
+                    // Clear any intended URLs even if user is already logged in
+                    $request->session()->forget('url.intended');
+                    $request->session()->forget('verification_intended_url');
                 }
 
                 // Ensure session is saved and committed before redirect
@@ -1969,12 +2001,27 @@ class PaymentController extends Controller
 
             // Ensure user is authenticated before redirecting to protected route
             if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
-                // Log user in if not authenticated
-                Auth::guard('web')->login($user, false);
-                // Save session without regenerating to preserve it
-                request()->session()->save();
+                // Only log in if user has "User" role (not admin)
+                if ($user->hasRole('User')) {
+                    // Clear any intended URLs that might redirect to admin routes
+                    session()->forget('url.intended');
+                    session()->forget('verification_intended_url');
+
+                    // Log user in if not authenticated
+                    Auth::guard('web')->login($user, false);
+                    // Save session without regenerating to preserve it
+                    request()->session()->save();
+                } else {
+                    // If user is admin, don't log them in here - let them log in normally
+                    Log::warning('processPayment: Attempted to log in non-User role during payment processing', [
+                        'user_id' => $user->id,
+                        'user_roles' => $user->getRoleNames()
+                    ]);
+                    return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
+                }
             }
 
+            // Ensure we're redirecting to user route, not admin route
             return redirect()->route('user.subscription.details')->with('success', $successMessage);
         });
     }
