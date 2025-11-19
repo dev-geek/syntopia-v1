@@ -7,6 +7,8 @@ use Illuminate\Session\TokenMismatchException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\Auth;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -44,6 +46,19 @@ class Handler extends ExceptionHandler
             return redirect()->back()
                 ->withInput($request->except('_token'))
                 ->with('error', 'Your session has expired. Please try again.');
+        }
+
+        if ($e instanceof AuthorizationException) {
+            if ($request->expectsJson()) {
+                return new JsonResponse([
+                    'message' => 'You don\'t have permission to access this resource.',
+                ], 403);
+            }
+
+            if (Auth::check() && Auth::user()->hasRole('User') && $request->is('admin/*')) {
+                return redirect()->route('user.dashboard')
+                    ->with('info', 'You have been redirected to your dashboard.');
+            }
         }
 
         return parent::render($request, $e);
