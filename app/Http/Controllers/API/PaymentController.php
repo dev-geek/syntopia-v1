@@ -1764,10 +1764,10 @@ class PaymentController extends Controller
     private function processPayment($paymentData, $gateway)
     {
         return DB::transaction(function () use ($paymentData, $gateway) {
-            $userId = Auth::user()->id ?? null;
+            $userId = Auth::user()->id ?? $paymentData['user_id'] ?? null;
             $packageName = ucfirst($paymentData['package']) ?? (isset($paymentData['custom_data']) ? (ucfirst($paymentData['custom_data']['package']) ?? null) : null);
-            $transactionId = $paymentData['order'] ?? ($paymentData['id'] ?? null);
-            $amount = $paymentData['total'] ?? (isset($paymentData['items'][0]) ? ($paymentData['items'][0]['subtotal'] / 100 ?? 0) : 0);
+            $transactionId = $paymentData['order_id'] ?? $paymentData['order'] ?? ($paymentData['id'] ?? null);
+            $amount = isset($paymentData['amount']) ? (float) $paymentData['amount'] : ($paymentData['total'] ?? (isset($paymentData['items'][0]) ? ($paymentData['items'][0]['subtotal'] / 100 ?? 0) : 0));
             $subscriptionId = $paymentData['subscription_id'] ?? null;
             $action = $paymentData['action'] ?? (isset($paymentData['custom_data']) ? ($paymentData['custom_data']['action'] ?? 'new') : 'new');
             $currency = $paymentData['currency'] ?? 'USD';
@@ -2150,7 +2150,7 @@ class PaymentController extends Controller
             $orderStatus = $payload['ORDER_STATUS'] ?? null;
             $customerEmail = $payload['CUSTOMER_EMAIL'] ?? null;
             $productId = $payload['PRODUCT_ID'] ?? null;
-            $orderTotal = $payload['ORDER_TOTAL_AMOUNT'] ?? null;
+            $orderTotal = $payload['ORDER_TOTAL_AMOUNT_SHOWN'] ?? $payload['ORDER_ITEM_TOTAL_AMOUNT'] ?? $payload['ORDER_TOTAL_AMOUNT'] ?? null;
             $currency = $payload['ORDER_CURRENCY_CODE'] ?? null;
 
             Log::info('PayProGlobal webhook fields extracted', [
