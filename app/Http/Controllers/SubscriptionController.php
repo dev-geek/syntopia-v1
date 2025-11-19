@@ -16,10 +16,12 @@ use Carbon\Carbon;
 class SubscriptionController extends Controller
 {
     private $subscriptionService;
+    private $paymentController;
 
-    public function __construct(SubscriptionService $subscriptionService)
+    public function __construct(SubscriptionService $subscriptionService, PaymentController $paymentController)
     {
         $this->subscriptionService = $subscriptionService;
+        $this->paymentController = $paymentController;
     }
 
     private function hasActiveSubscription($user)
@@ -366,8 +368,21 @@ class SubscriptionController extends Controller
         }
     }
 
-    public function subscriptionDetails()
+    public function subscriptionDetails(Request $request)
     {
+        // Handle PayProGlobal POST callbacks - forward to payment success handler
+        if ($request->isMethod('post') && ($request->has('ORDER_STATUS') || $request->has('ORDER_ID') || $request->has('ORDER_ITEMS'))) {
+            Log::info('PayProGlobal POST callback detected in subscription-details, forwarding to payments.success handler', [
+                'has_order_status' => $request->has('ORDER_STATUS'),
+                'has_order_id' => $request->has('ORDER_ID'),
+                'order_status' => $request->input('ORDER_STATUS'),
+            ]);
+
+            // Merge gateway parameter into request and forward to payment success handler
+            $request->merge(['gateway' => 'payproglobal']);
+            return $this->paymentController->handleSuccess($request);
+        }
+
         $user = Auth::user();
 
         if (!$user->hasRole(['User'])) {

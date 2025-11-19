@@ -104,7 +104,7 @@ Route::middleware(['auth', 'verified.custom'])->group(function () {
     Route::get('/update-password', [ProfileController::class, 'updatePassword'])->name('update-password');
 
     // Subscription routes
-    Route::get('/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
+    Route::match(['get', 'post'], '/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
     Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgrade'])->name('subscription.upgrade');
     Route::get('/subscription/downgrade', [SubscriptionController::class, 'downgrade'])->name('subscription.downgrade');
 
