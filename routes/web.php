@@ -24,9 +24,23 @@ use Illuminate\Support\Facades\Auth;
 |--------------------------------------------------------------------------
 */
 
-// Redirect root to login
-Route::get('/', function () {
-    return redirect()->route('login');
+// Root route - handle PayProGlobal POST callbacks or redirect to dashboard
+Route::match(['get', 'post'], '/', function (Request $request) {
+    // Handle PayProGlobal POST callbacks - forward to payment success handler
+    if ($request->isMethod('post') && ($request->has('ORDER_STATUS') || $request->has('ORDER_ID') || $request->has('ORDER_ITEMS'))) {
+        \Illuminate\Support\Facades\Log::info('PayProGlobal POST callback detected in root route, forwarding to payments.success handler', [
+            'has_order_status' => $request->has('ORDER_STATUS'),
+            'has_order_id' => $request->has('ORDER_ID'),
+            'order_status' => $request->input('ORDER_STATUS'),
+        ]);
+
+        $paymentController = app(\App\Http\Controllers\API\PaymentController::class);
+        $request->merge(['gateway' => 'payproglobal']);
+        return $paymentController->handleSuccess($request);
+    }
+
+    // For GET requests or non-PayProGlobal POST requests, redirect to dashboard
+    return redirect()->route('user.dashboard');
 });
 
 // Guest routes (no authentication required)
