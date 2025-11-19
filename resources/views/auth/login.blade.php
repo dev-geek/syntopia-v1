@@ -65,66 +65,53 @@
         height: 100%;
     }
 
-    .video1,
-    .video2 {
+    .video-container video {
         position: absolute;
+        border-radius: 14px;
+        object-fit: cover;
+    }
+
+    /* Nicely balanced collage layout */
+    .video1 {      /* top-left wide banner   */
         width: 40%;
-        border-radius: 10px;
+        top: 1%;
+        left: 1%;
     }
 
-    .video3,
-    .video6 {
-        position: absolute;
-        width: 20%;
-        border-radius: 10px;
+    .video2 {      /* top-right card         */
+        width: 25%;
+        top: 2%;
+        right: 2%;
     }
 
-    .video4 {
-        position: absolute;
-        width: 22%;
-        border-radius: 10px;
+    .video3 {      /* mid-left portrait      */
+        width: 40%;
+        top: 57%;
+        right: 3%;
     }
 
-    .video5,
-    .video7 {
-        position: absolute;
-        width: 38%;
-        border-radius: 10px;
+    .video4 {      /* mid-center medium      */
+        width: 25%;
+        top: 15%;
+        right: 30%;
     }
 
-    .floating-1 {
-        top: -1%;
-        left: -1%;
+    .video5 {      /* mid-right tall         */
+        width: 24%;
+        top: 60%;
+        left: 28%;
     }
 
-    .floating-2 {
-        top: 8%;
-        right: 10%;
+    .video6 {      /* bottom-left wide       */
+        width: 25%;
+        bottom: 33%;
+        left: 2%;
     }
 
-    .floating-3 {
-        top: 40%;
-        left: -6%;
-    }
-
-    .floating-4 {
-        top: 35%;
-        left: 30%;
-    }
-
-    .floating-5 {
-        top: 40%;
-        right: -8%;
-    }
-
-    .floating-6 {
-        bottom: 0%;
-        right: -2%;
-    }
-
-    .floating-7 {
-        top: 78%;
-        left: 20%;
+    .video7 {      /* bottom-mid/right card  */
+        width: 40%;
+        bottom: 2%;
+        right: 2%;
     }
 
     .right-section {
@@ -473,22 +460,26 @@
         <!-- Left Side -->
         <div class="left-section">
             <div class="video-container">
-                <video src="https://cdn.synthesia.io/assets-public/welcome-page/Alex_LP_fin.mp4" autoplay loop muted
-                    class="video1 floating-1"></video>
-                <video
-                    src="https://cdn.synthesia.io/assets-public/welcome-page/Video_Examples_for_Website_-_02_-_Value_selling_fundamentals.mp4"
-                    autoplay loop muted class="video2 floating-2"></video>
-                <video src="https://cdn.synthesia.io/assets-public/welcome-page/welcome_(2).mp4" autoplay loop muted
-                    class="video3 floating-3"></video>
-                <video src="https://cdn.synthesia.io/assets-public/welcome-page/hey.mp4" autoplay loop muted
-                    class="video4 floating-4"></video>
-                <video src="https://cdn.synthesia.io/assets-public/welcome-page/Sign_in_7.mp4" autoplay loop muted
-                    class="video5 floating-5"></video>
-                <video src="https://cdn.synthesia.io/assets-public/welcome-page/Sign_in_6.mp4" autoplay loop muted
-                    class="video6 floating-6"></video>
-                <video
-                    src="https://cdn.synthesia.io/assets-public/welcome-page/Video_Examples_for_Website_-_04_-_Understanding_Your_Bill.mp4"
-                    autoplay loop muted class="video7 floating-7"></video>
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/Video-1-Adrian-Concepcion-not-finished.mp4"
+                       autoplay loop muted playsinline class="video1"></video>
+
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/特斯拉京东直播.mp4"
+                       autoplay loop muted playsinline class="video2"></video>
+
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/Login-page-video-1.mov"
+                       autoplay loop muted playsinline class="video3"></video>
+
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/black-cloth-can-go-on-login-page.mp4"
+                       autoplay loop muted playsinline class="video4"></video>
+
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/泰语直播.mp4"
+                       autoplay loop muted playsinline class="video5"></video>
+
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/avatar-video-demo-can-go-on-login-page.mp4"
+                       autoplay loop muted playsinline class="video6"></video>
+
+                <video src="https://syntopia.ai/wp-content/uploads/2025/11/Login-page-video-2.mov"
+                       autoplay loop muted playsinline class="video7"></video>
             </div>
         </div>
 
