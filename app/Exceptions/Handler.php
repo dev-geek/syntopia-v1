@@ -7,8 +7,6 @@ use Illuminate\Session\TokenMismatchException;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Exception\HttpException;
-use Illuminate\Auth\Access\AuthorizationException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -46,21 +44,6 @@ class Handler extends ExceptionHandler
             return redirect()->back()
                 ->withInput($request->except('_token'))
                 ->with('error', 'Your session has expired. Please try again.');
-        }
-
-        // Handle 403 errors for admin routes - redirect to non-admin URL
-        if (($e instanceof AuthorizationException || ($e instanceof HttpException && $e->getStatusCode() === 403))
-            && $request->is('admin/*')) {
-
-            if ($request->expectsJson()) {
-                return new JsonResponse([
-                    'message' => $e->getMessage() ?: 'You don\'t have permission to access this resource.',
-                ], 403);
-            }
-
-            // Redirect to a non-admin route and store exception message in session
-            return redirect()->route('access-denied')
-                ->with('exception_message', $e->getMessage() ?: 'This action is unauthorized.');
         }
 
         return parent::render($request, $e);

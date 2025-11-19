@@ -20,6 +20,12 @@ Route::prefix('webhooks')->name('webhooks.')->group(function () {
     Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal');
 });
 
+// PayProGlobal webhook (direct route for external calls)
+Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal.webhook');
+
+// Test endpoint
+Route::post('/payproglobal/test', [PaymentController::class, 'testPayProGlobalWebhook'])->name('payproglobal.test');
+
 // Token decryption routes (for software auto-login)
 Route::prefix('token')->name('token.')->group(function () {
     Route::match(['POST', 'OPTIONS'], '/decrypt', [TokenDecryptionController::class, 'decryptToken'])->name('decrypt');
@@ -49,11 +55,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/verify-payproglobal/{paymentReference}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])
             ->name('verify-payproglobal');
 
-        // Fallback route for PayProGlobal redirects that go to /api/payment/success
-        Route::match(['get', 'post'], '/payment/success', function (Request $request) {
-            return redirect()->route('payments.success', $request->all());
-        })->name('api.payment.success');
-
         Route::post('/upgrade', [PaymentController::class, 'upgradeSubscription'])
             ->name('upgrade')
             ->middleware('throttle:10,1');
@@ -74,6 +75,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/verify-order/{transactionId}', [PaymentController::class, 'verifyOrder'])->name('verify-order');
         Route::get('/payproglobal/latest-order', [PaymentController::class, 'getLatestPayProGlobalOrder'])
             ->name('payproglobal.latest-order');
+
+        // Test endpoint for debugging
+        Route::get('/test-paddle-config', [PaymentController::class, 'testPaddleConfiguration'])
+            ->name('test.paddle-config');
     });
 
     // Orders

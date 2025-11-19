@@ -65,52 +65,66 @@
         height: 100%;
     }
 
-    .video-container video {
-        position: absolute;
-        border-radius: 14px;
-        object-fit: cover;
-    }
-
-    .video1 {
-        width: 40%;
-        top: 1%;
-        left: 1%;
-    }
-
+    .video1,
     .video2 {
-        width: 25%;
-        top: 2%;
-        right: 2%;
+        position: absolute;
+        width: 40%;
+        border-radius: 10px;
     }
 
-    .video3 {
-        width: 40%;
-        top: 57%;
-        right: 3%;
+    .video3,
+    .video6 {
+        position: absolute;
+        width: 20%;
+        border-radius: 10px;
     }
 
     .video4 {
-        width: 25%;
-        top: 15%;
-        right: 30%;
+        position: absolute;
+        width: 22%;
+        border-radius: 10px;
     }
 
-    .video5 {
-        width: 24%;
-        top: 60%;
-        left: 28%;
-    }
-
-    .video6 {
-        width: 25%;
-        bottom: 33%;
-        left: 2%;
-    }
-
+    .video5,
     .video7 {
-        width: 40%;
-        bottom: 2%;
-        right: 2%;
+        position: absolute;
+        width: 38%;
+        border-radius: 10px;
+    }
+
+    .floating-1 {
+        top: -1%;
+        left: -1%;
+    }
+
+    .floating-2 {
+        top: 8%;
+        right: 10%;
+    }
+
+    .floating-3 {
+        top: 40%;
+        left: -6%;
+    }
+
+    .floating-4 {
+        top: 35%;
+        left: 30%;
+    }
+
+    .floating-5 {
+        top: 40%;
+        right: -8%;
+    }
+
+    .floating-6 {
+        bottom: 0%;
+        right: -2%;
+    }
+
+    .floating-7 {
+        top: 78%;
+        left: 20%;
     }
 
     .right-section {
@@ -459,26 +473,22 @@
         <!-- Left Side -->
         <div class="left-section">
             <div class="video-container">
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/Video-1-Adrian-Concepcion-not-finished.mp4"
-                    autoplay loop muted playsinline class="video1"></video>
-
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/特斯拉京东直播.mp4"
-                    autoplay loop muted playsinline class="video2"></video>
-
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/Login-page-video-1.mov"
-                    autoplay loop muted playsinline class="video3"></video>
-
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/black-cloth-can-go-on-login-page.mp4"
-                    autoplay loop muted playsinline class="video4"></video>
-
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/泰语直播.mp4"
-                    autoplay loop muted playsinline class="video5"></video>
-
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/avatar-video-demo-can-go-on-login-page.mp4"
-                    autoplay loop muted playsinline class="video6"></video>
-
-                <video src="https://syntopia.ai/wp-content/uploads/2025/11/Login-page-video-2.mov"
-                    autoplay loop muted playsinline class="video7"></video>
+                <video src="https://cdn.synthesia.io/assets-public/welcome-page/Alex_LP_fin.mp4" autoplay loop muted
+                    class="video1 floating-1"></video>
+                <video
+                    src="https://cdn.synthesia.io/assets-public/welcome-page/Video_Examples_for_Website_-_02_-_Value_selling_fundamentals.mp4"
+                    autoplay loop muted class="video2 floating-2"></video>
+                <video src="https://cdn.synthesia.io/assets-public/welcome-page/welcome_(2).mp4" autoplay loop muted
+                    class="video3 floating-3"></video>
+                <video src="https://cdn.synthesia.io/assets-public/welcome-page/hey.mp4" autoplay loop muted
+                    class="video4 floating-4"></video>
+                <video src="https://cdn.synthesia.io/assets-public/welcome-page/Sign_in_7.mp4" autoplay loop muted
+                    class="video5 floating-5"></video>
+                <video src="https://cdn.synthesia.io/assets-public/welcome-page/Sign_in_6.mp4" autoplay loop muted
+                    class="video6 floating-6"></video>
+                <video
+                    src="https://cdn.synthesia.io/assets-public/welcome-page/Video_Examples_for_Website_-_04_-_Understanding_Your_Bill.mp4"
+                    autoplay loop muted class="video7 floating-7"></video>
             </div>
         </div>
 
@@ -488,7 +498,6 @@
                 <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Logo"
                     class="logo">
                 <h2>Welcome to Syntopia</h2>
-                <p>Use your <strong>work email</strong> for a better experience</p>
                 <form method="POST" action="{{ route('login.post') }}" id="loginForm">
                     @csrf
                     <div class="input-field">
@@ -645,14 +654,8 @@
 
     </script>
 
-    <!-- Spinner Component -->
-    @include('components.spinner-overlay')
-
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
-
-    <!-- Spinner Utility Script -->
-    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
     <!-- SWAL Error Handling -->
     <script>

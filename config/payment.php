@@ -68,9 +68,9 @@ return [
             'api_key' => env('PAYPROGLOBAL_API_KEY', ''),
             'api_url' => env('PAYPROGLOBAL_API_URL', 'https://api.payproglobal.com/v1'),
             'script_url' => env('PAYPROGLOBAL_SCRIPT_URL', 'https://checkout.payproglobal.com/checkout.js'),
-            'webhook_secret' => env('PAYPROGLOBAL_WEBHOOK_SECRET'),
+            'webhook_secret' => env('PAYPROGLOBAL_WEBHOOK_SECRET', '5c96NqvkMm'),
             'vendor_account_id' => env('PAYPROGLOBAL_VENDOR_ACCOUNT_ID', '170815'),
-            'api_secret_key' => env('PAYPROGLOBAL_API_SECRET_KEY'),
+            'api_secret_key' => env('PAYPROGLOBAL_API_SECRET_KEY', 'dd8c46a2-53cd-40cd-b265-0e98efc8096d'),
             'product_ids' => [
                 'starter' => (int)env('PPG_PRODUCT_STARTER', 1),
                 'pro' => (int)env('PPG_PRODUCT_PRO', 2),

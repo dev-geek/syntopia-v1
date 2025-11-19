@@ -87,31 +87,25 @@ class RegisterController extends Controller
     {
         Log::info('Registration attempt', $data);
 
-        // Check for device fingerprint abuse (skip for localhost)
+        // Check for device fingerprint abuse
         if ($request) {
-            $ip = $request->ip();
-            $isLocalhost = in_array($ip, ['127.0.0.1', '::1', 'localhost'], true) || 
-                          filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+            $isBlocked = $this->deviceFingerprintService->isBlocked($request);
+            $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
+                $request,
+                config('free_plan_abuse.max_attempts', 3),
+                config('free_plan_abuse.tracking_period_days', 30)
+            );
 
-            if (!$isLocalhost) {
-                $isBlocked = $this->deviceFingerprintService->isBlocked($request);
-                $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
-                    $request,
-                    config('free_plan_abuse.max_attempts', 3),
-                    config('free_plan_abuse.tracking_period_days', 30)
-                );
+            if ($isBlocked || $hasRecentAttempts) {
+                Log::warning('Registration blocked due to fingerprint abuse', [
+                    'ip' => $request->ip(),
+                    'email' => $data['email'] ?? null,
+                    'fingerprint_id' => $data['fingerprint_id'] ?? null,
+                    'is_blocked' => $isBlocked,
+                    'has_recent_attempts' => $hasRecentAttempts
+                ]);
 
-                if ($isBlocked || $hasRecentAttempts) {
-                    Log::warning('Registration blocked due to fingerprint abuse', [
-                        'ip' => $request->ip(),
-                        'email' => $data['email'] ?? null,
-                        'fingerprint_id' => $data['fingerprint_id'] ?? null,
-                        'is_blocked' => $isBlocked,
-                        'has_recent_attempts' => $hasRecentAttempts
-                    ]);
-
-                    abort(403, 'Registration is not allowed from this device. Please contact support if you believe this is an error.');
-                }
+                abort(403, 'Registration is not allowed from this device. Please contact support if you believe this is an error.');
             }
         }
 
@@ -135,21 +129,11 @@ class RegisterController extends Controller
             'status' => ['nullable', 'integer'],
             'subscriber_password' => ['nullable', 'string'],
         ], [
-            'email.required' => 'Email address is required.',
-            'email.email' => 'Please enter a valid email address.',
-            'email.max' => 'Email address must not exceed 255 characters.',
-            'email.unique' => 'This email address is already registered. Please use a different email or try logging in.',
             'password.required' => 'Password is required.',
             'password.string' => 'Password must be a valid string.',
             'password.min' => 'Password must be at least 8 characters.',
             'password.max' => 'Password must not exceed 30 characters.',
             'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
-            'first_name.required' => 'First name is required.',
-            'first_name.string' => 'First name must be a valid text.',
-            'first_name.max' => 'First name must not exceed 255 characters.',
-            'last_name.required' => 'Last name is required.',
-            'last_name.string' => 'Last name must be a valid text.',
-            'last_name.max' => 'Last name must not exceed 255 characters.',
         ]);
 
         return $validator;
@@ -281,15 +265,6 @@ class RegisterController extends Controller
                 'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
             ],
         ], [
-            'email.required' => 'Email address is required.',
-            'email.email' => 'Please enter a valid email address.',
-            'email.unique' => 'This email address is already registered. Please use a different email or try logging in.',
-            'first_name.required' => 'First name is required.',
-            'first_name.string' => 'First name must be a valid text.',
-            'first_name.max' => 'First name must not exceed 255 characters.',
-            'last_name.required' => 'Last name is required.',
-            'last_name.string' => 'Last name must be a valid text.',
-            'last_name.max' => 'Last name must not exceed 255 characters.',
             'password.required' => 'Password is required.',
             'password.string' => 'Password must be a valid string.',
             'password.min' => 'Password must be at least 8 characters.',
@@ -371,18 +346,8 @@ class RegisterController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
 
-            $errorMessage = 'Registration failed. Please try again.';
-
-            if (str_contains($e->getMessage(), 'Duplicate entry') || str_contains($e->getMessage(), 'unique')) {
-                $errorMessage = 'This email address is already registered. Please use a different email or try logging in.';
-            } elseif (str_contains($e->getMessage(), 'SQLSTATE') || str_contains($e->getMessage(), 'database')) {
-                $errorMessage = 'A database error occurred. Please try again later or contact support if the problem persists.';
-            } elseif (str_contains($e->getMessage(), 'mail') || str_contains($e->getMessage(), 'email')) {
-                $errorMessage = 'There was an issue sending the verification email. Your account may have been created. Please try logging in or contact support.';
-            }
-
             return redirect()->back()
-                ->withErrors(['registration_error' => $errorMessage])
+                ->withErrors(['registration_error' => 'Registration failed. Please try again.'])
                 ->withInput();
         }
     }

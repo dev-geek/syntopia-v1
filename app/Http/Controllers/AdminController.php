@@ -10,11 +10,8 @@ use App\Models\Order;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Imports\UsersImport;
 use App\Services\PasswordBindingService;
-use App\Services\MailService;
-use App\Mail\VerifyEmail;
 use Spatie\Permission\Models\Role;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\Log;
 
 
 class AdminController extends Controller
@@ -231,15 +228,9 @@ class AdminController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // Create a temporary user object for API call
-        $tempUser = (new User())->forceFill([
-            'name' => $validated['name'],
-            'email' => $validated['email']
-        ]);
-
-        // Create tenant and bind password - this will return tenant_id
-        $apiResponse = $passwordBindingService->createTenantAndBindPassword(
-            $tempUser,
+        // Call password binding API before creating the user
+        $apiResponse = $passwordBindingService->bindPassword(
+            (new User())->forceFill(['email' => $validated['email']]),
             $validated['password']
         );
 
@@ -247,52 +238,19 @@ class AdminController extends Controller
             return back()->with('swal_error', $apiResponse['error_message'])->withInput();
         }
 
-        // Extract tenant_id from API response
-        $tenantId = $apiResponse['data']['tenantId'] ?? null;
-
-        // Generate verification code
-        $verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-
         // Create the user only if API call was successful
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => $validated['password'],
             'subscriber_password' => $validated['password'],
-            'verification_code' => $verification_code,
-            'email_verified_at' => null,
-            'status' => 0, // Set to 0 (unverified) until email is verified
-            'tenant_id' => $tenantId, // Store tenant_id from API response
+            'status' => $request->input('status'),
         ]);
 
         // Assign the role of 'User'
         $user->assignRole('User');
 
-        // Send verification email
-        try {
-            $mailResult = MailService::send($user->email, new VerifyEmail($user));
-
-            if ($mailResult['success']) {
-                Log::info('Verification email sent to admin-created user', [
-                    'user_id' => $user->id,
-                    'email' => $user->email
-                ]);
-            } else {
-                Log::warning('Failed to send verification email to admin-created user', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $mailResult['error'] ?? 'Unknown error'
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::error('Exception while sending verification email to admin-created user', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'error' => $e->getMessage()
-            ]);
-        }
-
-        return redirect()->route('admin.users')->with('success', 'User created successfully! Verification email has been sent.');
+        return redirect()->route('admin.users')->with('success', 'User created successfully!');
     }
 
     /**

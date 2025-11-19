@@ -481,7 +481,7 @@
                 </div>
             @endif
 
-            <form method="POST" action="{{ url('/verify-code') }}" id="verifyCodeForm">
+            <form method="POST" action="{{ url('/verify-code') }}">
                 @csrf
                 <input type="hidden" name="email" value="{{ $email ?? Auth::user()->email }}">
                 <div class="mb-3">
@@ -506,16 +506,16 @@
                     </div>
                     @enderror
                 </div>
-                <button type="submit" class="primary-button" id="verifyCodeBtn">Verify Code</button>
+                <button type="submit" class="primary-button">Verify Code</button>
             </form>
 
             <div class="mb-3">
                 <p class="email-text">
                     Can't find the email?
                 </p>
-                <form method="POST" action="{{ route('verification.resend') }}" id="resendForm">
+                <form method="POST" action="{{ route('verification.resend') }}">
                     @csrf
-                    <button type="submit" class="btn btn-outline-primary" id="resendCodeBtn">Resend code</button>
+                    <button type="submit" class="btn btn-outline-primary">Resend code</button>
                 </form>
             </div>
 
@@ -559,8 +559,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         const verificationCodeInput = document.getElementById('verification-code');
         const verificationCodeClearBtn = document.getElementById('verificationCodeClearBtn');
-        const verifyForm = document.getElementById('verifyCodeForm');
-        const resendForm = document.getElementById('resendForm');
 
         // Show/hide clear button based on input value
         function toggleClearButton() {
@@ -583,26 +581,6 @@
 
         // Initial check
         toggleClearButton();
-
-        // Attach spinner to verify code form
-        if (verifyForm && window.SpinnerUtils) {
-            verifyForm.addEventListener('submit', function(e) {
-                const code = verificationCodeInput.value.trim();
-                if (!code) {
-                    return; // Let browser validation handle empty code
-                }
-                window.SpinnerUtils.showButton('#verifyCodeBtn', 'Verifying...');
-                window.SpinnerUtils.show('Verifying your code...');
-            });
-        }
-
-        // Attach spinner to resend form
-        if (resendForm && window.SpinnerUtils) {
-            resendForm.addEventListener('submit', function(e) {
-                window.SpinnerUtils.showButton('#resendCodeBtn', 'Sending...');
-                window.SpinnerUtils.show('Sending verification code...');
-            });
-        }
     });
     </script>
 </div>

@@ -91,46 +91,4 @@
     });
 
     // Password toggle functionality is now handled by the dedicated password-toggle.js script
-
-    // Show spinner on form submission
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.querySelector('form[action="{{ route('admin.store.user') }}"]');
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                // Show spinner when submitting form
-                if (window.SpinnerUtils) {
-                    window.SpinnerUtils.show('Creating user...');
-                } else if (document.getElementById('spinnerOverlay')) {
-                    const spinner = document.getElementById('spinnerOverlay');
-                    spinner.classList.add('active');
-                    const spinnerText = document.getElementById('spinnerText');
-                    if (spinnerText) spinnerText.textContent = 'Creating user...';
-                } else if (document.getElementById('globalSpinner')) {
-                    document.getElementById('globalSpinner').style.display = 'flex';
-                }
-            });
-        }
-
-        // Show spinner on link clicks (e.g., back to users list)
-        document.querySelectorAll('a[href]').forEach(link => {
-            if (!link.hasAttribute('data-no-spinner')) {
-                link.addEventListener('click', function(e) {
-                    const href = this.getAttribute('href');
-                    const target = this.getAttribute('target');
-
-                    // Only show spinner for internal links
-                    if (href && href.startsWith('/') && (!target || target === '_self')) {
-                        if (window.SpinnerUtils) {
-                            window.SpinnerUtils.show('Loading...');
-                        } else if (document.getElementById('spinnerOverlay')) {
-                            const spinner = document.getElementById('spinnerOverlay');
-                            spinner.classList.add('active');
-                        } else if (document.getElementById('globalSpinner')) {
-                            document.getElementById('globalSpinner').style.display = 'flex';
-                        }
-                    }
-                });
-            }
-        });
-    });
 </script>

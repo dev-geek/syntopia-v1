@@ -43,28 +43,6 @@ class VerificationController extends Controller
             return redirect()->route('login')->with('success', 'Email already verified. Please login.');
         }
 
-        // If user doesn't have a verification code, generate and send one
-        if (empty($user->verification_code)) {
-            $user->verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $user->save();
-
-            // Send verification email
-            $mailResult = MailService::send($user->email, new VerifyEmail($user));
-
-            if ($mailResult['success']) {
-                Log::info('Verification email sent to user without code', [
-                    'user_id' => $user->id,
-                    'email' => $user->email
-                ]);
-            } else {
-                Log::warning('Failed to send verification email to user without code', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $mailResult['error'] ?? 'Unknown error'
-                ]);
-            }
-        }
-
         return view('auth.verify-code', ['email' => $email]);
     }
 
@@ -122,68 +100,33 @@ class VerificationController extends Controller
 
         try {
             DB::beginTransaction();
+            Log::info('[verifyCode] Calling callXiaoiceApiWithCreds', ['user_id' => $user->id]);
+            $apiResponse = $this->callXiaoiceApiWithCreds($user, $user->subscriber_password);
+            Log::info('[verifyCode] callXiaoiceApiWithCreds response', ['user_id' => $user->id, 'apiResponse' => $apiResponse]);
 
-            // Check if user already has a tenant_id (e.g., created by Super Admin)
-            // If they do, skip the API call and just verify the email
-            if (!empty($user->tenant_id)) {
-                Log::info('[verifyCode] User already has tenant_id, skipping API call', [
-                    'user_id' => $user->id,
-                    'tenant_id' => $user->tenant_id
-                ]);
-
-                $user->update([
-                    'email_verified_at' => now(),
-                    'status' => 1,
-                    'verification_code' => null,
-                ]);
-            } else {
-                // User doesn't have tenant_id, need to create tenant via API
-                Log::info('[verifyCode] Calling callXiaoiceApiWithCreds', ['user_id' => $user->id]);
-                $apiResponse = $this->callXiaoiceApiWithCreds($user, $user->subscriber_password);
-                Log::info('[verifyCode] callXiaoiceApiWithCreds response', ['user_id' => $user->id, 'apiResponse' => $apiResponse]);
-
-                // Handle "already registered" error (code 730) - user exists in external system
-                // This can happen if user was created by Super Admin and tenant already exists
-                if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                    // Check if it's the "already registered" error
-                    if (str_contains($apiResponse['error_message'] ?? '', 'already registered')) {
-                        Log::warning('[verifyCode] User already registered in external system, verifying email anyway', [
-                            'user_id' => $user->id,
-                            'error' => $apiResponse['error_message']
-                        ]);
-                        // Still verify the user's email even if tenant creation failed
-                        // The tenant might already exist from a previous registration attempt
-                        $user->update([
-                            'email_verified_at' => now(),
-                            'status' => 1,
-                            'verification_code' => null,
-                            // Don't set tenant_id if API failed - it might be set later or already exists
-                        ]);
-                    } else {
-                        // For other errors, show the error message
-                        DB::rollBack();
-                        Log::error('[verifyCode] API returned swal error', ['user_id' => $user->id, 'error' => $apiResponse['error_message']]);
-                        return back()->with('verification_swal_error', $apiResponse['error_message']);
-                    }
-                } elseif (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                    DB::rollBack();
-                    Log::error('[verifyCode] API failed or missing tenantId', [
-                        'user_id' => $user->id,
-                        'apiResponse' => $apiResponse
-                    ]);
-                    $user->delete(); // Delete user data on failure
-                    $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                    return redirect()->route('login')->with('error', $errorMsg);
-                } else {
-                    // API call successful, update user with tenant_id
-                    $user->update([
-                        'email_verified_at' => now(),
-                        'status' => 1,
-                        'verification_code' => null,
-                        'tenant_id' => $apiResponse['data']['tenantId'],
-                    ]);
-                }
+            if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                DB::rollBack();
+                Log::error('[verifyCode] API returned swal error', ['user_id' => $user->id, 'error' => $apiResponse['error_message']]);
+                return back()->with('verification_swal_error', $apiResponse['error_message']);
             }
+
+            if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                DB::rollBack();
+                Log::error('[verifyCode] API failed or missing tenantId', [
+                    'user_id' => $user->id,
+                    'apiResponse' => $apiResponse
+                ]);
+                $user->delete(); // Delete user data on failure
+                $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                return redirect()->route('login')->with('error', $errorMsg);
+            }
+
+            $user->update([
+                'email_verified_at' => now(),
+                'status' => 1,
+                'verification_code' => null,
+                'tenant_id' => $apiResponse['data']['tenantId'],
+            ]);
 
             DB::commit();
             Log::info('[verifyCode] User verified and updated', ['user_id' => $user->id]);
@@ -196,16 +139,12 @@ class VerificationController extends Controller
                 if (session()->has('verification_intended_url')) {
                     $intendedUrl = session('verification_intended_url');
                     session()->forget('verification_intended_url');
-
-                    // Only redirect if the URL is safe for regular users (not admin routes)
-                    if ($this->isUrlSafeForUser($intendedUrl)) {
                     Log::info('[verifyCode] Redirecting to intended URL', [
                         'user_id' => $user->id,
                         'intended_url' => $intendedUrl
                     ]);
                     return redirect()->to($intendedUrl)
                         ->with('success', 'Email verified successfully!');
-                    }
                 }
 
                 // Check if user has active subscription
@@ -300,24 +239,6 @@ class VerificationController extends Controller
             return false;
         }
 
-        return true;
-    }
-
-    /**
-     * Check if a URL is safe for regular users (not admin routes)
-     */
-    private function isUrlSafeForUser(string $url): bool
-    {
-        // Parse the URL to get the path
-        $parsedUrl = parse_url($url);
-        $path = $parsedUrl['path'] ?? '';
-
-        // Block admin routes
-        if (str_starts_with($path, '/admin')) {
-            return false;
-        }
-
-        // Allow other routes (user routes, public routes, etc.)
         return true;
     }
 

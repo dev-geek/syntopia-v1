@@ -40,14 +40,6 @@ class PreventFreePlanAbuse
         $ip = $request->ip();
         $email = $request->input('email');
 
-        // Allow localhost IPs
-        $isLocalhost = in_array($ip, ['127.0.0.1', '::1', 'localhost'], true) || 
-                      filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
-
-        if ($isLocalhost) {
-            return $next($request);
-        }
-
         Log::info('Checking free plan abuse prevention', [
             'ip' => $ip,
             'email' => $email,

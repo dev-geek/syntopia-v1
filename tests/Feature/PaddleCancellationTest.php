@@ -11,7 +11,6 @@ use App\Models\PaymentGateways;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 
 class PaddleCancellationTest extends TestCase
 {
@@ -26,13 +25,9 @@ class PaddleCancellationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Http::preventStrayRequests();
-
-        // Disable webhook signature verification for tests
-        config(['payment.gateways.Paddle.webhook_secret' => null]);
 
         // Create test payment gateway
-        $this->paddleGateway = PaymentGateways::create([
+        $this->paddleGateway = PaymentGateways::factory()->create([
             'name' => 'Paddle',
             'is_active' => true
         ]);
@@ -48,17 +43,15 @@ class PaddleCancellationTest extends TestCase
             'is_subscribed' => true,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->paddleGateway->id,
-            'status' => 1,
-            'email_verified_at' => now()
+            'subscription_id' => 'PADDLE-TEST-SUB-123'
         ]);
 
         // Create user license
-        $this->userLicense = UserLicence::create([
+        $this->userLicense = UserLicence::factory()->create([
             'user_id' => $this->user->id,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->paddleGateway->id,
             'subscription_id' => 'PADDLE-TEST-SUB-123',
-            'license_key' => 'TEST-LICENSE-KEY-123',
             'is_active' => true,
             'activated_at' => now(),
             'expires_at' => now()->addMonth()
@@ -68,12 +61,11 @@ class PaddleCancellationTest extends TestCase
         $this->user->update(['user_license_id' => $this->userLicense->id]);
 
         // Create order
-        $this->order = Order::create([
+        $this->order = Order::factory()->create([
             'user_id' => $this->user->id,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->paddleGateway->id,
             'status' => 'completed',
-            'amount' => 29.99,
             'transaction_id' => 'PADDLE-TEST-TXN-123',
             'metadata' => [
                 'subscription_id' => 'PADDLE-TEST-SUB-123'
@@ -84,12 +76,11 @@ class PaddleCancellationTest extends TestCase
     public function test_user_has_scheduled_cancellation()
     {
         // Create a cancellation scheduled order
-        Order::create([
+        Order::factory()->create([
             'user_id' => $this->user->id,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->paddleGateway->id,
             'status' => 'cancellation_scheduled',
-            'amount' => 0,
             'transaction_id' => 'PADDLE-TEST-TXN-456',
             'metadata' => [
                 'subscription_id' => 'PADDLE-TEST-SUB-123'
@@ -113,12 +104,11 @@ class PaddleCancellationTest extends TestCase
     public function test_subscription_status_includes_cancellation_info()
     {
         // Create a cancellation scheduled order
-        Order::create([
+        Order::factory()->create([
             'user_id' => $this->user->id,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->paddleGateway->id,
             'status' => 'cancellation_scheduled',
-            'amount' => 0,
             'transaction_id' => 'PADDLE-TEST-TXN-456',
             'metadata' => [
                 'subscription_id' => 'PADDLE-TEST-SUB-123'
@@ -135,23 +125,14 @@ class PaddleCancellationTest extends TestCase
 
     public function test_cancel_subscription_api_endpoint()
     {
-        // Mock HTTP response for Paddle API
-        \Illuminate\Support\Facades\Http::fake([
-            'sandbox-api.paddle.com/subscriptions/*/cancel' => \Illuminate\Support\Facades\Http::response([
-                'data' => [
-                    'id' => 'PADDLE-TEST-SUB-123',
-                    'status' => 'canceled'
-                ]
-            ], 200)
-        ]);
-
         $response = $this->actingAs($this->user)
-            ->postJson('/payments/cancel-subscription');
+            ->postJson('/api/cancel-subscription');
 
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
-                'message' => 'Subscription cancellation scheduled. Your subscription will remain active until the end of your current billing period.'
+                'cancellation_type' => 'end_of_billing_period',
+                'gateway' => 'paddle'
             ]);
 
         // Check that order status was updated to cancellation_scheduled
@@ -169,12 +150,11 @@ class PaddleCancellationTest extends TestCase
     public function test_paddle_webhook_cancellation_processing()
     {
         // First, schedule a cancellation
-        Order::create([
+        Order::factory()->create([
             'user_id' => $this->user->id,
             'package_id' => $this->package->id,
             'payment_gateway_id' => $this->paddleGateway->id,
             'status' => 'cancellation_scheduled',
-            'amount' => 0,
             'transaction_id' => 'PADDLE-TEST-TXN-456',
             'metadata' => [
                 'subscription_id' => 'PADDLE-TEST-SUB-123'
@@ -191,21 +171,20 @@ class PaddleCancellationTest extends TestCase
 
         $response = $this->postJson('/api/webhooks/paddle', $webhookData);
 
-        $response->assertStatus(200);
-        $responseData = $response->json();
-        $this->assertArrayHasKey('status', $responseData);
+        $response->assertStatus(200)
+            ->assertJson(['status' => 'processed']);
 
         // Check that user subscription was cancelled
         $this->user->refresh();
         $this->assertFalse($this->user->is_subscribed);
+        $this->assertNull($this->user->subscription_id);
         $this->assertNull($this->user->package_id);
         $this->assertNull($this->user->payment_gateway_id);
         $this->assertNull($this->user->user_license_id);
 
         // Check that license was deleted
-        $licenseId = $this->userLicense->id;
         $this->assertDatabaseMissing('user_licences', [
-            'id' => $licenseId
+            'id' => $this->userLicense->id
         ]);
 
         // Check that orders were updated to canceled
@@ -218,5 +197,4 @@ class PaddleCancellationTest extends TestCase
         $this->assertFalse($this->user->hasScheduledCancellation());
         $this->assertNull($this->user->getCancellationInfo());
     }
-
 }

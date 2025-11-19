@@ -4,11 +4,8 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 use App\Models\User;
-use App\Services\PasswordBindingService;
-use Spatie\Permission\Models\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
-use Mockery;
 
 class ProfileValidationTest extends TestCase
 {
@@ -20,35 +17,11 @@ class ProfileValidationTest extends TestCase
     {
         parent::setUp();
 
-        // Create User role if it doesn't exist
-        Role::firstOrCreate(['name' => 'User', 'guard_name' => 'web']);
-        
-        // Create a test user with verified email (required for verified.custom middleware)
+        // Create a test user
         $this->user = User::factory()->create([
             'name' => 'John Doe',
             'email' => 'john@example.com',
-            'status' => 1,
-            'email_verified_at' => now()
         ]);
-        
-        // Assign User role
-        $this->user->assignRole('User');
-        
-        // Mock PasswordBindingService for password update tests
-        $passwordBindingService = Mockery::mock(PasswordBindingService::class);
-        $passwordBindingService->shouldReceive('bindPassword')
-            ->andReturn([
-                'success' => true,
-                'data' => null,
-                'error_message' => null
-            ]);
-        $this->app->instance(PasswordBindingService::class, $passwordBindingService);
-    }
-    
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
     }
 
     public function test_user_can_access_profile_page()
@@ -56,14 +29,6 @@ class ProfileValidationTest extends TestCase
         $response = $this->actingAs($this->user)
             ->get('/profile');
 
-        // The /profile route redirects to /user/profile for regular users
-        $response->assertStatus(302);
-        $response->assertRedirect('/user/profile');
-        
-        // Follow the redirect
-        $response = $this->actingAs($this->user)
-            ->get('/user/profile');
-        
         $response->assertStatus(200);
         $response->assertSee('My Profile');
     }

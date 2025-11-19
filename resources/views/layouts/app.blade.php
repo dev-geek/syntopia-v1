@@ -17,7 +17,7 @@
     <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'Syntopia') }}</title>
+    <title>{{ config('app.name', 'Laravel') }}</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
@@ -44,7 +44,7 @@
 <body>
     <div id="app">
         @include('components.alert-messages')
-        @include('components.spinner-overlay')
+
 
         <main class="py-4">
             @yield('content')
@@ -53,9 +53,6 @@
     <!-- Bootstrap JS and Popper.js (for Bootstrap components) -->
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-
-    <!-- Spinner Utility Script -->
-    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>

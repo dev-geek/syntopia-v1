@@ -35,16 +35,11 @@
         </div>
         <!-- ./wrapper -->
 
-        <!-- Spinner Component -->
-        @include('components.spinner-overlay')
-
         <!-- REQUIRED SCRIPTS -->
         <!-- jQuery -->
         <script src="{{ asset('plugins/jquery/jquery.min.js') }}"></script>
         <!-- Bootstrap -->
         <script src="{{ asset('plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-        <!-- Spinner Utility Script -->
-        <script src="{{ asset('js/spinner-utils.js') }}"></script>
         <!-- overlayScrollbars -->
         <script src="{{ asset('plugins/overlayScrollbars/js/jquery.overlayScrollbars.min.js') }}"></script>
         <!-- AdminLTE App -->
@@ -93,48 +88,13 @@
         <!-- Password Modal Script -->
         <script>
             (function() {
-                // Use both globalSpinner and spinnerOverlay for better compatibility
-                const globalSpinner = document.getElementById('globalSpinner');
-                const spinnerOverlay = document.getElementById('spinnerOverlay');
-
-                if (globalSpinner || spinnerOverlay) {
+                const spinner = document.getElementById('globalSpinner');
+                if (spinner) {
                     let requestCount = 0;
-
-                    function show(message = 'Loading...') {
-                        if (globalSpinner) {
-                            globalSpinner.style.display = 'flex';
-                        }
-                        if (spinnerOverlay && window.SpinnerUtils) {
-                            window.SpinnerUtils.show(message);
-                        } else if (spinnerOverlay) {
-                            spinnerOverlay.classList.add('active');
-                            const spinnerText = document.getElementById('spinnerText');
-                            if (spinnerText) spinnerText.textContent = message;
-                            document.body.style.overflow = 'hidden';
-                        }
-                    }
-
-                    function hide() {
-                        if (globalSpinner) {
-                            globalSpinner.style.display = 'none';
-                        }
-                        if (spinnerOverlay && window.SpinnerUtils) {
-                            window.SpinnerUtils.hide();
-                        } else if (spinnerOverlay) {
-                            spinnerOverlay.classList.remove('active');
-                            document.body.style.overflow = '';
-                        }
-                    }
-
-                    function inc() {
-                        requestCount++;
-                        show('Processing...');
-                    }
-
-                    function dec() {
-                        requestCount = Math.max(0, requestCount - 1);
-                        if (requestCount === 0) hide();
-                    }
+                    function show() { spinner.style.display = 'flex'; }
+                    function hide() { spinner.style.display = 'none'; }
+                    function inc() { requestCount++; show(); }
+                    function dec() { requestCount = Math.max(0, requestCount - 1); if (requestCount === 0) hide(); }
 
                     // Hook fetch
                     const originalFetch = window.fetch;
@@ -153,7 +113,7 @@
                     document.addEventListener('submit', function(e) {
                         const form = e.target;
                         if (form && !form.hasAttribute('data-no-spinner')) {
-                            show('Submitting...');
+                            show();
                         }
                     }, true);
 
@@ -164,7 +124,7 @@
                         const target = link.getAttribute('target');
                         const noSpinner = link.hasAttribute('data-no-spinner');
                         if (!noSpinner && href && href.startsWith('/') && (!target || target === '_self')) {
-                            show('Loading...');
+                            show();
                         }
                     }, true);
 
@@ -173,64 +133,30 @@
             })();
 
             function checkPasswordAndAccess() {
-                // Show spinner while processing
-                const showSpinner = () => {
-                    if (window.SpinnerUtils) {
-                        window.SpinnerUtils.show('Checking access...');
-                    } else if (document.getElementById('spinnerOverlay')) {
-                        const spinner = document.getElementById('spinnerOverlay');
-                        spinner.classList.add('active');
-                        const spinnerText = document.getElementById('spinnerText');
-                        if (spinnerText) spinnerText.textContent = 'Checking access...';
-                    } else if (document.getElementById('globalSpinner')) {
-                        document.getElementById('globalSpinner').style.display = 'flex';
-                    }
-                };
-
-                const hideSpinner = () => {
-                    if (window.SpinnerUtils) {
-                        window.SpinnerUtils.hide();
-                    } else if (document.getElementById('spinnerOverlay')) {
-                        document.getElementById('spinnerOverlay').classList.remove('active');
-                    } else if (document.getElementById('globalSpinner')) {
-                        document.getElementById('globalSpinner').style.display = 'none';
-                    }
-                };
-
-                showSpinner();
-
-                // Small delay to show spinner, then check access
-                setTimeout(() => {
-                    // Check if user has no package
-                    @if (!Auth::user()->package)
-                        hideSpinner();
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Package Required',
-                            text: 'You need a package to access the software.',
-                            showCancelButton: true,
-                            confirmButtonText: 'View Plans',
-                            cancelButtonText: 'Cancel',
-                            confirmButtonColor: '#0d6efd',
-                            cancelButtonColor: '#6c757d'
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                window.location.href = '{{ route('subscription') }}';
-                            }
-                        });
-                        return;
-                    @endif
-                    // User has a package (any package), check password
-                    @if (!Auth::user()->hasValidSubscriberPassword())
-                        hideSpinner();
-                        // User doesn't have a password, show modal
-                        showPasswordModal();
-                    @else
-                        hideSpinner();
-                        // User has a password, redirect to software
-                        window.open('{{ route('software.access') }}', '_blank');
-                    @endif
-                }, 100);
+                @if (!Auth::user()->hasActiveSubscription())
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Subscription Required',
+                        text: 'You need an active plan to access the software.',
+                        showCancelButton: true,
+                        confirmButtonText: 'View Plans',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#28a745',
+                        cancelButtonColor: '#dc3545'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.href = '{{ route('subscription') }}';
+                        }
+                    });
+                    return;
+                @endif
+                @if (!Auth::user()->hasValidSubscriberPassword())
+                    // User doesn't have a password, show modal
+                    showPasswordModal();
+                @else
+                    // User has a password, redirect to software
+                    window.open('{{ route('software.access') }}', '_blank');
+                @endif
             }
 
             function showPasswordModal() {

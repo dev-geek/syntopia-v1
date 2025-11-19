@@ -138,7 +138,7 @@
             <p class="email-text">You're setting up an account for {{ request()->get('email') }}</p>
             @include('components.alert-messages')
             <!-- Signup Form -->
-            <form id="registerForm" method="POST" action="{{ route('register') }}" data-spinner data-spinner-message="Creating your account...">
+            <form id="registerForm" method="POST" action="{{ route('register') }}">
             @csrf
             <input type="hidden" name="fingerprint_id" id="fingerprintId">
                 <input type="hidden" name="email" value="{{ request()->get('email') }}">
@@ -290,38 +290,6 @@
             }
         });
     });
-    </script>
-
-    <!-- Spinner Component -->
-    @include('components.spinner-overlay')
-
-    <!-- Spinner Utility Script -->
-    <script src="{{ asset('js/spinner-utils.js') }}"></script>
-
-    <script>
-        // Explicit spinner handling for registration form
-        document.addEventListener('DOMContentLoaded', function() {
-            const registerForm = document.getElementById('registerForm');
-            if (registerForm) {
-                registerForm.addEventListener('submit', function(e) {
-                    // Show spinner
-                    if (window.SpinnerUtils) {
-                        window.SpinnerUtils.show('Creating your account...');
-                        window.SpinnerUtils.showButton('button[type="submit"]', 'Creating...');
-                    } else if (document.getElementById('spinnerOverlay')) {
-                        const spinner = document.getElementById('spinnerOverlay');
-                        spinner.classList.add('active');
-                        const spinnerText = document.getElementById('spinnerText');
-                        if (spinnerText) spinnerText.textContent = 'Creating your account...';
-                        const submitBtn = registerForm.querySelector('button[type="submit"]');
-                        if (submitBtn) {
-                            submitBtn.disabled = true;
-                            submitBtn.textContent = 'Creating...';
-                        }
-                    }
-                });
-            }
-        });
     </script>
 </body>
 </html>

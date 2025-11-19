@@ -80,13 +80,8 @@
                     SwalUtils.showInfo('{{ session('info') }}');
                 @endif
 
-                // Registration error (specific key)
-                @if ($errors->has('registration_error'))
-                    SwalUtils.showError('{{ $errors->first('registration_error') }}');
-                @endif
-
                 // Validation errors
-                @if ($errors->any() && !$errors->has('registration_error'))
+                @if ($errors->any())
                     SwalUtils.showValidationErrors([
                         @foreach ($errors->all() as $error)
                             '{{ $error }}'@if (!$loop->last),@endif

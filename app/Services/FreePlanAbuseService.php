@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\FreePlanAttempt;
 use App\Models\Package;
-use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -52,24 +51,12 @@ class FreePlanAbuseService
                     'message' => 'Free plan is available for admin roles.'
                 ];
             }
-
             // Check if user has already used free plan
-            $hasUsed = $this->hasUsedFreePlan($user);
-
-            Log::info('Free plan eligibility check', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'has_used_free_plan' => $hasUsed,
-                'has_used_free_plan_flag' => $user->has_used_free_plan,
-                'package_id' => $user->package_id,
-                'package_name' => $user->package?->name
-            ]);
-
-            if ($hasUsed) {
+            if ($this->hasUsedFreePlan($user)) {
                 return [
                     'allowed' => false,
                     'reason' => 'already_used',
-                    'message' => 'You have already used the free plan. Please buy a plan.',
+                    'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.',
                     'error_code' => 'FREE_PLAN_ALREADY_USED'
                 ];
             }
@@ -106,32 +93,30 @@ class FreePlanAbuseService
      */
     public function hasUsedFreePlan(User $user): bool
     {
-        $userData = DB::table('users')
-            ->where('id', $user->id)
-            ->first(['has_used_free_plan']);
-
-        if ($userData && $userData->has_used_free_plan) {
-            Log::info('User has used free plan - flag is set', [
-                'user_id' => $user->id,
-                'has_used_free_plan' => $userData->has_used_free_plan
-            ]);
+        // Check if user has the has_used_free_plan flag set
+        if ($user->has_used_free_plan) {
             return true;
         }
 
-        $hasCompletedFreePackageOrder = DB::table('orders')
-            ->join('packages', 'orders.package_id', '=', 'packages.id')
-            ->where('orders.user_id', $user->id)
-            ->where('orders.status', 'completed')
-            ->where('packages.name', 'Free')
+        // Check if user has ever had a free package assigned via relation
+        $hasFreePackageHistory = $user->orders()
+            ->whereHas('package', function ($query) {
+                $query->where('name', 'Free');
+            })
             ->exists();
 
-        if ($hasCompletedFreePackageOrder) {
-            Log::info('User has used free plan - completed order exists', [
-                'user_id' => $user->id
-            ]);
-        }
+        // Check if user currently has free package
+        $hasCurrentFreePackage = $user->package &&
+            strtolower($user->package->name) === 'free';
 
-        return $hasCompletedFreePackageOrder;
+        // Also consider completed zero-amount orders as free usage
+        $hasZeroAmountCompletedOrder = $user->orders()
+            ->where('status', 'completed')
+            ->where('amount', 0)
+            ->exists();
+
+        // Only package history/current, explicit flag, or zero-amount completed order qualifies as used
+        return $hasFreePackageHistory || $hasCurrentFreePackage || $hasZeroAmountCompletedOrder;
     }
 
     /**
@@ -146,40 +131,10 @@ class FreePlanAbuseService
                     'message' => 'Admin roles are exempt from abuse checks.'
                 ];
             }
-
-            // Allow localhost IPs
             $ip = $request->ip();
-            if ($this->isLocalhost($ip)) {
-                return [
-                    'allowed' => true,
-                    'message' => 'Localhost access is allowed.'
-                ];
-            }
-
-            if (config('free_plan_abuse.testing_bypass_enabled', false)) {
-                return [
-                    'allowed' => true,
-                    'message' => 'Testing bypass is enabled.'
-                ];
-            }
-
-            if (app()->environment('local', 'testing') && config('free_plan_abuse.bypass_in_testing', true)) {
-                return [
-                    'allowed' => true,
-                    'message' => 'Abuse checks bypassed in local/testing environment.'
-                ];
-            }
-
             $email = $request->input('email');
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
             $fingerprintId = $request->cookie('fp_id', '');
-
-            if ($this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId)) {
-                return [
-                    'allowed' => true,
-                    'message' => 'Whitelisted identifier detected.'
-                ];
-            }
 
             // Check if any identifier is blocked
             if ($this->isBlocked($ip, $email, $deviceFingerprint, $fingerprintId)) {
@@ -210,7 +165,7 @@ class FreePlanAbuseService
             ];
         } catch (\Throwable $e) {
             // Never bubble up as system_error to callers that expect specific reasons
-            Log::error('checkAbusePatterns failed', ['error' => $e->getMessage()]);
+            \Log::error('checkAbusePatterns failed', ['error' => $e->getMessage()]);
             return [
                 'allowed' => true,
                 'message' => 'No abuse patterns detected.'
@@ -219,40 +174,10 @@ class FreePlanAbuseService
     }
 
     /**
-     * Check if any identifier is whitelisted
-     */
-    private function isWhitelisted(string $ip, ?string $email, string $deviceFingerprint, string $fingerprintId): bool
-    {
-        $whitelist = (array) config('free_plan_abuse.whitelist', []);
-
-        if (in_array($ip, $whitelist['ips'] ?? [], true)) {
-            return true;
-        }
-
-        if ($email && in_array($email, $whitelist['emails'] ?? [], true)) {
-            return true;
-        }
-
-        if (in_array($deviceFingerprint, $whitelist['device_fingerprints'] ?? [], true)) {
-            return true;
-        }
-
-        if ($fingerprintId && in_array($fingerprintId, $whitelist['fingerprint_ids'] ?? [], true)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
      * Check if any identifier is blocked
      */
     private function isBlocked(string $ip, ?string $email, string $deviceFingerprint, string $fingerprintId): bool
     {
-        if ($this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId)) {
-            return false;
-        }
-
         // Check IP
         if (FreePlanAttempt::byIp($ip)->blocked()->exists()) {
             return true;
@@ -281,10 +206,6 @@ class FreePlanAbuseService
      */
     private function hasExceededAttempts(string $ip, ?string $email, string $deviceFingerprint, string $fingerprintId, int $maxAttempts, int $trackingDays): bool
     {
-        if ($this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId)) {
-            return false;
-        }
-
         $cutoffDate = now()->subDays($trackingDays);
 
         // Check IP attempts
@@ -339,12 +260,6 @@ class FreePlanAbuseService
             if ($this->isPrivilegedUser($request, $user)) {
                 return;
             }
-
-            // Skip recording attempts in local/testing environment
-            if (app()->environment('local', 'testing')) {
-                return;
-            }
-
             DB::beginTransaction();
 
             $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
@@ -443,8 +358,7 @@ class FreePlanAbuseService
             ]);
 
             // Create order record for free plan
-            $order = $user->orders()->create([
-                'user_id' => $user->id, // Explicitly set user_id
+            $user->orders()->create([
                 'package_id' => $freePackage->id,
                 'amount' => 0,
                 'status' => 'completed',
@@ -454,44 +368,33 @@ class FreePlanAbuseService
                 'updated_at' => now()
             ]);
 
-            if (!$order) {
-                throw new \Exception('Failed to create order record');
-            }
-
             // Record the attempt
             $this->recordAttempt($request, $user);
 
             // Immediately block current identifiers to prevent repeat free plan in same environment
-            // Skip blocking if any identifier is whitelisted or in local/testing environment
-            if (!app()->environment('local', 'testing')) {
-                try {
-                    $ip = $request->ip();
-                    $email = $user->email;
-                    $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
-                    $fingerprintId = $request->cookie('fp_id', '');
+            try {
+                $ip = $request->ip();
+                $email = $user->email;
+                $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
+                $fingerprintId = $request->cookie('fp_id', '');
 
-                    $isWhitelisted = $this->isWhitelisted($ip, $email, $deviceFingerprint, $fingerprintId);
-
-                    if (!$isWhitelisted) {
-                        if ($ip) {
-                            $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
-                        }
-                        if ($email) {
-                            $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
-                        }
-                        if ($deviceFingerprint) {
-                            $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
-                        }
-                        if ($fingerprintId) {
-                            $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    Log::error('Failed to auto-block identifiers after free plan assignment', [
-                        'user_id' => $user->id,
-                        'error' => $e->getMessage()
-                    ]);
+                if ($ip) {
+                    $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
                 }
+                if ($email) {
+                    $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
+                }
+                if ($deviceFingerprint) {
+                    $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
+                }
+                if ($fingerprintId) {
+                    $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
+                }
+            } catch (\Throwable $e) {
+                Log::error('Failed to auto-block identifiers after free plan assignment', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
             }
 
             DB::commit();
@@ -532,7 +435,7 @@ class FreePlanAbuseService
             return [
                 'allowed' => false,
                 'reason' => 'already_used',
-                'message' => 'You have already used the free plan. Please buy a plan.',
+                'message' => 'You have exceeded your limit to use the Free plan. Please buy a plan.',
                 'error_code' => 'FREE_PLAN_ALREADY_USED'
             ];
         }
@@ -686,20 +589,5 @@ class FreePlanAbuseService
             'unique_devices' => $uniqueDevices,
             'block_rate' => $totalAttempts > 0 ? round(($blockedAttempts / $totalAttempts) * 100, 2) : 0
         ];
-    }
-
-    /**
-     * Check if IP address is localhost
-     */
-    private function isLocalhost(string $ip): bool
-    {
-        $localhostIps = [
-            '127.0.0.1',
-            '::1',
-            'localhost',
-        ];
-
-        return in_array($ip, $localhostIps, true) ||
-               filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
     }
 }

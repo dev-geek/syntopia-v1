@@ -59,20 +59,14 @@ class LoginController extends Controller
             if (session()->has('url.intended')) {
                 $intendedUrl = session('url.intended');
                 session()->forget('url.intended');
-                // Only redirect if the URL is safe for regular users (not admin routes)
-                if ($this->isUrlSafeForUser($intendedUrl)) {
                 return redirect()->to($intendedUrl);
-                }
             }
 
             // Also check for verification intended URL
             if (session()->has('verification_intended_url')) {
                 $intendedUrl = session('verification_intended_url');
                 session()->forget('verification_intended_url');
-                // Only redirect if the URL is safe for regular users (not admin routes)
-                if ($this->isUrlSafeForUser($intendedUrl)) {
                 return redirect()->to($intendedUrl);
-                }
             }
 
             if ($this->hasActiveSubscription($user)) {
@@ -122,24 +116,6 @@ class LoginController extends Controller
         return true;
     }
 
-    /**
-     * Check if a URL is safe for regular users (not admin routes)
-     */
-    private function isUrlSafeForUser(string $url): bool
-    {
-        // Parse the URL to get the path
-        $parsedUrl = parse_url($url);
-        $path = $parsedUrl['path'] ?? '';
-
-        // Block admin routes
-        if (str_starts_with($path, '/admin')) {
-            return false;
-        }
-
-        // Allow other routes (user routes, public routes, etc.)
-        return true;
-    }
-
 
 
     public function redirectTo()
@@ -161,10 +137,7 @@ class LoginController extends Controller
                 if (session()->has('url.intended')) {
                     $intendedUrl = session('url.intended');
                     session()->forget('url.intended');
-                    // Only redirect if the URL is safe for regular users (not admin routes)
-                    if ($this->isUrlSafeForUser($intendedUrl)) {
                     return redirect()->to($intendedUrl);
-                    }
                 }
 
                 if ($this->hasActiveSubscription($user)) {
@@ -280,10 +253,7 @@ class LoginController extends Controller
             if (session()->has('url.intended')) {
                 $intendedUrl = session('url.intended');
                 session()->forget('url.intended');
-                // Only redirect if the URL is safe for regular users (not admin routes)
-                if ($this->isUrlSafeForUser($intendedUrl)) {
                 return redirect()->to($intendedUrl);
-                }
             }
 
             if ($this->hasActiveSubscription($user)) {

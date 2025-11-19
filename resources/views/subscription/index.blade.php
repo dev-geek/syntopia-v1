@@ -130,117 +130,54 @@
                     packageName,
                     action
                 });
+                try {
+                    if (typeof fastspring === 'undefined' || !fastspring.builder) {
+                        throw new Error('FastSpring is not properly initialized');
+                    }
 
-                // Show spinner for FastSpring processing
-                if (window.showSpinner) {
-                    window.showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
-                }
+                    // Show spinner for FastSpring processing
+                    if (window.showSpinner) {
+                        window.showSpinner('Opening payment window...', 'Please wait while we connect to FastSpring');
+                    }
 
-                const apiUrl = `/api/payments/fastspring/checkout/${packageName}`;
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
-                const requestBody = {
-                    package: packageName,
-                    is_upgrade: action === 'upgrade',
-                    is_downgrade: action === 'downgrade'
-                };
+                    fastspring.builder.reset();
+                    console.log('FastSpring builder reset');
 
-                fetch(apiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-Is-Upgrade': action === 'upgrade' ? 'true' : 'false',
-                            'X-Is-Downgrade': action === 'downgrade' ? 'true' : 'false'
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify(requestBody)
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            return response.json().then(data => {
-                                const msg = data.message || data.error || `HTTP ${response.status}`;
-                                throw new Error(msg);
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        // Check if it's a free package assignment (no checkout_url)
-                        if (data.success && !data.checkout_url) {
-                            // Free package was assigned directly
-                            if (window.hideSpinner) {
-                                window.hideSpinner();
-                            }
-                            if (window.showAlert) {
-                                window.showAlert('success', 'Success', data.message || 'Free plan activated successfully', () => {
-                                    window.location.reload();
-                                });
-                            } else {
-                                window.location.reload();
-                            }
-                            return;
-                        }
+                    if (!packageName || typeof packageName !== 'string') {
+                        throw new Error('Invalid package name: ' + packageName);
+                    }
 
-                        // Paid package - proceed with FastSpring checkout
-                        if (!data.success || !data.checkout_url) {
-                            throw new Error(data.error || 'No checkout URL provided');
-                        }
+                    currentProductPath = packageName.toLowerCase();
+                    sessionStorage.setItem('currentProductPath', currentProductPath);
+                    fastspring.builder.add(currentProductPath);
 
-                        console.log('FastSpring checkout data received:', data);
+                    if (action === 'upgrade' || action === 'downgrade') {
+                        window.fastspringUpgradeContext = {
+                            isUpgrade: action === 'upgrade',
+                            isDowngrade: action === 'downgrade',
+                            currentPackage: currentPackage,
+                            targetPackage: packageName
+                        };
+                        console.log('FastSpring context set:', window.fastspringUpgradeContext);
+                    }
 
-                        try {
-                            if (typeof fastspring === 'undefined' || !fastspring.builder) {
-                                throw new Error('FastSpring is not properly initialized');
-                            }
-
-                            fastspring.builder.reset();
-                            console.log('FastSpring builder reset');
-
-                            currentProductPath = packageName.toLowerCase();
-                            sessionStorage.setItem('currentProductPath', currentProductPath);
-                            fastspring.builder.add(currentProductPath);
-
-                            if (action === 'upgrade' || action === 'downgrade') {
-                                window.fastspringUpgradeContext = {
-                                    isUpgrade: action === 'upgrade',
-                                    isDowngrade: action === 'downgrade',
-                                    currentPackage: currentPackage,
-                                    targetPackage: packageName
-                                };
-                                console.log('FastSpring context set:', window.fastspringUpgradeContext);
-                            }
-
-                            setTimeout(() => {
-                                fastspring.builder.checkout();
-                                console.log('FastSpring checkout launched');
-                                // Hide spinner when checkout is launched
-                                if (window.hideSpinner) {
-                                    window.hideSpinner();
-                                }
-                            }, 500);
-                        } catch (error) {
-                            console.error('FastSpring checkout initialization error:', error);
-                            if (window.hideSpinner) {
-                                window.hideSpinner();
-                            }
-                            if (window.showAlert) {
-                                window.showAlert('error', 'FastSpring Error', error.message || 'Failed to initialize checkout.');
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        console.error('FastSpring processing error:', error);
+                    setTimeout(() => {
+                        fastspring.builder.checkout();
+                        console.log('FastSpring checkout launched');
+                        // Hide spinner when checkout is launched
                         if (window.hideSpinner) {
                             window.hideSpinner();
                         }
-                        if (window.showAlert) {
-                            window.showAlert('error', `${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message || 'Failed to process checkout.');
-                        } else if (window.showError) {
-                            window.showError(`${action.charAt(0).toUpperCase() + action.slice(1)} Failed`, error.message);
-                        }
-                    });
+                    }, 500);
+                } catch (error) {
+                    console.error('FastSpring processing error:', error);
+                    if (window.hideSpinner) {
+                        window.hideSpinner();
+                    }
+                    if (window.showAlert) {
+                        window.showAlert('error', 'FastSpring Error', error.message || 'Failed to process checkout.');
+                    }
+                }
             }
 
             function onFSPopupClosed(orderData) {
@@ -712,29 +649,50 @@
                             payProGlobalPopup.close();
                         }
 
-                        // Process payment in background and redirect to dashboard
-                        fetch('/payments/success', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            body: new URLSearchParams({
-                                gateway: 'payproglobal',
-                                OrderId: orderId,
-                                user_id: userId,
-                                package: packageName,
-                                popup: 'true'
-                            })
-                        }).then(() => {
-                            console.log('Payment processed, redirecting to subscription details');
-                            window.location.href = '{{ route('user.subscription.details') }}';
-                        }).catch(error => {
-                            console.error('Payment processing error:', error);
-                            // Redirect anyway to subscription details
-                            window.location.href = '{{ route('user.subscription.details') }}';
-                        });
+                        // Create form to submit to handleSuccess
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/payments/success';
+
+                        const csrfInput = document.createElement('input');
+                        csrfInput.type = 'hidden';
+                        csrfInput.name = '_token';
+                        csrfInput.value = csrfToken;
+                        form.appendChild(csrfInput);
+
+                        const gatewayInput = document.createElement('input');
+                        gatewayInput.type = 'hidden';
+                        gatewayInput.name = 'gateway';
+                        gatewayInput.value = 'payproglobal';
+                        form.appendChild(gatewayInput);
+
+                        const orderIdInput = document.createElement('input');
+                        orderIdInput.type = 'hidden';
+                        orderIdInput.name = 'OrderId'; // Use PayProGlobal's format
+                        orderIdInput.value = orderId;
+                        form.appendChild(orderIdInput);
+
+                        const userIdInput = document.createElement('input');
+                        userIdInput.type = 'hidden';
+                        userIdInput.name = 'user_id';
+                        userIdInput.value = userId;
+                        form.appendChild(userIdInput);
+
+                        const packageInput = document.createElement('input');
+                        packageInput.type = 'hidden';
+                        packageInput.name = 'package';
+                        packageInput.value = packageName;
+                        form.appendChild(packageInput);
+
+                        const popupInput = document.createElement('input');
+                        popupInput.type = 'hidden';
+                        popupInput.name = 'popup';
+                        popupInput.value = 'true';
+                        form.appendChild(popupInput);
+
+                        document.body.appendChild(form);
+                        console.log('Submitting PayProGlobal success form');
+                        form.submit();
                     }
                 }
             });
@@ -766,39 +724,19 @@
             // Monitor PayProGlobal popup for URL changes
             function monitorPayProGlobalPopup(popup) {
                 payProGlobalPopup = popup;
-                let thankYouPageDetected = false;
-                let redirectTimeout = null;
-
-                // Set a timeout to redirect after 5 seconds
-                // This handles cases where the popup monitoring fails or PayProGlobal doesn't redirect
-                redirectTimeout = setTimeout(() => {
-                    if (!thankYouPageDetected && !popup.closed) {
-                        console.log('5 second timeout reached, assuming payment successful and redirecting to subscription details');
-                        clearInterval(popupCheckInterval);
-                        if (popup && !popup.closed) {
-                            popup.close();
-                        }
-                        window.location.href = '{{ route('user.subscription.details') }}';
-                    }
-                }, 5000); // 5 seconds timeout
-
                 popupCheckInterval = setInterval(() => {
                     try {
                         if (popup.closed) {
                             clearInterval(popupCheckInterval);
-                            if (redirectTimeout) clearTimeout(redirectTimeout);
                             console.log('PayProGlobal popup closed');
 
                             // Check if we have a success flag
                             const successUrl = sessionStorage.getItem('payProGlobalSuccessUrl');
                             if (successUrl) {
-                                console.log('Redirecting to subscription details page after payment success');
-                                // Redirect to subscription details page instead of success URL
-                                window.location.href = '{{ route('user.subscription.details') }}';
+                                console.log('Redirecting to success URL:', successUrl);
+                                window.location.href = successUrl;
                             } else {
-                                // Even without success URL, if popup closed, assume success and redirect
-                                console.log('Popup closed, redirecting to subscription details');
-                                window.location.href = '{{ route('user.subscription.details') }}';
+                                showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
                             }
 
                             // Clean up
@@ -813,8 +751,6 @@
                             const popupUrl = popup.location.href;
                             if (popupUrl && popupUrl.includes('/thankyou')) {
                                 console.log('PayProGlobal thank you page detected');
-                                thankYouPageDetected = true;
-                                if (redirectTimeout) clearTimeout(redirectTimeout);
 
                                 // Extract OrderId from the URL
                                 const urlParams = new URLSearchParams(popup.location.search);
@@ -823,27 +759,19 @@
                                 if (orderId) {
                                     console.log('Found OrderId in thank you URL:', orderId);
                                     sessionStorage.setItem('payProGlobalSuccessUrl',
-                                        `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}&popup=true`
+                                        `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}`
                                     );
-                                }
 
-                                clearInterval(popupCheckInterval);
-                                if (redirectTimeout) clearTimeout(redirectTimeout);
-                                // Immediately redirect to subscription details when thank you page is detected
-                                if (popup && !popup.closed) {
-                                    popup.close();
+                                    clearInterval(popupCheckInterval);
+                                    setTimeout(() => popup.close(), 1000);
                                 }
-                                // Redirect immediately without delay
-                                window.location.href = '{{ route('user.subscription.details') }}';
                             }
                         } catch (e) {
-                            // Cross-origin error expected, we'll rely on postMessage or timeout
-                            // This is normal when popup is on PayProGlobal domain
+                            // Cross-origin error expected, we'll rely on postMessage
                         }
                     } catch (error) {
                         console.error('Popup monitoring error:', error);
                         clearInterval(popupCheckInterval);
-                        if (redirectTimeout) clearTimeout(redirectTimeout);
                     }
                 }, 500);
             }
@@ -2004,21 +1932,6 @@
                         return response.json();
                     })
                     .then(data => {
-                        // Check if it's a free package assignment (no transaction_id)
-                        if (data.success && !data.transaction_id) {
-                            // Free package was assigned directly
-                            hideSpinner();
-                            const redirectUrl = data.redirect_url || '{{ route("user.dashboard") }}';
-                            showSuccess('Success', data.message || 'Free plan activated successfully').then(() => {
-                                if (redirectUrl) {
-                                    window.location.href = redirectUrl;
-                                } else {
-                                    window.location.reload();
-                                }
-                            });
-                            return;
-                        }
-
                         if (!data.success || !data.transaction_id) {
                             throw new Error(data.error || 'No transaction ID provided');
                         }
@@ -2110,21 +2023,6 @@
                                 console.error('Downgrade response missing redirect URL:', data);
                                 throw new Error(data.error || 'No redirect URL received.');
                             }
-                        }
-
-                        // Check if it's a free package assignment (no checkout_url)
-                        if (data.success && !data.checkout_url) {
-                            // Free package was assigned directly
-                            hideSpinner();
-                            const redirectUrl = data.redirect_url || '{{ route("user.dashboard") }}';
-                            showSuccess('Success', data.message || 'Free plan activated successfully').then(() => {
-                                if (redirectUrl) {
-                                    window.location.href = redirectUrl;
-                                } else {
-                                    window.location.reload();
-                                }
-                            });
-                            return;
                         }
 
                         if (!data.checkout_url) {
@@ -2409,29 +2307,16 @@
                                 userId: '${userId}',
                                 packageName: '${packageName}'
                             });
-                            if (window.opener && !window.opener.closed) {
-                                window.opener.postMessage({
-                                    type: 'payproglobal_success',
-                                    orderId: orderId,
-                                    userId: '${userId}',
-                                    packageName: '${packageName}'
-                                }, '*');
-                                // Close the popup after sending the message
-                                setTimeout(() => window.close(), 500);
-                            } else {
-                                // If no opener, redirect current window to subscription details
-                                console.log('No opener found, redirecting current window to subscription details');
-                                window.location.href = '{{ route('user.subscription.details') }}';
-                            }
+                            window.opener.postMessage({
+                                type: 'payproglobal_success',
+                                orderId: orderId,
+                                userId: '${userId}',
+                                packageName: '${packageName}'
+                            }, '*');
+                            // Close the popup after sending the message
+                            setTimeout(() => window.close(), 1000);
                         } else {
                             console.error('No OrderId found in thank you page URL');
-                            // Redirect anyway if no OrderId
-                            if (window.opener && !window.opener.closed) {
-                                window.opener.location.href = '{{ route('user.subscription.details') }}';
-                                setTimeout(() => window.close(), 500);
-                            } else {
-                                window.location.href = '{{ route('user.subscription.details') }}';
-                            }
                         }
                     }
                 })();

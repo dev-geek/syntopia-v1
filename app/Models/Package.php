@@ -47,18 +47,7 @@ class Package extends Model
      */
     public function isFree()
     {
-        return strtolower($this->name) === 'free' || $this->price == 0;
-    }
-
-    /**
-     * Get the effective price for this package
-     * Always returns 0 for free packages regardless of price field
-     *
-     * @return float
-     */
-    public function getEffectivePrice()
-    {
-        return $this->isFree() ? 0 : $this->price;
+        return $this->price == 0;
     }
 
     /**

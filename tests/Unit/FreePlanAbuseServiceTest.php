@@ -22,10 +22,6 @@ class FreePlanAbuseServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
-        // Disable bypass in testing environment so we can test abuse patterns
-        config(['free_plan_abuse.bypass_in_testing' => false]);
-        
         $this->deviceFingerprintService = new DeviceFingerprintService();
         $this->freePlanAbuseService = new FreePlanAbuseService($this->deviceFingerprintService);
     }
@@ -255,124 +251,6 @@ class FreePlanAbuseServiceTest extends TestCase
         $this->assertArrayHasKey('block_rate', $statistics);
         $this->assertEquals(13, $statistics['total_attempts']);
         $this->assertEquals(3, $statistics['blocked_attempts']);
-    }
-
-    /** @test */
-    public function check_abuse_patterns_allows_whitelisted_ip()
-    {
-        $whitelistedIp = '127.0.0.1';
-        $request = $this->createMockRequest(['ip' => $whitelistedIp]);
-
-        config(['free_plan_abuse.whitelist.ips' => [$whitelistedIp]]);
-
-        // Block the IP
-        FreePlanAttempt::create([
-            'ip_address' => $whitelistedIp,
-            'user_agent' => 'Test Agent',
-            'device_fingerprint' => 'test_fingerprint',
-            'email' => 'test@example.com',
-            'is_blocked' => true,
-            'blocked_at' => now(),
-            'block_reason' => 'Test block'
-        ]);
-
-        $result = $this->freePlanAbuseService->checkAbusePatterns($request);
-
-        $this->assertTrue($result['allowed']);
-        $this->assertStringContainsString('Whitelisted identifier detected', $result['message']);
-    }
-
-    /** @test */
-    public function check_abuse_patterns_allows_whitelisted_email()
-    {
-        $whitelistedEmail = 'whitelisted@example.com';
-        $request = $this->createMockRequest(['email' => $whitelistedEmail]);
-
-        config(['free_plan_abuse.whitelist.emails' => [$whitelistedEmail]]);
-
-        // Block the email
-        FreePlanAttempt::create([
-            'ip_address' => '192.168.1.100',
-            'user_agent' => 'Test Agent',
-            'device_fingerprint' => 'test_fingerprint',
-            'email' => $whitelistedEmail,
-            'is_blocked' => true,
-            'blocked_at' => now(),
-            'block_reason' => 'Test block'
-        ]);
-
-        $result = $this->freePlanAbuseService->checkAbusePatterns($request);
-
-        $this->assertTrue($result['allowed']);
-    }
-
-    /** @test */
-    public function check_abuse_patterns_allows_when_testing_bypass_enabled()
-    {
-        $request = $this->createMockRequest(['ip' => '192.168.1.100']);
-
-        config(['free_plan_abuse.testing_bypass_enabled' => true]);
-
-        // Block the IP
-        FreePlanAttempt::create([
-            'ip_address' => '192.168.1.100',
-            'user_agent' => 'Test Agent',
-            'device_fingerprint' => 'test_fingerprint',
-            'email' => 'test@example.com',
-            'is_blocked' => true,
-            'blocked_at' => now(),
-            'block_reason' => 'Test block'
-        ]);
-
-        $result = $this->freePlanAbuseService->checkAbusePatterns($request);
-
-        $this->assertTrue($result['allowed']);
-        $this->assertStringContainsString('Testing bypass is enabled', $result['message']);
-    }
-
-    /** @test */
-    public function whitelisted_ip_bypasses_attempt_limits()
-    {
-        $whitelistedIp = '127.0.0.1';
-        $request = $this->createMockRequest(['ip' => $whitelistedIp]);
-
-        config(['free_plan_abuse.whitelist.ips' => [$whitelistedIp]]);
-
-        // Create multiple attempts from same IP (exceeding limit)
-        for ($i = 0; $i < 4; $i++) {
-            FreePlanAttempt::create([
-                'ip_address' => $whitelistedIp,
-                'user_agent' => 'Test Agent',
-                'device_fingerprint' => 'test_fingerprint_' . $i,
-                'email' => 'test' . $i . '@example.com',
-                'is_blocked' => false
-            ]);
-        }
-
-        $result = $this->freePlanAbuseService->checkAbusePatterns($request);
-
-        $this->assertTrue($result['allowed']);
-    }
-
-    /** @test */
-    public function assign_free_plan_does_not_auto_block_whitelisted_identifiers()
-    {
-        $user = User::factory()->create();
-        $whitelistedIp = '127.0.0.1';
-        $request = $this->createMockRequest(['ip' => $whitelistedIp]);
-
-        config(['free_plan_abuse.whitelist.ips' => [$whitelistedIp]]);
-
-        $result = $this->freePlanAbuseService->assignFreePlan($user, $request);
-
-        $this->assertTrue($result['success']);
-
-        // Check that the IP was not blocked
-        $blockedAttempt = FreePlanAttempt::where('ip_address', $whitelistedIp)
-            ->where('is_blocked', true)
-            ->first();
-
-        $this->assertNull($blockedAttempt, 'Whitelisted IP should not be auto-blocked after free plan assignment');
     }
 
     private function createMockRequest(array $overrides = []): Request

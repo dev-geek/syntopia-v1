@@ -39,13 +39,8 @@ class DeviceFingerprintService
 
     private function isWhitelisted(Request $request): bool
     {
-        // Allow localhost IPs
-        $ip = $request->ip();
-        if ($this->isLocalhost($ip)) {
-            return true;
-        }
-
         $whitelist = (array) config('free_plan_abuse.whitelist', []);
+        $ip = $request->ip();
         $email = $request->input('email');
         $fingerprintId = $request->cookie('fp_id', '');
         $fingerprint = $this->generateFingerprint($request);
@@ -56,21 +51,6 @@ class DeviceFingerprintService
         $fpWhitelisted = in_array($fingerprint, $whitelist['device_fingerprints'] ?? [], true);
 
         return $ipWhitelisted || $emailWhitelisted || $fpIdWhitelisted || $fpWhitelisted;
-    }
-
-    /**
-     * Check if IP address is localhost
-     */
-    private function isLocalhost(string $ip): bool
-    {
-        $localhostIps = [
-            '127.0.0.1',
-            '::1',
-            'localhost',
-        ];
-
-        return in_array($ip, $localhostIps, true) || 
-               filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
     }
 
     public function generateFingerprint(Request $request): string

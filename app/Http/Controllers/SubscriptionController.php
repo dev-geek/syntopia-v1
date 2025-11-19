@@ -8,7 +8,6 @@ use App\Models\Order;
 use App\Models\Package;
 use App\Models\PaymentGateways;
 use App\Services\SubscriptionService;
-use App\Services\FreePlanAbuseService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,12 +16,10 @@ use Carbon\Carbon;
 class SubscriptionController extends Controller
 {
     private $subscriptionService;
-    private $freePlanAbuseService;
 
-    public function __construct(SubscriptionService $subscriptionService, FreePlanAbuseService $freePlanAbuseService)
+    public function __construct(SubscriptionService $subscriptionService)
     {
         $this->subscriptionService = $subscriptionService;
-        $this->freePlanAbuseService = $freePlanAbuseService;
     }
 
     private function hasActiveSubscription($user)
@@ -206,22 +203,16 @@ class SubscriptionController extends Controller
         return $activeGateway;
     }
 
-    public function handleSubscription(Request $request)
+    public function handleSubscription()
     {
         $user = Auth::user();
         return $this->hasActiveSubscription($user)
             ? redirect()->route('user.dashboard')
-            : $this->index($request);
+            : $this->index();
     }
 
-    public function index(Request $request)
+    public function index()
     {
-        // Check if there's a package_name query parameter
-        $packageName = $request->query('package_name');
-        if ($packageName) {
-            return $this->showSubscriptionWithPackage($request);
-        }
-
         return $this->showSubscriptionPage('new');
     }
 
@@ -229,6 +220,15 @@ class SubscriptionController extends Controller
     {
         $packageName = $request->query('package_name');
         $type = $request->query('type');
+
+        // Check if user is authenticated
+        // This check is removed because the route should be publicly accessible
+        // The 'auth' middleware will handle unauthenticated users accessing protected routes.
+        // if (!auth()->check()) {
+        //     // Store the intended URL to redirect back after login
+        //     session(['url.intended' => $request->fullUrl()]);
+        //     return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
+        // }
 
         // Handle different types
         if ($type === 'upgrade') {
@@ -239,41 +239,17 @@ class SubscriptionController extends Controller
             return $this->showSubscriptionPage('downgrade');
         }
 
-        // Handle package_name parameter
+        // Handle package_name parameter (existing logic)
         if ($packageName) {
             $package = Package::where('name', $packageName)->first();
             if (!$package) {
                 return redirect()->route('subscription')->with('error', 'Invalid package selected.');
             }
 
-            if (strtolower($packageName) === 'free' || $package->isFree()) {
-                if (!auth()->check()) {
-                    session(['url.intended' => $request->fullUrl()]);
-                    return redirect()->route('login')->with('info', 'Please log in to get your free plan.');
-                }
-
-                $user = Auth::user();
-
-                $eligibilityCheck = $this->freePlanAbuseService->canUseFreePlan($user, $request);
-                if (!$eligibilityCheck['allowed']) {
-                    return redirect()->route('subscription')
-                        ->with('error', $eligibilityCheck['message'] ?? 'You are not eligible for the free plan.');
-                }
-
-                $result = $this->freePlanAbuseService->assignFreePlan($user, $request);
-
-                if (!$result['success']) {
-                    return redirect()->route('subscription')
-                        ->with('error', $result['message'] ?? 'Failed to assign free plan. Please try again.');
-                }
-
-                return redirect()->route('user.dashboard')
-                    ->with('success', 'Free plan has been assigned successfully!');
-            }
-
             return $this->showSubscriptionPage('new', $package);
         }
 
+        // Default behavior - show subscription page without specific package
         return $this->showSubscriptionPage('new');
     }
 
@@ -281,6 +257,7 @@ class SubscriptionController extends Controller
     {
 
         if ($request->isMethod('post') && $package) {
+            // Delegate to PaymentController for checkout
             $paymentController = app(PaymentController::class);
             return $paymentController->fastspringCheckout($request, $package);
         }
@@ -304,11 +281,15 @@ class SubscriptionController extends Controller
                 return redirect()->route('user.subscription.details')->with('error', 'Invalid package selected for downgrade.');
             }
 
+            // Check if user's payment gateway is Pay Pro Global
             if ($user->paymentGateway && $user->paymentGateway->name === 'Pay Pro Global') {
+                // Delegate to PaymentController for PayProGlobal downgrade checkout
                 $paymentController = app(PaymentController::class);
                 return $paymentController->payproglobalDowngrade($request);
             }
 
+            // Existing logic for other payment gateways (scheduled downgrade)
+            // Check if there is an active license and its expiry
             $activeLicense = $user->userLicence;
             if (!$activeLicense || !$activeLicense->expires_at) {
                 return redirect()->route('user.subscription.details')->with('error', 'No active subscription found to downgrade.');
@@ -329,7 +310,7 @@ class SubscriptionController extends Controller
                     $order->order_type = 'downgrade';
                     $order->status = 'scheduled_downgrade';
                     $order->transaction_id = 'SCHEDULED-DOWNGRADE-' . uniqid(); // Unique ID for scheduled order
-                    $order->amount = $targetPackage->getEffectivePrice();
+                    $order->amount = $targetPackage->price;
                     $order->currency = 'USD'; // Assuming USD, adjust if dynamic
                     $order->payment_method = $user->paymentGateway->name ?? 'N/A';
                     $order->metadata = [
@@ -385,15 +366,8 @@ class SubscriptionController extends Controller
         }
     }
 
-    public function subscriptionDetails(Request $request)
+    public function subscriptionDetails()
     {
-        // Handle PayProGlobal payment processing if redirected from PayProGlobal
-        if ($request->query('process_payment') === 'true' && $request->query('gateway') === 'payproglobal') {
-            // Redirect to payments.success to process the payment, then it will redirect back here
-            $paymentController = app(PaymentController::class);
-            return $paymentController->handleSuccess($request);
-        }
-
         $user = Auth::user();
 
         if (!$user->hasRole(['User'])) {
@@ -402,18 +376,11 @@ class SubscriptionController extends Controller
 
         $activeLicense = $user->userLicence;
         $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
-
-        // Only calculate expiration if not Free package and expires_at is null
-        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at && !$activeLicense->package->isFree()) {
+        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at) {
             try {
                 $calculatedEndDate = $activeLicense->activated_at->copy()->addMonth();
             } catch (\Throwable $e) {
             }
-        }
-
-        // Ensure Free packages never have expiration dates
-        if ($activeLicense && $activeLicense->package->isFree()) {
-            $calculatedEndDate = null;
         }
         $isUpgradeLocked = $activeLicense && $activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture();
 
@@ -583,8 +550,6 @@ class SubscriptionController extends Controller
 
         return view('subscription.details', [
             'currentPackage' => $package ? $package->name : null,
-            'currentPackageModel' => $package,
-            'isFreePackage' => $package && $package->isFree(),
             'user' => $user,
             'calculatedEndDate' => $calculatedEndDate,
             'hasActiveSubscription' => $hasActiveSubscription,
