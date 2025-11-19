@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\VerificationController;
@@ -82,6 +83,24 @@ Route::get('/payments/cancel', [PaymentController::class, 'handleCancel'])->name
 Route::get('/payments/popup-cancel', [PaymentController::class, 'handlePopupCancel'])->name('payments.popup-cancel');
 Route::get('/payments/license-error', [PaymentController::class, 'handleLicenseError'])->name('payments.license-error');
 
+// PayProGlobal POST callback handler (outside auth middleware to handle unauthenticated callbacks)
+Route::post('/user/dashboard', function (Request $request) {
+    if ($request->has('ORDER_STATUS') || $request->has('ORDER_ID') || $request->has('ORDER_ITEMS')) {
+        \Illuminate\Support\Facades\Log::info('PayProGlobal POST callback detected in dashboard route (outside auth), forwarding to payments.success handler', [
+            'has_order_status' => $request->has('ORDER_STATUS'),
+            'has_order_id' => $request->has('ORDER_ID'),
+            'order_status' => $request->input('ORDER_STATUS'),
+        ]);
+
+        $paymentController = app(\App\Http\Controllers\API\PaymentController::class);
+        $request->merge(['gateway' => 'payproglobal']);
+        return $paymentController->handleSuccess($request);
+    }
+
+    // If not a PayProGlobal callback, redirect to login
+    return redirect()->route('login');
+})->name('user.dashboard.post');
+
 // Subscription cancellation route (web-based)
 Route::post('/payments/cancel-subscription', [PaymentController::class, 'cancelSubscription'])
     ->name('payments.cancel-subscription')
@@ -96,7 +115,7 @@ Route::middleware(['web'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified.custom'])->group(function () {
-    Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
+    Route::match(['get', 'post'], '/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
 
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');
