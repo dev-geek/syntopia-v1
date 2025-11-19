@@ -1823,9 +1823,9 @@ class PaymentController extends Controller
         }
     }
 
-    private function processPayment($paymentData, $gateway)
+    private function processPayment($paymentData, $gateway, $returnRedirect = true)
     {
-        return DB::transaction(function () use ($paymentData, $gateway) {
+        return DB::transaction(function () use ($paymentData, $gateway, $returnRedirect) {
             $userId = Auth::user()->id ?? $paymentData['user_id'] ?? null;
             $packageName = ucfirst($paymentData['package']) ?? (isset($paymentData['custom_data']) ? (ucfirst($paymentData['custom_data']['package']) ?? null) : null);
             $transactionId = $paymentData['order_id'] ?? $paymentData['order'] ?? ($paymentData['id'] ?? null);
@@ -1958,9 +1958,23 @@ class PaymentController extends Controller
                 ]
             ]);
 
+            // If called from webhook, return true instead of redirect
+            if (!$returnRedirect) {
+                return true;
+            }
+
             $successMessage = $action === 'upgrade'
                 ? 'Your plan upgrade is active now.'
                 : "Subscription to {$package->name} bought successfully!";
+
+            // Ensure user is authenticated before redirecting to protected route
+            if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
+                // Log user in if not authenticated
+                Auth::guard('web')->login($user, false);
+                // Save session without regenerating to preserve it
+                request()->session()->save();
+            }
+
             return redirect()->route('user.subscription.details')->with('success', $successMessage);
         });
     }
@@ -2381,7 +2395,7 @@ class PaymentController extends Controller
                     'payment_data' => $paymentData
                 ]);
 
-                $result = $this->processPayment($paymentData, 'payproglobal');
+                $result = $this->processPayment($paymentData, 'payproglobal', false);
 
                 if ($result) {
                     Log::info('PayProGlobal webhook: Payment processed successfully', [
