@@ -2256,11 +2256,41 @@ class PaymentController extends Controller
                     'order_id' => $orderId
                 ]);
 
-                // Find package by product ID
-                $package = Package::where('payproglobal_product_id', $productId)->first();
+                $package = null;
+                $packageSlugFromConfig = null;
+
+                if ($productId) {
+
+                    $productIdsConfig = config('payment.gateways.PayProGlobal.product_ids', []);
+                    foreach ($productIdsConfig as $slug => $configProductId) {
+                        if ((string)$configProductId === (string)$productId) {
+                            $packageSlugFromConfig = $slug;
+                            break;
+                        }
+                    }
+
+                    if ($packageSlugFromConfig) {
+                        $packageName = ucfirst($packageSlugFromConfig); // "starter" -> "Starter"
+                        $package = Package::where('name', $packageName)->first();
+                    }
+                }
+
+                // Fallback to finding by package name/slug from custom data
+                if (!$package && $packageSlug) {
+                    // Try exact match first (case-insensitive)
+                    $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageSlug)])->first();
+
+                    // If still not found, try matching the slug to package name variations
+                    if (!$package) {
+                        $packageName = ucfirst($packageSlug); // "starter" -> "Starter"
+                        $package = Package::where('name', $packageName)->first();
+                    }
+                }
+
                 if (!$package) {
-                    Log::error('PayProGlobal webhook: Package not found by product ID', [
+                    Log::error('PayProGlobal webhook: Package not found', [
                         'product_id' => $productId,
+                        'package_slug' => $packageSlug,
                         'order_id' => $orderId
                     ]);
                     return response()->json(['success' => false, 'error' => 'Package not found'], 404);
