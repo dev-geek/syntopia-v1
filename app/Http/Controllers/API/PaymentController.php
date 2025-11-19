@@ -2170,11 +2170,81 @@ class PaymentController extends Controller
                     'ipn_type' => $ipnType
                 ]);
 
-                // Find user by email
-                $user = User::where('email', $customerEmail)->first();
+                // Try to extract user_id from CHECKOUT_QUERY_STRING custom data
+                $userId = null;
+                $pendingOrderId = null;
+                $packageSlug = null;
+                $action = 'new';
+
+                $checkoutQueryString = $payload['CHECKOUT_QUERY_STRING'] ?? null;
+                if ($checkoutQueryString) {
+                    parse_str($checkoutQueryString, $checkoutParams);
+                    $customDataJson = $checkoutParams['custom'] ?? null;
+                    if ($customDataJson) {
+                        // parse_str already URL-decodes, but try both in case
+                        $customData = json_decode($customDataJson, true);
+                        if (!$customData) {
+                            $customData = json_decode(urldecode($customDataJson), true);
+                        }
+                        if ($customData) {
+                            $userId = $customData['user_id'] ?? null;
+                            $pendingOrderId = $customData['pending_order_id'] ?? null;
+                            $packageSlug = $customData['package'] ?? null;
+                            $action = $customData['action'] ?? 'new';
+                        }
+                    }
+                }
+
+                Log::info('PayProGlobal webhook: Extracted custom data', [
+                    'user_id' => $userId,
+                    'pending_order_id' => $pendingOrderId,
+                    'package_slug' => $packageSlug,
+                    'action' => $action,
+                    'checkout_query_string' => $checkoutQueryString
+                ]);
+
+                // Find user by user_id from custom data, or fallback to email
+                $user = null;
+                if ($userId) {
+                    $user = User::find($userId);
+                    if ($user) {
+                        Log::info('PayProGlobal webhook: User found by user_id from custom data', [
+                            'user_id' => $userId,
+                            'user_email' => $user->email
+                        ]);
+                    }
+                }
+
+                // Fallback to finding by email if user_id didn't work
+                if (!$user && $customerEmail) {
+                    $user = User::where('email', $customerEmail)->first();
+                    if ($user) {
+                        Log::info('PayProGlobal webhook: User found by email (fallback)', [
+                            'customer_email' => $customerEmail,
+                            'user_id' => $user->id
+                        ]);
+                    }
+                }
+
+                // Try to find user by pending_order_id if still not found
+                if (!$user && $pendingOrderId) {
+                    $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
+                    if ($pendingOrder) {
+                        $user = $pendingOrder->user;
+                        if ($user) {
+                            Log::info('PayProGlobal webhook: User found by pending_order_id', [
+                                'pending_order_id' => $pendingOrderId,
+                                'user_id' => $user->id
+                            ]);
+                        }
+                    }
+                }
+
                 if (!$user) {
-                    Log::error('PayProGlobal webhook: User not found by email', [
+                    Log::error('PayProGlobal webhook: User not found', [
                         'customer_email' => $customerEmail,
+                        'user_id_from_custom' => $userId,
+                        'pending_order_id' => $pendingOrderId,
                         'order_id' => $orderId
                     ]);
                     return response()->json(['success' => false, 'error' => 'User not found'], 404);
@@ -2211,7 +2281,8 @@ class PaymentController extends Controller
                     'currency' => $currency,
                     'customer_email' => $customerEmail,
                     'product_id' => $productId,
-                    'action' => 'new'
+                    'action' => $action,
+                    'pending_order_id' => $pendingOrderId
                 ];
 
                 Log::info('PayProGlobal webhook: Processing payment', [
