@@ -1435,11 +1435,20 @@ class PaymentController extends Controller
                 $wasAuthenticated = auth()->check();
                 $previousAuthId = auth()->id();
                 if (!$wasAuthenticated || $previousAuthId !== $user->id) {
-                    auth()->login($user);
+                    // Use Auth facade to ensure proper session handling
+                    // Don't regenerate session here as it might invalidate the login
+                    Auth::login($user, false);
+
+                    // Ensure session is saved before any redirects
+                    $request->session()->save();
+
                     Log::info('PayProGlobal: User logged in from redirect', [
                         'user_id' => $user->id,
                         'was_authenticated' => $wasAuthenticated,
-                        'previous_auth_id' => $previousAuthId
+                        'previous_auth_id' => $previousAuthId,
+                        'auth_check_after_login' => auth()->check(),
+                        'auth_id_after_login' => auth()->id(),
+                        'session_id' => $request->session()->getId()
                     ]);
                 }
 
@@ -1546,9 +1555,19 @@ class PaymentController extends Controller
                     }
                 }
 
-                if (!auth()->check()) {
-                    return redirect()->route('login')->with('info', $successMessage . ' Please log in to access your dashboard.');
+                // Final check before redirect - ensure user is still authenticated
+                if (!auth()->check() || auth()->id() !== $user->id) {
+                    // Re-login if session was lost
+                    Auth::login($user, false);
+                    Log::warning('PayProGlobal: User session lost before redirect, re-logged in', [
+                        'user_id' => $user->id
+                    ]);
                 }
+
+                // Ensure session is saved and committed before redirect
+                $request->session()->save();
+
+                // Redirect with success message - session should be preserved
                 return redirect()->route('user.dashboard')->with('success', $successMessage);
 
             } // Add other payment gateways here
