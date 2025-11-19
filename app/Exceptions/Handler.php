@@ -55,7 +55,6 @@ class Handler extends ExceptionHandler
                 ], 403);
             }
 
-            // Redirect regular users (non-admin) trying to access admin routes to their dashboard
             if (Auth::check()) {
                 $user = Auth::user();
 
@@ -65,6 +64,13 @@ class Handler extends ExceptionHandler
                 if (!$user->hasAnyRole(['Super Admin', 'Sub Admin']) && $isAdminRoute) {
                     return redirect()->route('user.dashboard')
                         ->with('info', 'You have been redirected to your dashboard.');
+                }
+            } else {
+                // If not authenticated and trying to access admin route, redirect to login
+                $isAdminRoute = $request->is('admin/*') || str_starts_with($request->path(), 'admin/');
+                if ($isAdminRoute) {
+                    return redirect()->route('admin-login')
+                        ->with('info', 'Please log in to access the admin area.');
                 }
             }
         }

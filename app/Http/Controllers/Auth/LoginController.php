@@ -55,24 +55,40 @@ class LoginController extends Controller
 
                 // For regular users, check subscription status
         if ($user->hasRole('User')) {
-            // Check if there's an intended URL (like subscription page with package)
+            // Clear any admin route intended URLs - regular users should never go to admin routes
             if (session()->has('url.intended')) {
                 $intendedUrl = session('url.intended');
-                session()->forget('url.intended');
-                return redirect()->to($intendedUrl);
+                // Only use intended URL if it's NOT an admin route
+                if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                    session()->forget('url.intended');
+                    return redirect()->to($intendedUrl);
+                } else {
+                    // Clear admin route intended URLs
+                    session()->forget('url.intended');
+                }
             }
 
-            // Also check for verification intended URL
+            // Also check for verification intended URL (but filter out admin routes)
             if (session()->has('verification_intended_url')) {
                 $intendedUrl = session('verification_intended_url');
-                session()->forget('verification_intended_url');
-                return redirect()->to($intendedUrl);
+                // Only use intended URL if it's NOT an admin route
+                if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                    session()->forget('verification_intended_url');
+                    return redirect()->to($intendedUrl);
+                } else {
+                    // Clear admin route intended URLs
+                    session()->forget('verification_intended_url');
+                }
             }
 
+            // Clear any remaining intended URLs before redirecting
+            session()->forget('url.intended');
+            session()->forget('verification_intended_url');
+
             if ($this->hasActiveSubscription($user)) {
-                return redirect()->intended(route('user.dashboard'));
+                return redirect()->route('user.dashboard');
             } else {
-                return redirect()->intended(route('subscription'));
+                return redirect()->route('subscription');
             }
         }
 
@@ -133,12 +149,22 @@ class LoginController extends Controller
 
             // For regular users, check subscription status
             if ($user->hasRole('User')) {
-                // Check for intended URL first
+                // Check for intended URL first (but filter out admin routes)
                 if (session()->has('url.intended')) {
                     $intendedUrl = session('url.intended');
-                    session()->forget('url.intended');
-                    return redirect()->to($intendedUrl);
+                    // Only use intended URL if it's NOT an admin route
+                    if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                        session()->forget('url.intended');
+                        return redirect()->to($intendedUrl);
+                    } else {
+                        // Clear admin route intended URLs
+                        session()->forget('url.intended');
+                    }
                 }
+
+                // Clear any remaining intended URLs before redirecting
+                session()->forget('url.intended');
+                session()->forget('verification_intended_url');
 
                 if ($this->hasActiveSubscription($user)) {
                     return redirect()->route('user.dashboard');
@@ -249,21 +275,31 @@ class LoginController extends Controller
 
         // For regular users, check subscription status
         if ($user->hasRole('User')) {
-            // Check for intended URL first
+            // Check for intended URL first (but filter out admin routes)
             if (session()->has('url.intended')) {
                 $intendedUrl = session('url.intended');
-                session()->forget('url.intended');
-                return redirect()->to($intendedUrl);
+                // Only use intended URL if it's NOT an admin route
+                if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                    session()->forget('url.intended');
+                    return redirect()->to($intendedUrl);
+                } else {
+                    // Clear admin route intended URLs
+                    session()->forget('url.intended');
+                }
             }
 
+            // Clear any remaining intended URLs before redirecting
+            session()->forget('url.intended');
+            session()->forget('verification_intended_url');
+
             if ($this->hasActiveSubscription($user)) {
-                return redirect()->intended(route('user.dashboard'));
+                return redirect()->route('user.dashboard');
             } else {
-                return redirect()->intended(route('subscription'));
+                return redirect()->route('subscription');
             }
         }
 
-        return redirect()->intended(route('user.profile'));
+        return redirect()->route('user.profile');
     }
 
     public function checkEmail(Request $request)
