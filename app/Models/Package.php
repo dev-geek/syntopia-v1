@@ -42,12 +42,14 @@ class Package extends Model
 
     /**
      * Check if this is a free package
+     * Free plans bypass payment gateway checkout (FastSpring, PayProGlobal, Paddle)
+     * and are immediately assigned to the user
      *
      * @return bool
      */
     public function isFree()
     {
-        return $this->price == 0;
+        return $this->price == 0 || strtolower($this->name) === 'free';
     }
 
     /**

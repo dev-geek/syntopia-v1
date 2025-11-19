@@ -273,6 +273,7 @@ class LicenseApiService
 
 		$aliases = [
 			'free' => ['Free', 'free', 'free version', 'free plan', '免费', '免费版','Trial', 'trial', 'trial version', '试用', '试用版'],
+			'trial' => ['Trial', 'trial', 'trial version', '试用', '试用版'],
 			'starter' => ['Starter','starter', 'starter plan', 'starter package', 'starter tier'],
 			'pro' => ['Pro', 'pro', 'pro plan'],
 			'business' => ['Business', 'business', 'business plan'],

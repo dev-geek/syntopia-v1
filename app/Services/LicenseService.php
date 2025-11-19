@@ -69,8 +69,6 @@ class LicenseService
 
             $createdLicenses = [];
 
-            // For FastSpring and PayProGlobal, we can create license records even without subscription_id
-            // since these gateways may not provide subscription_id during checkout
             $payproglobalGateway = PaymentGateways::where('name', 'Pay Pro Global')->first();
             $fastspringGateway = PaymentGateways::where('name', 'FastSpring')->first();
             $paddleGateway = PaymentGateways::where('name', 'Paddle')->first();
@@ -79,15 +77,32 @@ class LicenseService
             $isFastSpring = $paymentGateway == ($fastspringGateway ? $fastspringGateway->id : null);
             $isPaddle = $paymentGateway == ($paddleGateway ? $paddleGateway->id : null);
 
-            // For Paddle, we need subscription_id for upgrades, but can proceed without it for new subscriptions
+            // If subscription_id is not provided, try to get it from the user's latest completed order's transaction_id
+            if (!$subscriptionId) {
+                $latestOrder = Order::where('user_id', $user->id)
+                    ->where('status', 'completed')
+                    ->where('package_id', $package->id)
+                    ->latest('created_at')
+                    ->first();
+
+                if ($latestOrder && $latestOrder->transaction_id) {
+                    $subscriptionId = $latestOrder->transaction_id;
+                    Log::info('Using transaction_id from order as subscription_id', [
+                        'user_id' => $user->id,
+                        'package_name' => $package->name,
+                        'order_id' => $latestOrder->id,
+                        'transaction_id' => $subscriptionId
+                    ]);
+                }
+            }
+
             if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring && !$isPaddle) {
                 Log::info('No subscription_id provided, skipping license record creation', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
                     'payment_gateway' => $paymentGateway
-                ]);
+                    ]);
 
-                // No license record created (no subscription_id provided)
                 if (!empty($summaryData)) {
                     $firstLicenseKey = $summaryData[0]['subscriptionCode'] ?? null;
                     if ($firstLicenseKey) {
@@ -102,7 +117,6 @@ class LicenseService
                 return null;
             }
 
-            // For PayProGlobal without subscription_id, use a generated one based on order_id
             if (!$subscriptionId && $isPayProGlobal) {
                 $subscriptionId = 'PPG-ORDER-' . time() . '-' . $user->id;
                 Log::info('Generated subscription_id for PayProGlobal', [
@@ -112,7 +126,6 @@ class LicenseService
                 ]);
             }
 
-            // For FastSpring without subscription_id, use a generated one based on order_id
             if (!$subscriptionId && $isFastSpring) {
                 $subscriptionId = 'FS-ORDER-' . time() . '-' . $user->id;
                 Log::info('Generated subscription_id for FastSpring', [
@@ -122,7 +135,6 @@ class LicenseService
                 ]);
             }
 
-            // For Paddle without subscription_id, use a generated one based on order_id
             if (!$subscriptionId && $isPaddle) {
                 $subscriptionId = 'PADDLE-ORDER-' . time() . '-' . $user->id;
                 Log::info('Generated subscription_id for Paddle', [
@@ -132,12 +144,12 @@ class LicenseService
                 ]);
             }
 
-            // If package name maps to a specific subscription, require that one
-            $resolved = $this->licenseApiService->resolvePlanLicense($user->tenant_id, $package->name, true);
+
+            $planNameToResolve = $package->isFree() ? 'Trial' : $package->name;
+            $resolved = $this->licenseApiService->resolvePlanLicense($user->tenant_id, $planNameToResolve, true);
             if (!$resolved) {
                 $availableNames = array_map(function ($i) {
                     $n = (string)($i['subscriptionName'] ?? '');
-                    // Translate common Chinese names for readability
                     $translations = [
                         '试用版' => 'Trial Version',
                         '云端高级直播-一年版' => 'Cloud Advanced Live Streaming – 1 Year Plan',
@@ -149,6 +161,7 @@ class LicenseService
                 Log::error('Requested plan not found in API inventory; refusing to assign mismatched license', [
                     'user_id' => $user->id,
                     'requested_plan' => $package->name,
+                    'resolved_plan_name' => $planNameToResolve,
                     'available_subscription_names' => $availableNames,
                 ]);
                 DB::rollBack();
@@ -156,14 +169,12 @@ class LicenseService
             }
             $targetList = [$resolved];
 
-            // Create a license for each available license key (usually one after filtering)
             foreach ($targetList as $licenseData) {
                 $licenseKey = $licenseData['subscriptionCode'] ?? null;
                 if (!$licenseKey) {
                     continue;
                 }
 
-                // Add license to external API
                 $licenseApiSuccess = false;
                 try {
                     $licenseApiSuccess = $this->licenseApiService->addLicenseToTenant($user->tenant_id, $licenseKey);
@@ -183,7 +194,7 @@ class LicenseService
                         'license_key' => $licenseKey,
                         'error' => $e->getMessage()
                     ]);
-                    // Fall through to general error handling if not successful
+
                 }
 
                 if (!$licenseApiSuccess) {
@@ -195,13 +206,10 @@ class LicenseService
                     continue;
                 }
 
-                // Calculate expiration date based on package type
-                // Free packages have no expiration, all others expire in 1 month
-                $expiresAt = strtolower($package->name) === 'free'
+                $expiresAt = $package->isFree()
                     ? null
                     : now()->addMonth();
 
-                // Create the license record
                 $license = UserLicence::create([
                     'user_id' => $user->id,
                     'license_key' => $licenseKey,
@@ -211,7 +219,7 @@ class LicenseService
                     'activated_at' => now(),
                     'expires_at' => $expiresAt,
                     'is_active' => true,
-                    'is_upgrade_license' => $isUpgradeAttempt, // Set the new flag
+                    'is_upgrade_license' => $isUpgradeAttempt,
                     'metadata' => [
                         'created_via' => 'payment',
                         'package_name' => $package->name,

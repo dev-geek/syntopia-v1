@@ -5,15 +5,24 @@ namespace App\Services;
 use App\Models\Package;
 use App\Models\User;
 use App\Models\PaymentGateways;
+use App\Models\Order;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use App\Services\FastSpringClient;
 use App\Services\PaddleClient;
 use App\Services\PayProGlobalClient;
+use App\Services\LicenseService;
 
 class SubscriptionService
 {
+    private LicenseService $licenseService;
+
+    public function __construct(LicenseService $licenseService)
+    {
+        $this->licenseService = $licenseService;
+    }
     private function getGatewayClient(string $gateway)
     {
         $normalizedGateway = str_replace(' ', '', ucwords(strtolower($gateway))); // Remove spaces after normalizing
@@ -235,6 +244,68 @@ class SubscriptionService
                 'gateway' => $currentGateway,
                 'trace' => $e->getTraceAsString()
             ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Immediately assign free plan to user without payment gateway checkout
+     */
+    public function assignFreePlanImmediately(User $user, Package $package): array
+    {
+        try {
+            return DB::transaction(function () use ($user, $package) {
+                // Update user with free package
+                $user->update([
+                    'package_id' => $package->id,
+                    'is_subscribed' => true,
+                ]);
+
+                // Create completed order for free plan
+                $order = Order::create([
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'amount' => 0,
+                    'currency' => 'USD',
+                    'status' => 'completed',
+                    'transaction_id' => 'FREE-' . Str::random(10),
+                    'metadata' => [
+                        'source' => 'free_plan_immediate_assignment',
+                        'assigned_at' => now()->toISOString()
+                    ]
+                ]);
+
+                // Create and activate license for free plan using transaction_id as subscription_id
+                $license = $this->licenseService->createAndActivateLicense(
+                    $user,
+                    $package,
+                    $order->transaction_id,
+                    null,
+                    false
+                );
+
+                Log::info('Free plan assigned immediately without checkout', [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'order_id' => $order->id,
+                    'license_id' => $license?->id
+                ]);
+
+                return [
+                    'success' => true,
+                    'order_id' => $order->id,
+                    'license_id' => $license?->id
+                ];
+            });
+        } catch (\Exception $e) {
+            Log::error('Failed to assign free plan immediately', [
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             throw $e;
         }
     }

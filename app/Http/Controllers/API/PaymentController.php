@@ -149,6 +149,28 @@ class PaymentController extends Controller
         ], 409);
     }
 
+    /**
+     * Immediately assign free plan to user without payment gateway checkout
+     */
+    private function assignFreePlanImmediately(User $user, Package $package, Request $request)
+    {
+        try {
+            $result = $this->subscriptionService->assignFreePlanImmediately($user, $package);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Free plan activated successfully',
+                'order_id' => $result['order_id']
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to activate free plan',
+                'message' => 'An error occurred while activating your free plan. Please try again or contact support.',
+            ], 500);
+        }
+    }
+
 
 
     public function paddleCheckout(Request $request, string $package)
@@ -172,6 +194,11 @@ class PaymentController extends Controller
 
             $user = $validation['user'];
             $packageData = $validation['packageData'];
+
+            // If package is free, assign immediately without payment gateway checkout
+            if ($packageData->isFree()) {
+                return $this->assignFreePlanImmediately($user, $packageData, $request);
+            }
 
             // Block checkout if no licenses available for selected plan
             if (!$this->checkLicenseAvailability($packageData->name)) {
@@ -628,6 +655,11 @@ class PaymentController extends Controller
             $user = $validation['user'];
             $packageData = $validation['packageData'];
 
+            // If package is free, assign immediately without payment gateway checkout
+            if ($packageData->isFree()) {
+                return $this->assignFreePlanImmediately($user, $packageData, $request);
+            }
+
             if (!$this->checkLicenseAvailability($packageData->name)) {
                 return $this->licenseUnavailableResponse($request);
             }
@@ -781,6 +813,11 @@ class PaymentController extends Controller
                     'message' => 'The selected package is not available or doesn\'t exist. Please choose a valid package.',
                     'action' => 'select_valid_package'
                 ], 400);
+            }
+
+            // If package is free, assign immediately without payment gateway checkout
+            if ($packageData->isFree()) {
+                return $this->assignFreePlanImmediately($user, $packageData, $request);
             }
 
             if ($isDowngrade) {
