@@ -938,13 +938,19 @@ class PaymentController extends Controller
                 ]
             ]);
 
+            // Generate a temporary authentication token for cross-domain redirect
+            $authToken = Str::random(64);
+            // Store token in cache for 10 minutes with user_id
+            Cache::put("paypro_auth_token_{$authToken}", $user->id, now()->addMinutes(10));
+
             $successParams = [
                 'gateway' => 'payproglobal',
                 'user_id' => $user->id,
                 'package' => $processedPackage,
                 'popup' => 'true',
                 'pending_order_id' => $order->transaction_id,
-                'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
+                'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new'),
+                'auth_token' => $authToken
             ];
 
             $successUrl = url(route('payments.success', $successParams));
@@ -1382,7 +1388,21 @@ class PaymentController extends Controller
 
                 // For redirects, user_id is in query parameters; for webhooks, it's in custom field
                 $customData = json_decode($request->input('custom', '{}'), true);
-                $userId = $request->query('user_id') ?? $customData['user_id'] ?? null;
+                $authToken = $request->query('auth_token');
+                $userId = null;
+
+                // If we have an auth token, use it to get user_id (for cross-domain redirect authentication)
+                if ($authToken) {
+                    $cachedUserId = Cache::get("paypro_auth_token_{$authToken}");
+                    if ($cachedUserId) {
+                        $userId = $cachedUserId;
+                        // Delete token after use for security
+                        Cache::forget("paypro_auth_token_{$authToken}");
+                        Log::info('PayProGlobal: Authenticated user using auth token', ['user_id' => $userId]);
+                    }
+                }
+
+                $userId = $userId ?? $request->query('user_id') ?? $customData['user_id'] ?? null;
                 $packageSlug = $request->query('package') ?? $customData['package'] ?? null;
                 $pendingOrderId = $request->query('pending_order_id') ?? $customData['pending_order_id'] ?? null;
                 $action = $request->query('action') ?? $customData['action'] ?? 'new';
@@ -1432,23 +1452,28 @@ class PaymentController extends Controller
                 }
 
                 // Log the user in immediately to preserve session after redirect from PayPro Global
-                $wasAuthenticated = auth()->check();
-                $previousAuthId = auth()->id();
-                if (!$wasAuthenticated || $previousAuthId !== $user->id) {
-                    // Use Auth facade to ensure proper session handling
-                    // Don't regenerate session here as it might invalidate the login
-                    Auth::login($user, false);
+                // Use web guard explicitly to ensure proper session handling
+                $wasAuthenticated = Auth::guard('web')->check();
+                $previousAuthId = Auth::guard('web')->id();
 
-                    // Ensure session is saved before any redirects
+                if (!$wasAuthenticated || $previousAuthId !== $user->id) {
+                    // Force login using web guard
+                    Auth::guard('web')->login($user, false);
+
+                    // Regenerate session ID for security after external redirect
+                    $request->session()->regenerate();
+
+                    // Ensure session is saved and committed
                     $request->session()->save();
 
                     Log::info('PayProGlobal: User logged in from redirect', [
                         'user_id' => $user->id,
                         'was_authenticated' => $wasAuthenticated,
                         'previous_auth_id' => $previousAuthId,
-                        'auth_check_after_login' => auth()->check(),
-                        'auth_id_after_login' => auth()->id(),
-                        'session_id' => $request->session()->getId()
+                        'auth_check_after_login' => Auth::guard('web')->check(),
+                        'auth_id_after_login' => Auth::guard('web')->id(),
+                        'session_id' => $request->session()->getId(),
+                        'has_auth_token' => !empty($authToken)
                     ]);
                 }
 
@@ -1555,17 +1580,27 @@ class PaymentController extends Controller
                     }
                 }
 
-                // Final check before redirect - ensure user is still authenticated
-                if (!auth()->check() || auth()->id() !== $user->id) {
+                // Final check before redirect - ensure user is still authenticated using web guard
+                if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
                     // Re-login if session was lost
-                    Auth::login($user, false);
+                    Auth::guard('web')->login($user, false);
+                    $request->session()->regenerate();
+                    $request->session()->save();
                     Log::warning('PayProGlobal: User session lost before redirect, re-logged in', [
-                        'user_id' => $user->id
+                        'user_id' => $user->id,
+                        'session_id' => $request->session()->getId()
                     ]);
                 }
 
                 // Ensure session is saved and committed before redirect
                 $request->session()->save();
+
+                Log::info('PayProGlobal: Final redirect check', [
+                    'user_id' => $user->id,
+                    'auth_check' => Auth::guard('web')->check(),
+                    'auth_id' => Auth::guard('web')->id(),
+                    'session_id' => $request->session()->getId()
+                ]);
 
                 // Redirect with success message - session should be preserved
                 return redirect()->route('user.dashboard')->with('success', $successMessage);
