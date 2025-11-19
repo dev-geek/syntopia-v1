@@ -1451,19 +1451,16 @@ class PaymentController extends Controller
                     return redirect()->route('subscription')->with('error', 'Payment processing error (data mismatch).');
                 }
 
-                // Log the user in immediately to preserve session after redirect from PayPro Global
+                // Ensure user is authenticated - preserve existing session if already logged in
                 // Use web guard explicitly to ensure proper session handling
                 $wasAuthenticated = Auth::guard('web')->check();
                 $previousAuthId = Auth::guard('web')->id();
 
                 if (!$wasAuthenticated || $previousAuthId !== $user->id) {
-                    // Force login using web guard
+                    // Only log in if user is not authenticated or is a different user
                     Auth::guard('web')->login($user, false);
 
-                    // Regenerate session ID for security after external redirect
-                    $request->session()->regenerate();
-
-                    // Ensure session is saved and committed
+                    // Ensure session is saved and committed (without regenerating to preserve session)
                     $request->session()->save();
 
                     Log::info('PayProGlobal: User logged in from redirect', [
@@ -1474,6 +1471,15 @@ class PaymentController extends Controller
                         'auth_id_after_login' => Auth::guard('web')->id(),
                         'session_id' => $request->session()->getId(),
                         'has_auth_token' => !empty($authToken)
+                    ]);
+                } else {
+                    // User is already authenticated with correct ID - just ensure session is saved
+                    $request->session()->save();
+
+                    Log::info('PayProGlobal: User already authenticated, preserving session', [
+                        'user_id' => $user->id,
+                        'auth_check' => Auth::guard('web')->check(),
+                        'auth_id' => Auth::guard('web')->id()
                     ]);
                 }
 
@@ -1584,7 +1590,6 @@ class PaymentController extends Controller
                 if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
                     // Re-login if session was lost
                     Auth::guard('web')->login($user, false);
-                    $request->session()->regenerate();
                     $request->session()->save();
                     Log::warning('PayProGlobal: User session lost before redirect, re-logged in', [
                         'user_id' => $user->id,
