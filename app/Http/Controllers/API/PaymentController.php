@@ -1386,9 +1386,30 @@ class PaymentController extends Controller
             } elseif ($gateway === 'payproglobal') {
                 Log::info('PayProGlobal success callback - RAW REQUEST INCOMING', ['request_all' => $request->all()]);
 
-                // For redirects, user_id is in query parameters; for webhooks, it's in custom field
+                // PayProGlobal sends data via POST, with actual values in:
+                // 1. custom field (JSON string)
+                // 2. CHECKOUT_QUERY_STRING (URL-encoded query string)
+                // 3. Query parameters (may contain placeholders like {user_id})
+
                 $customData = json_decode($request->input('custom', '{}'), true);
-                $authToken = $request->query('auth_token');
+                $checkoutQueryString = $request->input('CHECKOUT_QUERY_STRING', '');
+
+                // Parse CHECKOUT_QUERY_STRING to extract actual values
+                $parsedCheckoutParams = [];
+                if ($checkoutQueryString) {
+                    parse_str(urldecode($checkoutQueryString), $parsedCheckoutParams);
+                    // The success-url in CHECKOUT_QUERY_STRING contains the actual parameters
+                    if (isset($parsedCheckoutParams['success-url'])) {
+                        $successUrl = $parsedCheckoutParams['success-url'];
+                        $successUrlQuery = parse_url($successUrl, PHP_URL_QUERY);
+                        if ($successUrlQuery) {
+                            parse_str($successUrlQuery, $successUrlParams);
+                            $parsedCheckoutParams = array_merge($parsedCheckoutParams, $successUrlParams);
+                        }
+                    }
+                }
+
+                $authToken = $request->query('auth_token') ?? $parsedCheckoutParams['auth_token'] ?? null;
                 $userId = null;
 
                 // If we have an auth token, use it to get user_id (for cross-domain redirect authentication)
@@ -1402,10 +1423,16 @@ class PaymentController extends Controller
                     }
                 }
 
-                $userId = $userId ?? $request->query('user_id') ?? $customData['user_id'] ?? null;
-                $packageSlug = $request->query('package') ?? $customData['package'] ?? null;
-                $pendingOrderId = $request->query('pending_order_id') ?? $customData['pending_order_id'] ?? null;
-                $action = $request->query('action') ?? $customData['action'] ?? 'new';
+                // Priority: custom field > parsed checkout params > query params
+                $userId = $userId ?? $customData['user_id'] ?? $parsedCheckoutParams['user_id'] ?? $request->query('user_id') ?? null;
+                $packageSlug = $customData['package'] ?? $parsedCheckoutParams['package'] ?? $request->query('package') ?? null;
+                $pendingOrderId = $customData['pending_order_id'] ?? $parsedCheckoutParams['pending_order_id'] ?? $request->query('pending_order_id') ?? null;
+                $action = $customData['action'] ?? $parsedCheckoutParams['action'] ?? $request->query('action') ?? 'new';
+
+                // Normalize package slug (convert to proper case)
+                if ($packageSlug) {
+                    $packageSlug = strtolower($packageSlug);
+                }
 
                 Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
                     'gateway' => $gateway,
@@ -1433,8 +1460,17 @@ class PaymentController extends Controller
                     return redirect()->route('subscription')->with('error', 'Invalid payment data from PayProGlobal');
                 }
 
+                // Try to find package by name (case-insensitive) or slug
+                $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageSlug)])
+                    ->orWhere('name', $packageSlug)
+                    ->first();
+
+                // If package not found by name, try to find by the package_id from custom data
+                if (!$package && isset($customData['package_id'])) {
+                    $package = Package::find($customData['package_id']);
+                }
+
                 $user = User::find($userId);
-                $package = Package::where('name', $packageSlug)->first();
                 $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
 
                 if (!$user || !$package || !$pendingOrder) {
