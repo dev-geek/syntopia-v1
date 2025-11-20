@@ -1460,41 +1460,50 @@ class PaymentController extends Controller
                 $request->session()->forget('url.intended');
                 $request->session()->forget('verification_intended_url');
 
-                if (!$wasAuthenticated || $previousAuthId !== $user->id) {
-                    // Only log in if user has "User" role (not admin)
-                    if ($user->hasRole('User')) {
-                        // Only log in if user is not authenticated or is a different user
-                        Auth::guard('web')->login($user, false);
+                // Always log in the user if they have "User" role, even if already authenticated
+                // This ensures the session is fresh and persisted after cross-domain redirect
+                if ($user->hasRole('User')) {
+                    // Log in the user (this will update the session)
+                    // Use remember=true to extend session lifetime and create remember token cookie
+                    Auth::guard('web')->login($user, true);
 
-                        // Ensure session is saved and committed (without regenerating to preserve session)
-                        $request->session()->save();
-
-                        Log::info('PayProGlobal: User logged in from redirect', [
-                            'user_id' => $user->id,
-                            'was_authenticated' => $wasAuthenticated,
-                            'previous_auth_id' => $previousAuthId,
-                            'auth_check_after_login' => Auth::guard('web')->check(),
-                            'auth_id_after_login' => Auth::guard('web')->id(),
-                            'session_id' => $request->session()->getId(),
-                            'has_auth_token' => !empty($authToken)
-                        ]);
-                    } else {
-                        // If user is admin, don't auto-login - redirect to login page
-                        Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
-                            'user_id' => $user->id,
-                            'user_roles' => $user->getRoleNames()
-                        ]);
-                        return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
-                    }
-                } else {
-                    // User is already authenticated with correct ID - just ensure session is saved
+                    // Save the session immediately to ensure it's persisted
                     $request->session()->save();
 
-                    Log::info('PayProGlobal: User already authenticated, preserving session', [
+                    // Verify authentication after login
+                    $authCheckAfter = Auth::guard('web')->check();
+                    $authIdAfter = Auth::guard('web')->id();
+
+                    Log::info('PayProGlobal: User logged in/refreshed from redirect', [
                         'user_id' => $user->id,
-                        'auth_check' => Auth::guard('web')->check(),
-                        'auth_id' => Auth::guard('web')->id()
+                        'was_authenticated' => $wasAuthenticated,
+                        'previous_auth_id' => $previousAuthId,
+                        'auth_check_after_login' => $authCheckAfter,
+                        'auth_id_after_login' => $authIdAfter,
+                        'session_id' => $request->session()->getId(),
+                        'has_auth_token' => !empty($authToken),
+                        'session_driver' => config('session.driver'),
+                        'remember_token_set' => true
                     ]);
+
+                    // Double-check: if still not authenticated, try again
+                    if (!$authCheckAfter || $authIdAfter !== $user->id) {
+                        Log::warning('PayProGlobal: Authentication failed after login, retrying...', [
+                            'user_id' => $user->id,
+                            'auth_check' => $authCheckAfter,
+                            'auth_id' => $authIdAfter
+                        ]);
+                        Auth::guard('web')->logout();
+                        Auth::guard('web')->login($user, true);
+                        $request->session()->save();
+                    }
+                } else {
+                    // If user is admin, don't auto-login - redirect to login page
+                    Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
+                        'user_id' => $user->id,
+                        'user_roles' => $user->getRoleNames()
+                    ]);
+                    return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
                 }
 
                 if ($pendingOrder->status === 'completed') {
@@ -1639,8 +1648,14 @@ class PaymentController extends Controller
                     'session_id' => $request->session()->getId()
                 ]);
 
-                // Redirect with success message - session should be preserved
-                return redirect()->route('user.dashboard')->with('success', $successMessage);
+                // Check if redirect_to parameter is set to subscription-details
+                $redirectTo = $request->query('redirect_to') ?? $request->input('redirect_to');
+                if ($redirectTo === 'subscription-details') {
+                    return redirect()->route('user.subscription.details')->with('success', $successMessage);
+                }
+
+                // Default redirect to subscription details page after payment success
+                return redirect()->route('user.subscription.details')->with('success', $successMessage);
 
             } // Add other payment gateways here
             else {
