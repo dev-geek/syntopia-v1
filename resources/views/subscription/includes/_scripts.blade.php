@@ -609,7 +609,7 @@
                     sessionStorage.setItem('payProGlobalUserId', userId);
                     sessionStorage.setItem('payProGlobalPackageName', packageName);
                     sessionStorage.setItem('payProGlobalAction', action);
-                    
+
                     // Store success URL for fallback redirect if PayPro Global redirects to marketplace
                     const successUrl = `/payments/success?gateway=payproglobal&user_id=${userId}&package=${packageName}&popup=true&pending_order_id=${data.pending_order_id}&action=${action}`;
                     sessionStorage.setItem('payProGlobalSuccessUrl', successUrl);
@@ -926,47 +926,15 @@
         });
     }
 
-    // Make injectPayProGlobalSuccessHandler globally available
+    // Note: injectPayProGlobalSuccessHandler is deprecated - cannot inject scripts into cross-origin popups due to CORS
+    // Instead, we rely on:
+    // 1. PayProGlobal redirecting to our thank you handler URL (configured in PaymentController)
+    // 2. postMessage API if PayProGlobal supports it
+    // 3. URL monitoring in monitorPayProGlobalPopup function
     function injectPayProGlobalSuccessHandler(popup, userId, packageName) {
-        console.log('Injecting PayProGlobal success handler');
-        const scriptContent = `
-            (function() {
-                console.log('PayProGlobal success handler script running');
-                // Check if we\'re on the PayProGlobal thank you page
-                if (window.location.href.includes('store.payproglobal.com/thankyou')) {
-                    console.log('Detected PayProGlobal thank you page');
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const orderId = urlParams.get('OrderId');
-                    const externalOrderId = urlParams.get('ExternalOrderId');
-
-                    if (orderId) {
-                        console.log('Sending PayProGlobal success message to parent:', {
-                            orderId: orderId,
-                            userId: '${userId}',
-                            packageName: '${packageName}'
-                        });
-                        window.opener.postMessage({
-                            type: 'payproglobal_success',
-                            orderId: orderId,
-                            userId: '${userId}',
-                            packageName: '${packageName}'
-                        }, '*');
-                        // Close the popup after sending the message
-                        setTimeout(() => window.close(), 1000);
-                    } else {
-                        console.error('No OrderId found in thank you page URL');
-                    }
-                }
-            })();
-        `;
-        // Inject the script into the popup
-        try {
-            popup.document.write(`
-                <script>${scriptContent}<\/script>
-            `);
-        } catch (error) {
-            console.error('Error injecting PayProGlobal success handler:', error);
-        }
+        console.warn('injectPayProGlobalSuccessHandler: Cannot inject scripts into cross-origin popups. Using postMessage and URL monitoring instead.');
+        // This function is kept for backwards compatibility but does nothing
+        // Cross-origin script injection is blocked by browser security
     }
 </script>
 

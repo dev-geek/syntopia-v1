@@ -571,7 +571,7 @@
             const popup = window.open(checkoutUrl, '_blank', 'width=800,height=700,resizable=yes,scrollbars=yes');
 
             if (popup) {
-                monitorPayProGlobalPopup(popup);
+                monitorPayProGlobalPopup(popup, packageName, userId);
                 hideSpinner();
             } else {
                 showError('Popup Blocked', 'Please allow popups for this site or you will be redirected to the payment page.');
@@ -581,8 +581,10 @@
             }
         }
 
-        function monitorPayProGlobalPopup(popup) {
+        function monitorPayProGlobalPopup(popup, packageName, userId) {
             payProGlobalPopup = popup;
+            let thankYouPageDetected = false;
+            
             popupCheckInterval = setInterval(() => {
                 try {
                     if (popup.closed) {
@@ -593,7 +595,7 @@
                         if (successUrl) {
                             console.log('Redirecting to success URL:', successUrl);
                             window.location.href = successUrl;
-                        } else {
+                        } else if (!thankYouPageDetected) {
                             showInfo('Payment Cancelled', 'Your payment was cancelled or incomplete.');
                         }
 
@@ -603,25 +605,37 @@
                         return;
                     }
 
+                    // Try to detect thank you page - this will fail with CORS for cross-origin, which is expected
                     try {
                         const popupUrl = popup.location.href;
                         if (popupUrl && popupUrl.includes('/thankyou')) {
-                            console.log('PayProGlobal thank you page detected');
+                            console.log('PayProGlobal thank you page detected via URL access');
+                            thankYouPageDetected = true;
 
                             const urlParams = new URLSearchParams(popup.location.search);
                             const orderId = urlParams.get('OrderId');
+                            const externalOrderId = urlParams.get('ExternalOrderId');
 
-                            if (orderId) {
-                                console.log('Found OrderId in thank you URL:', orderId);
-                                sessionStorage.setItem('payProGlobalSuccessUrl',
-                                    `/payments/success?gateway=payproglobal&order_id=${orderId}&user_id=${sessionStorage.getItem('payProGlobalUserId')}&package=${sessionStorage.getItem('payProGlobalPackageName')}`
-                                );
-
+                            if (orderId || externalOrderId) {
+                                console.log('Found OrderId/ExternalOrderId in thank you URL:', { orderId, externalOrderId });
+                                
+                                // Redirect to our thank you handler which will process and redirect to subscription-details
+                                const thankYouUrl = `/payments/payproglobal-thankyou?OrderId=${orderId || ''}&ExternalOrderId=${externalOrderId || ''}`;
+                                
                                 clearInterval(popupCheckInterval);
-                                setTimeout(() => popup.close(), 1000);
+                                setTimeout(() => {
+                                    popup.close();
+                                    window.location.href = thankYouUrl;
+                                }, 500);
                             }
                         }
                     } catch (e) {
+                        // CORS error expected when popup is on different domain (store.payproglobal.com)
+                        // This is normal - we cannot access cross-origin popup URLs
+                        // We rely on:
+                        // 1. PayProGlobal redirecting to our success URL (configured in backend)
+                        // 2. postMessage API if PayProGlobal supports it (already handled in message listener)
+                        // 3. User manually navigating from PayProGlobal thank you page to our handler
                     }
                 } catch (error) {
                     console.error('Popup monitoring error:', error);
