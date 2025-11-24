@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\MailService;
+use App\Services\PasswordBindingService;
 
 class VerificationController extends Controller
 {
@@ -100,35 +101,77 @@ class VerificationController extends Controller
 
         try {
             DB::beginTransaction();
-            Log::info('[verifyCode] Calling callXiaoiceApiWithCreds', ['user_id' => $user->id]);
-            $apiResponse = $this->callXiaoiceApiWithCreds($user, $user->subscriber_password);
-            Log::info('[verifyCode] callXiaoiceApiWithCreds response', ['user_id' => $user->id, 'apiResponse' => $apiResponse]);
 
-            if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                DB::rollBack();
-                Log::error('[verifyCode] API returned swal error', ['user_id' => $user->id, 'error' => $apiResponse['error_message']]);
-                return back()->with('verification_swal_error', $apiResponse['error_message']);
-            }
-
-            if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                DB::rollBack();
-                Log::error('[verifyCode] API failed or missing tenantId', [
+            // If user already has tenant_id (created during registration), verify email and ensure password is bound
+            if ($user->tenant_id) {
+                Log::info('[verifyCode] User already has tenant_id, verifying email and ensuring password binding', [
                     'user_id' => $user->id,
-                    'apiResponse' => $apiResponse
+                    'tenant_id' => $user->tenant_id
                 ]);
-                $user->delete(); // Delete user data on failure
-                $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                return redirect()->route('login')->with('error', $errorMsg);
+
+                // Ensure password is bound (in case it failed during registration)
+                if ($user->subscriber_password) {
+                    $passwordBindingService = app(PasswordBindingService::class);
+                    $bindResponse = $passwordBindingService->bindPassword($user, $user->subscriber_password);
+
+                    if (!$bindResponse['success']) {
+                        Log::warning('[verifyCode] Password binding failed for user with tenant_id, but continuing with verification', [
+                            'user_id' => $user->id,
+                            'error' => $bindResponse['error_message'] ?? 'Unknown error'
+                        ]);
+                        // Don't fail verification if password binding fails - user can retry later
+                        // Password binding is not critical for email verification
+                    } else {
+                        Log::info('[verifyCode] Password binding successful for user with tenant_id', [
+                            'user_id' => $user->id
+                        ]);
+                    }
+                } else {
+                    Log::warning('[verifyCode] User has tenant_id but no subscriber_password for binding', [
+                        'user_id' => $user->id
+                    ]);
+                }
+
+                $user->update([
+                    'email_verified_at' => now(),
+                    'status' => 1,
+                    'verification_code' => null,
+                ]);
+
+                DB::commit();
+            } else {
+                // Legacy flow: Create tenant during verification (for users registered before this change)
+                Log::info('[verifyCode] User missing tenant_id, creating tenant', ['user_id' => $user->id]);
+                $apiResponse = $this->callXiaoiceApiWithCreds($user, $user->subscriber_password);
+                Log::info('[verifyCode] callXiaoiceApiWithCreds response', ['user_id' => $user->id, 'apiResponse' => $apiResponse]);
+
+                if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                    DB::rollBack();
+                    Log::error('[verifyCode] API returned swal error', ['user_id' => $user->id, 'error' => $apiResponse['error_message']]);
+                    $user->delete(); // Delete user data on failure
+                    return back()->with('verification_swal_error', $apiResponse['error_message']);
+                }
+
+                if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                    DB::rollBack();
+                    Log::error('[verifyCode] API failed or missing tenantId', [
+                        'user_id' => $user->id,
+                        'apiResponse' => $apiResponse
+                    ]);
+                    $user->delete(); // Delete user data on failure
+                    $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                    return redirect()->route('login')->with('error', $errorMsg);
+                }
+
+                $user->update([
+                    'email_verified_at' => now(),
+                    'status' => 1,
+                    'verification_code' => null,
+                    'tenant_id' => $apiResponse['data']['tenantId'],
+                ]);
+
+                DB::commit();
             }
-
-            $user->update([
-                'email_verified_at' => now(),
-                'status' => 1,
-                'verification_code' => null,
-                'tenant_id' => $apiResponse['data']['tenantId'],
-            ]);
-
-            DB::commit();
             Log::info('[verifyCode] User verified and updated', ['user_id' => $user->id]);
 
             session()->forget('email');
