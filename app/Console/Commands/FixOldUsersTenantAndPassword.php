@@ -10,16 +10,19 @@ use Illuminate\Support\Facades\Log;
 
 class FixOldUsersTenantAndPassword extends Command
 {
-    protected $signature = 'users:fix-tenant-password 
+    protected $signature = 'users:fix-tenant-password
                             {--dry-run : Run without making changes}
                             {--limit= : Limit number of users to process}
                             {--email= : Process specific user by email}
-                            {--skip-password-check : Skip password binding check for users with tenant_id}';
+                            {--tenant-only : Only fix missing tenant_id, skip password binding}
+                            {--password-only : Only fix password binding, skip tenant creation}';
 
-    protected $description = 'Fix old users missing tenant_id or password binding';
+    protected $description = 'Fix old users missing tenant_id and/or password binding - ensures both are set up correctly';
 
     private PasswordBindingService $passwordBindingService;
     private int $successCount = 0;
+    private int $tenantCreatedCount = 0;
+    private int $passwordBoundCount = 0;
     private int $errorCount = 0;
     private int $skippedCount = 0;
     private array $errors = [];
@@ -35,7 +38,8 @@ class FixOldUsersTenantAndPassword extends Command
         $dryRun = $this->option('dry-run');
         $limit = $this->option('limit') ? (int) $this->option('limit') : null;
         $email = $this->option('email');
-        $skipPasswordCheck = $this->option('skip-password-check');
+        $tenantOnly = $this->option('tenant-only');
+        $passwordOnly = $this->option('password-only');
 
         if ($dryRun) {
             $this->warn('DRY RUN MODE - No changes will be made');
@@ -45,18 +49,27 @@ class FixOldUsersTenantAndPassword extends Command
         $query = User::query()
             ->whereDoesntHave('roles', function ($q) {
                 $q->whereIn('name', ['Super Admin', 'Sub Admin']);
-            });
+            })
+            ->whereNotNull('subscriber_password'); // Only users with subscriber_password can be fixed
 
         if ($email) {
             $query->where('email', $email);
         } else {
-            // Find users without tenant_id OR users with tenant_id but might need password binding
-            if ($skipPasswordCheck) {
+            // Find users who need fixing:
+            // - Users without tenant_id (need tenant + password binding)
+            // - Users with tenant_id (need password binding check)
+            if ($tenantOnly) {
+                // Only find users without tenant_id
                 $query->whereNull('tenant_id');
+            } elseif ($passwordOnly) {
+                // Only find users with tenant_id (they need password binding)
+                $query->whereNotNull('tenant_id');
             } else {
+                // Find all users (will check both tenant and password binding)
+                // This includes users without tenant_id AND users with tenant_id
                 $query->where(function ($q) {
                     $q->whereNull('tenant_id')
-                      ->orWhereNotNull('tenant_id'); // We'll check password binding for all
+                      ->orWhereNotNull('tenant_id');
                 });
             }
         }
@@ -75,7 +88,7 @@ class FixOldUsersTenantAndPassword extends Command
         }
 
         $this->info("Found {$totalUsers} user(s) to process.");
-        
+
         if (!$this->confirm('Do you want to proceed?', true)) {
             $this->info('Cancelled.');
             return 0;
@@ -86,7 +99,7 @@ class FixOldUsersTenantAndPassword extends Command
 
         foreach ($users as $user) {
             try {
-                $this->processUser($user, $dryRun, $skipPasswordCheck);
+                $this->processUser($user, $dryRun, $tenantOnly, $passwordOnly);
             } catch (\Exception $e) {
                 $this->errorCount++;
                 $this->errors[] = [
@@ -112,7 +125,7 @@ class FixOldUsersTenantAndPassword extends Command
         return 0;
     }
 
-    private function processUser(User $user, bool $dryRun, bool $skipPasswordCheck): void
+    private function processUser(User $user, bool $dryRun, bool $tenantOnly, bool $passwordOnly): void
     {
         // Skip if user doesn't have subscriber_password
         if (!$user->subscriber_password) {
@@ -124,62 +137,107 @@ class FixOldUsersTenantAndPassword extends Command
             return;
         }
 
-        // Case 1: User has no tenant_id - create tenant and bind password
-        if (!$user->tenant_id) {
-            if ($dryRun) {
-                $this->skippedCount++;
-                return;
-            }
+        $tenantFixed = false;
+        $passwordFixed = false;
 
-            $tenantId = $this->createTenantAndBindPassword($user, $user->subscriber_password);
-            
-            if ($tenantId) {
-                $user->update(['tenant_id' => $tenantId]);
-                $this->successCount++;
-                Log::info('Successfully created tenant and bound password for user', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'tenant_id' => $tenantId
-                ]);
+        // Step 1: Fix tenant_id if missing (unless password-only mode)
+        if (!$passwordOnly && !$user->tenant_id) {
+            if ($dryRun) {
+                $this->info("  [DRY RUN] Would create tenant and bind password for: {$user->email}");
+                $tenantFixed = true; // Mark as would-be-fixed for dry run
+                $passwordFixed = true; // createTenantAndBindPassword also binds password
             } else {
-                $this->errorCount++;
-                $this->errors[] = [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => 'Failed to create tenant or bind password'
-                ];
+                $tenantId = $this->createTenantAndBindPassword($user, $user->subscriber_password);
+
+                if ($tenantId) {
+                    $user->update(['tenant_id' => $tenantId]);
+                    $user->refresh(); // Refresh to get updated tenant_id
+                    $tenantFixed = true;
+                    $this->tenantCreatedCount++;
+                    // Note: createTenantAndBindPassword already binds password, so mark both as fixed
+                    $passwordFixed = true;
+                    $this->passwordBoundCount++;
+                    Log::info('Successfully created tenant and bound password for user', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'tenant_id' => $tenantId
+                    ]);
+                } else {
+                    $this->errorCount++;
+                    $this->errors[] = [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'error' => 'Failed to create tenant or bind password'
+                    ];
+                    return; // Can't proceed without tenant_id
+                }
             }
-            return;
+        } elseif ($user->tenant_id) {
+            $tenantFixed = true; // Already has tenant_id
         }
 
-        // Case 2: User has tenant_id - check and bind password if needed
-        if (!$skipPasswordCheck) {
+        // Step 2: Fix password binding for users who already have tenant_id (unless tenant-only mode)
+        // Note: If we just created tenant above, password is already bound, so skip this step
+        if (!$tenantOnly && !$passwordFixed && $user->tenant_id) {
             if ($dryRun) {
-                $this->skippedCount++;
-                return;
-            }
-
-            $bindResponse = $this->passwordBindingService->bindPassword($user, $user->subscriber_password);
-            
-            if ($bindResponse['success']) {
-                $this->successCount++;
-                Log::info('Successfully bound password for user with existing tenant_id', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'tenant_id' => $user->tenant_id
-                ]);
+                if ($tenantFixed) {
+                    $this->info("  [DRY RUN] Would bind password for: {$user->email}");
+                }
+                $passwordFixed = true; // Mark as would-be-fixed for dry run
             } else {
-                // Password binding might fail if already bound - that's okay
-                // But log it for review
-                $this->skippedCount++;
-                Log::warning('Password binding returned error (may already be bound)', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $bindResponse['error_message'] ?? 'Unknown error'
-                ]);
+                // Always attempt password binding - it's safe to call even if already bound
+                $bindResponse = $this->passwordBindingService->bindPassword($user, $user->subscriber_password);
+
+                if ($bindResponse['success']) {
+                    $passwordFixed = true;
+                    $this->passwordBoundCount++;
+                    Log::info('Successfully bound password for user', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'tenant_id' => $user->tenant_id
+                    ]);
+                } else {
+                    // Check if error indicates password is already bound
+                    $errorMsg = $bindResponse['error_message'] ?? '';
+                    if (str_contains(strtolower($errorMsg), 'already') ||
+                        str_contains(strtolower($errorMsg), 'bound') ||
+                        str_contains(strtolower($errorMsg), 'exist')) {
+                        // Password likely already bound - that's okay
+                        $passwordFixed = true;
+                        $this->passwordBoundCount++; // Count as success since it's already bound
+                        Log::info('Password appears to already be bound for user', [
+                            'user_id' => $user->id,
+                            'email' => $user->email
+                        ]);
+                    } else {
+                        // Real error - log it
+                        $this->errorCount++;
+                        $this->errors[] = [
+                            'user_id' => $user->id,
+                            'email' => $user->email,
+                            'error' => 'Password binding failed: ' . $errorMsg
+                        ];
+                        Log::warning('Password binding failed', [
+                            'user_id' => $user->id,
+                            'email' => $user->email,
+                            'error' => $errorMsg
+                        ]);
+                    }
+                }
             }
         } else {
-            $this->skippedCount++;
+            $passwordFixed = true; // Skipped in tenant-only mode
+        }
+
+        // Count as success if both are fixed (or would be fixed in dry run)
+        if ($tenantFixed && $passwordFixed) {
+            $this->successCount++;
+        } elseif (!$dryRun) {
+            // If not dry run and something failed, it's already counted in errorCount
+            // But we might have partial success
+            if ($tenantFixed || $passwordFixed) {
+                // Partial success - don't double count
+            }
         }
     }
 
@@ -216,7 +274,7 @@ class FixOldUsersTenantAndPassword extends Command
                 ]);
 
             $createJson = $createResponse->json();
-            
+
             // Handle case where user is already registered in tenant system
             if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
                 Log::warning('User already registered in tenant system, attempting to extract tenant_id', [
@@ -301,7 +359,9 @@ class FixOldUsersTenantAndPassword extends Command
     private function displaySummary(bool $dryRun): void
     {
         $this->info('=== Summary ===');
-        $this->line("Successfully processed: {$this->successCount}");
+        $this->line("Users successfully processed: {$this->successCount}");
+        $this->line("Tenants created: {$this->tenantCreatedCount}");
+        $this->line("Passwords bound: {$this->passwordBoundCount}");
         $this->line("Errors: {$this->errorCount}");
         $this->line("Skipped: {$this->skippedCount}");
 
