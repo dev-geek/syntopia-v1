@@ -198,10 +198,12 @@ class LicenseService
                 }
 
                 if (!$licenseApiSuccess) {
-                    Log::error('Failed to add license to external API', [
+                    Log::error('Failed to add license to external API - skipping license creation', [
                         'user_id' => $user->id,
                         'package_name' => $package->name,
-                        'license_key' => $licenseKey
+                        'license_key' => $licenseKey,
+                        'tenant_id' => $user->tenant_id,
+                        'note' => 'Check LicenseApiService logs for detailed error information'
                     ]);
                     continue;
                 }

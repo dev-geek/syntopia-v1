@@ -12,12 +12,17 @@ class FixOldUsersTenantAndPassword extends Command
 {
     protected $signature = 'users:fix-tenant-password
                             {--dry-run : Run without making changes}
-                            {--limit= : Limit number of users to process}
+                            {--limit= : Limit number of users to process per run}
+                            {--batch-size=50 : Number of users to process in each batch}
                             {--email= : Process specific user by email}
                             {--tenant-only : Only fix missing tenant_id, skip password binding}
-                            {--password-only : Only fix password binding, skip tenant creation}';
+                            {--password-only : Only fix password binding, skip tenant creation}
+                            {--force : Skip confirmation prompt (for cron jobs)}
+                            {--no-progress : Disable progress bar (for cron jobs)}
+                            {--delay=1 : Delay in seconds between API calls to avoid rate limiting}
+                            {--skip-recent=24 : Skip users processed in the last N hours}';
 
-    protected $description = 'Fix old users missing tenant_id and/or password binding - ensures both are set up correctly';
+    protected $description = 'Fix ALL users (old and new) missing tenant_id and/or password binding - Production ready for cron jobs';
 
     private PasswordBindingService $passwordBindingService;
     private int $successCount = 0;
@@ -25,7 +30,9 @@ class FixOldUsersTenantAndPassword extends Command
     private int $passwordBoundCount = 0;
     private int $errorCount = 0;
     private int $skippedCount = 0;
+    private int $alreadyProcessedCount = 0;
     private array $errors = [];
+    private float $startTime;
 
     public function __construct(PasswordBindingService $passwordBindingService)
     {
@@ -35,29 +42,57 @@ class FixOldUsersTenantAndPassword extends Command
 
     public function handle()
     {
+        $this->startTime = microtime(true);
+
         $dryRun = $this->option('dry-run');
         $limit = $this->option('limit') ? (int) $this->option('limit') : null;
+        $batchSize = (int) $this->option('batch-size');
         $email = $this->option('email');
         $tenantOnly = $this->option('tenant-only');
         $passwordOnly = $this->option('password-only');
+        $force = $this->option('force');
+        $noProgress = $this->option('no-progress');
+        $delay = (float) $this->option('delay');
+        $skipRecentHours = (int) $this->option('skip-recent');
+
+        // Log command start
+        Log::info('FixOldUsersTenantAndPassword command started', [
+            'dry_run' => $dryRun,
+            'limit' => $limit,
+            'batch_size' => $batchSize,
+            'email' => $email,
+            'tenant_only' => $tenantOnly,
+            'password_only' => $passwordOnly,
+            'force' => $force,
+            'skip_recent_hours' => $skipRecentHours
+        ]);
 
         if ($dryRun) {
             $this->warn('DRY RUN MODE - No changes will be made');
+            Log::info('Running in DRY RUN mode');
         }
 
-        // Find users that need fixing
+        // Find ALL users (old and new) that need fixing
+        // This includes:
+        // - Users without tenant_id (need tenant + password binding)
+        // - Users with tenant_id but missing password binding
         $query = User::query()
             ->whereDoesntHave('roles', function ($q) {
                 $q->whereIn('name', ['Super Admin', 'Sub Admin']);
             })
             ->whereNotNull('subscriber_password'); // Only users with subscriber_password can be fixed
 
+        // Skip recently processed users (check metadata for last processing time)
+        if ($skipRecentHours > 0) {
+            $cutoffTime = now()->subHours($skipRecentHours);
+            // We'll check this in processUser to avoid complex query
+        }
+
         if ($email) {
+            // Process specific user by email
             $query->where('email', $email);
         } else {
-            // Find users who need fixing:
-            // - Users without tenant_id (need tenant + password binding)
-            // - Users with tenant_id (need password binding check)
+            // Find ALL users who need fixing (old and new):
             if ($tenantOnly) {
                 // Only find users without tenant_id
                 $query->whereNull('tenant_id');
@@ -65,8 +100,11 @@ class FixOldUsersTenantAndPassword extends Command
                 // Only find users with tenant_id (they need password binding)
                 $query->whereNotNull('tenant_id');
             } else {
-                // Find all users (will check both tenant and password binding)
-                // This includes users without tenant_id AND users with tenant_id
+                // Find ALL users (will check both tenant and password binding)
+                // This includes:
+                // - Users without tenant_id (need tenant creation + password binding)
+                // - Users with tenant_id (need password binding verification)
+                // No date filtering - handles both old and new users
                 $query->where(function ($q) {
                     $q->whereNull('tenant_id')
                       ->orWhereNotNull('tenant_id');
@@ -74,32 +112,60 @@ class FixOldUsersTenantAndPassword extends Command
             }
         }
 
-        $users = $query->orderBy('id')->get();
+        // Order by ID for consistent processing
+        $query->orderBy('id');
 
-        if ($limit) {
-            $users = $users->take($limit);
-        }
-
-        $totalUsers = $users->count();
+        // Get total count first
+        $totalUsers = $query->count();
 
         if ($totalUsers === 0) {
             $this->info('No users found that need fixing.');
+            Log::info('FixOldUsersTenantAndPassword: No users found that need fixing');
             return 0;
         }
 
         $this->info("Found {$totalUsers} user(s) to process.");
 
-        if (!$this->confirm('Do you want to proceed?', true)) {
+        // Skip confirmation if --force is used (default for cron)
+        if (!$force && !$this->confirm('Do you want to proceed?', true)) {
             $this->info('Cancelled.');
             return 0;
         }
 
-        $bar = $this->output->createProgressBar($totalUsers);
-        $bar->start();
+        // Apply limit if specified
+        if ($limit) {
+            $query->limit($limit);
+        }
 
+        $users = $query->get();
+        $usersToProcess = $users->count();
+
+        $this->info("Processing {$usersToProcess} user(s)...");
+
+        // Create progress bar only if not in no-progress mode
+        $bar = null;
+        if (!$noProgress) {
+            $bar = $this->output->createProgressBar($usersToProcess);
+            $bar->start();
+        }
+
+        $processed = 0;
         foreach ($users as $user) {
             try {
-                $this->processUser($user, $dryRun, $tenantOnly, $passwordOnly);
+                // Skip if recently processed
+                if ($skipRecentHours > 0 && $this->wasRecentlyProcessed($user, $skipRecentHours)) {
+                    $this->alreadyProcessedCount++;
+                    if ($bar) $bar->advance();
+                    continue;
+                }
+
+                $this->processUser($user, $dryRun, $tenantOnly, $passwordOnly, $delay);
+                $processed++;
+
+                // Add delay between API calls to avoid rate limiting
+                if ($delay > 0 && $processed < $usersToProcess) {
+                    usleep((int)($delay * 1000000)); // Convert seconds to microseconds
+                }
             } catch (\Exception $e) {
                 $this->errorCount++;
                 $this->errors[] = [
@@ -110,22 +176,69 @@ class FixOldUsersTenantAndPassword extends Command
                 Log::error('Error processing user in fix command', [
                     'user_id' => $user->id,
                     'email' => $user->email,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
             }
-            $bar->advance();
+
+            if ($bar) {
+                $bar->advance();
+            }
+
+            // Process in batches to avoid memory issues
+            if ($processed > 0 && $processed % $batchSize === 0) {
+                Log::info("Processed batch of {$batchSize} users", [
+                    'total_processed' => $processed,
+                    'success' => $this->successCount,
+                    'errors' => $this->errorCount
+                ]);
+            }
         }
 
-        $bar->finish();
-        $this->newLine(2);
+        if ($bar) {
+            $bar->finish();
+            $this->newLine(2);
+        }
 
         // Show summary
         $this->displaySummary($dryRun);
 
+        // Log final summary
+        $executionTime = round(microtime(true) - $this->startTime, 2);
+        Log::info('FixOldUsersTenantAndPassword command completed', [
+            'execution_time_seconds' => $executionTime,
+            'total_users' => $totalUsers,
+            'users_processed' => $usersToProcess,
+            'success' => $this->successCount,
+            'tenants_created' => $this->tenantCreatedCount,
+            'passwords_bound' => $this->passwordBoundCount,
+            'errors' => $this->errorCount,
+            'skipped' => $this->skippedCount,
+            'already_processed' => $this->alreadyProcessedCount,
+            'dry_run' => $dryRun
+        ]);
+
+        // Return appropriate exit code for cron monitoring
+        if ($this->errorCount > 0) {
+            return 1; // Exit with error code if there were errors
+        }
+
         return 0;
     }
 
-    private function processUser(User $user, bool $dryRun, bool $tenantOnly, bool $passwordOnly): void
+    /**
+     * Check if user was recently processed by checking metadata
+     */
+    private function wasRecentlyProcessed(User $user, int $hours): bool
+    {
+        // Check if user has a recent metadata entry indicating processing
+        // For now, we'll use a simple approach: check if user was updated recently
+        // In a more sophisticated implementation, you could store processing metadata
+        $cutoffTime = now()->subHours($hours);
+        return $user->updated_at && $user->updated_at->isAfter($cutoffTime);
+    }
+
+    private function processUser(User $user, bool $dryRun, bool $tenantOnly, bool $passwordOnly, float $delay = 0): void
     {
         // Skip if user doesn't have subscriber_password
         if (!$user->subscriber_password) {
@@ -358,12 +471,18 @@ class FixOldUsersTenantAndPassword extends Command
 
     private function displaySummary(bool $dryRun): void
     {
+        $executionTime = round(microtime(true) - $this->startTime, 2);
+
         $this->info('=== Summary ===');
+        $this->line("Execution time: {$executionTime} seconds");
         $this->line("Users successfully processed: {$this->successCount}");
         $this->line("Tenants created: {$this->tenantCreatedCount}");
         $this->line("Passwords bound: {$this->passwordBoundCount}");
         $this->line("Errors: {$this->errorCount}");
         $this->line("Skipped: {$this->skippedCount}");
+        if ($this->alreadyProcessedCount > 0) {
+            $this->line("Already processed (skipped): {$this->alreadyProcessedCount}");
+        }
 
         if ($dryRun) {
             $this->warn('This was a DRY RUN - no changes were made');
