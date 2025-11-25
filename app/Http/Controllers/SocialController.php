@@ -474,38 +474,81 @@ class SocialController extends Controller
             );
 
             $createJson = $createResponse->json();
+            // Handle case where tenant already exists (code 730)
             if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
-                return [
-                    'success' => false,
-                    'data' => null,
-                    'error_message' => 'This user is already registered. Please use a different email or contact support.',
-                    'swal' => true
-                ];
-            }
+                Log::info('Tenant already exists for user (idempotent operation)', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'api_code' => $createJson['code']
+                ]);
 
-            if (!$createResponse->successful()) {
-                return $this->handleFailedTenantCreation($createResponse, $user);
-            }
+                // Try to find if there's another user with same email that has tenant_id
+                $existingUserWithTenant = User::where('email', $user->email)
+                    ->whereNotNull('tenant_id')
+                    ->where('id', '!=', $user->id)
+                    ->first();
 
-            Log::info('Tenant created successfully', [
-                'user_id' => $user->id,
-                'response' => $createResponse->json()
-            ]);
+                if ($existingUserWithTenant) {
+                    Log::info('Found existing user with tenant for same email, using existing tenant_id', [
+                        'current_user_id' => $user->id,
+                        'existing_user_id' => $existingUserWithTenant->id,
+                        'tenant_id' => $existingUserWithTenant->tenant_id
+                    ]);
 
-            $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
-            if (!$tenantId) {
-                Log::error('Failed to extract tenantId from create response', [
+                    // Use the existing tenant_id - this is idempotent
+                    $tenantId = $existingUserWithTenant->tenant_id;
+                } else {
+                    // Tenant exists in external system but we don't have tenant_id in our DB
+                    // Try to extract tenant_id from response if available
+                    $tenantId = $createJson['data']['tenantId'] ?? null;
+
+                    if (!$tenantId) {
+                        Log::warning('Tenant exists but tenant_id not found in response or database', [
+                            'user_id' => $user->id,
+                            'email' => $user->email,
+                            'response' => $createJson
+                        ]);
+
+                        return [
+                            'success' => false,
+                            'data' => null,
+                            'error_message' => 'This user is already registered. Please use a different email or contact support.',
+                            'swal' => true
+                        ];
+                    }
+                }
+
+                // Continue with password binding using existing tenant_id
+                Log::info('Proceeding with password binding for existing tenant', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $tenantId
+                ]);
+            } else {
+                // Normal flow: tenant was created successfully
+                if (!$createResponse->successful()) {
+                    return $this->handleFailedTenantCreation($createResponse, $user);
+                }
+
+                Log::info('Tenant created successfully', [
                     'user_id' => $user->id,
                     'response' => $createResponse->json()
                 ]);
-                return [
-                    'success' => false,
-                    'data' => null,
-                    'error_message' => 'Failed to create tenant. Missing tenantId in response.'
-                ];
+
+                $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
+                if (!$tenantId) {
+                    Log::error('Failed to extract tenantId from create response', [
+                        'user_id' => $user->id,
+                        'response' => $createResponse->json()
+                    ]);
+                    return [
+                        'success' => false,
+                        'data' => null,
+                        'error_message' => 'Failed to create tenant. Missing tenantId in response.'
+                    ];
+                }
             }
 
-            // Continue with password binding
+            // Password binding - can be called multiple times safely
             $passwordBindResponse = $this->makeXiaoiceApiRequest(
                 'api/partner/tenant/user/password/bind',
                 [
@@ -515,31 +558,53 @@ class SocialController extends Controller
                 ]
             );
 
-            if (!$passwordBindResponse->successful()) {
-                return $this->handleFailedPasswordBind($passwordBindResponse, $user);
-            }
-
             $bindJson = $passwordBindResponse->json();
-            if (!isset($bindJson['code']) || $bindJson['code'] != 200) {
-                $errorMessage = $this->translateXiaoiceError(
-                    $bindJson['code'] ?? null,
-                    $bindJson['message'] ?? 'Password bind failed'
-                );
 
-                Log::error('Failed to bind password', [
-                    'user_id' => $user->id,
-                    'response' => $bindJson
-                ]);
+            // Handle various success scenarios
+            // Some APIs return success codes even if already bound - treat as success
+            $isSuccess = $passwordBindResponse->successful() &&
+                        (isset($bindJson['code']) && in_array($bindJson['code'], [200, 201]));
 
-                return [
-                    'success' => false,
-                    'data' => null,
-                    'error_message' => $errorMessage,
-                    'swal' => true
-                ];
+            if (!$isSuccess) {
+                // Check if error is due to password already being bound (idempotent case)
+                $errorMessage = $bindJson['message'] ?? '';
+                $errorCode = $bindJson['code'] ?? null;
+
+                // If password is already bound with same value, treat as success (idempotent)
+                if (str_contains(strtolower($errorMessage), 'already') ||
+                    str_contains(strtolower($errorMessage), 'bound') ||
+                    $errorCode == 200) {
+                    Log::info('Password already bound (idempotent operation)', [
+                        'user_id' => $user->id,
+                        'response' => $bindJson
+                    ]);
+                    // Treat as success - password binding is idempotent
+                } else {
+                    // Real error occurred
+                    if (!$passwordBindResponse->successful()) {
+                        return $this->handleFailedPasswordBind($passwordBindResponse, $user);
+                    }
+
+                    $errorMessage = $this->translateXiaoiceError(
+                        $errorCode,
+                        $errorMessage ?: 'Password bind failed'
+                    );
+
+                    Log::error('Failed to bind password', [
+                        'user_id' => $user->id,
+                        'response' => $bindJson
+                    ]);
+
+                    return [
+                        'success' => false,
+                        'data' => null,
+                        'error_message' => $errorMessage,
+                        'swal' => true
+                    ];
+                }
             }
 
-            Log::info('Password bound successfully', [
+            Log::info('Password bound successfully (idempotent)', [
                 'user_id' => $user->id,
                 'response' => $bindJson
             ]);

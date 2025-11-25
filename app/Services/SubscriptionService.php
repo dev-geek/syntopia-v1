@@ -255,42 +255,6 @@ class SubscriptionService
     {
         try {
             return DB::transaction(function () use ($user, $package) {
-                // Ensure user has tenant_id - required for license creation
-                // This MUST succeed before any changes are made
-                if (!$user->tenant_id) {
-                    Log::warning('User missing tenant_id during free plan assignment, attempting to create', [
-                        'user_id' => $user->id,
-                        'email' => $user->email
-                    ]);
-                    
-                    // Try to create tenant_id if user has subscriber_password
-                    if (!$user->subscriber_password) {
-                        Log::error('User missing both tenant_id and subscriber_password', [
-                            'user_id' => $user->id
-                        ]);
-                        throw new \Exception('Account setup incomplete. Please verify your email address first.');
-                    }
-
-                    // Attempt to create tenant - if this fails, the entire transaction will rollback
-                    $tenantId = $this->createTenantForUser($user, $user->subscriber_password);
-                    if (!$tenantId) {
-                        Log::error('Failed to create tenant_id during free plan assignment', [
-                            'user_id' => $user->id,
-                            'email' => $user->email
-                        ]);
-                        // This exception will cause the entire transaction to rollback
-                        throw new \Exception('Failed to create tenant. Account setup incomplete. Please verify your email address first.');
-                    }
-
-                    // Update tenant_id - this is part of the transaction
-                    $user->update(['tenant_id' => $tenantId]);
-                    $user->refresh();
-                    Log::info('Tenant_id created during free plan assignment', [
-                        'user_id' => $user->id,
-                        'tenant_id' => $user->tenant_id
-                    ]);
-                }
-
                 // Update user with free package
                 $user->update([
                     'package_id' => $package->id,
@@ -312,7 +276,6 @@ class SubscriptionService
                 ]);
 
                 // Create and activate license for free plan using transaction_id as subscription_id
-                // If this fails, the transaction will rollback everything above
                 $license = $this->licenseService->createAndActivateLicense(
                     $user,
                     $package,
@@ -321,151 +284,29 @@ class SubscriptionService
                     false
                 );
 
-                if (!$license) {
-                    Log::error('License creation failed for free plan', [
-                        'user_id' => $user->id,
-                        'package_id' => $package->id,
-                        'tenant_id' => $user->tenant_id
-                    ]);
-                    // This exception will cause the entire transaction to rollback
-                    throw new \Exception('Failed to create license for free plan. All changes have been reverted.');
-                }
-
-                // Refresh user to ensure license relationship is loaded
-                $user->refresh();
-                $user->load('userLicence');
-
-                // Verify subscription is active
-                if (!$user->hasActiveSubscription()) {
-                    Log::error('Free plan assigned but hasActiveSubscription returns false', [
-                        'user_id' => $user->id,
-                        'is_subscribed' => $user->is_subscribed,
-                        'has_license' => (bool)$user->userLicence,
-                        'license_active' => $user->userLicence?->isActive()
-                    ]);
-                    // This exception will cause the entire transaction to rollback
-                    throw new \Exception('Subscription verification failed. All changes have been reverted.');
-                }
-
                 Log::info('Free plan assigned immediately without checkout', [
                     'user_id' => $user->id,
                     'package_id' => $package->id,
                     'package_name' => $package->name,
                     'order_id' => $order->id,
-                    'license_id' => $license->id,
-                    'tenant_id' => $user->tenant_id,
-                    'has_active_subscription' => $user->hasActiveSubscription()
+                    'license_id' => $license?->id
                 ]);
 
                 return [
                     'success' => true,
                     'order_id' => $order->id,
-                    'license_id' => $license->id
+                    'license_id' => $license?->id
                 ];
             });
         } catch (\Exception $e) {
-            Log::error('Failed to assign free plan immediately - transaction rolled back', [
+            Log::error('Failed to assign free plan immediately', [
                 'user_id' => $user->id,
                 'package_id' => $package->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            // Re-throw the exception so the caller knows the operation failed
             throw $e;
-        }
-    }
-
-    /**
-     * Create tenant for user if it doesn't exist
-     */
-    private function createTenantForUser(User $user, string $plainPassword): ?string
-    {
-        $baseUrl = rtrim(config('services.xiaoice.base_url', 'https://openapi.xiaoice.com/vh-cp'), '/');
-        
-        try {
-            // Create the tenant
-            $createResponse = Http::timeout(30)
-                ->connectTimeout(15)
-                ->retry(3, 1000)
-                ->withHeaders([
-                    'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
-                ])
-                ->post($baseUrl . '/api/partner/tenant/create', [
-                    'name' => $user->name,
-                    'regionCode' => 'CN',
-                    'adminName' => $user->name,
-                    'adminEmail' => $user->email,
-                    'adminPhone' => '',
-                    'adminPassword' => $plainPassword,
-                    'appIds' => [1],
-                ]);
-
-            $createJson = $createResponse->json();
-            if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
-                Log::error('User already registered in tenant system', [
-                    'user_id' => $user->id,
-                    'email' => $user->email
-                ]);
-                return null;
-            }
-
-            if (!$createResponse->successful()) {
-                Log::error('Failed to create tenant', [
-                    'user_id' => $user->id,
-                    'status' => $createResponse->status(),
-                    'response' => $createResponse->body()
-                ]);
-                return null;
-            }
-
-            $tenantId = $createJson['data']['tenantId'] ?? null;
-            if (!$tenantId) {
-                Log::error('Failed to extract tenantId from create response', [
-                    'user_id' => $user->id,
-                    'response' => $createJson
-                ]);
-                return null;
-            }
-
-            // Bind password
-            $passwordBindResponse = Http::timeout(30)
-                ->connectTimeout(15)
-                ->retry(3, 1000)
-                ->withHeaders([
-                    'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
-                ])
-                ->post($baseUrl . '/api/partner/tenant/user/password/bind', [
-                    'email' => $user->email,
-                    'phone' => '',
-                    'newPassword' => $plainPassword
-                ]);
-
-            if (!$passwordBindResponse->successful()) {
-                Log::error('Failed to bind password after tenant creation', [
-                    'user_id' => $user->id,
-                    'status' => $passwordBindResponse->status(),
-                    'response' => $passwordBindResponse->body()
-                ]);
-                // Still return tenantId even if password bind fails
-            }
-
-            Log::info('Tenant created and password bound successfully', [
-                'user_id' => $user->id,
-                'tenant_id' => $tenantId
-            ]);
-
-            return $tenantId;
-        } catch (\Exception $e) {
-            Log::error('Exception while creating tenant', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage()
-            ]);
-            return null;
         }
     }
 }
