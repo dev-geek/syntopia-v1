@@ -11,11 +11,13 @@ return [
     |
     */
 
-    // Maximum number of registration attempts allowed per device/IP/email
-    'max_attempts' => env('FREE_PLAN_MAX_ATTEMPTS', 3),
+    // Enable or disable free plan abuse prevention
+    'enabled' => env('FREE_PLAN_ABUSE_ENABLED', false),
 
-    // Time period in days to track attempts
-    'tracking_period_days' => env('FREE_PLAN_TRACKING_DAYS', 30),
+    // Maximum number of registration attempts allowed per device/IP/email
+    'max_attempts' => env('FREE_PLAN_MAX_ATTEMPTS', 1),
+
+    'tracking_period_days' => env('FREE_PLAN_TRACKING_DAYS', 999999),
 
     // Whether to enable device fingerprinting
     'enable_device_fingerprinting' => env('FREE_PLAN_ENABLE_FINGERPRINTING', true),

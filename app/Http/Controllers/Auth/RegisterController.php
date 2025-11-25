@@ -87,8 +87,8 @@ class RegisterController extends Controller
     {
         Log::info('Registration attempt', $data);
 
-        // Check for device fingerprint abuse
-        if ($request) {
+        // Check for device fingerprint abuse (only if enabled)
+        if ($request && config('free_plan_abuse.enabled', false)) {
             $isBlocked = $this->deviceFingerprintService->isBlocked($request);
             $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
                 $request,
@@ -223,19 +223,21 @@ class RegisterController extends Controller
                 ->withInput();
         }
 
-        // Check for free plan abuse before proceeding
-        $abuseCheck = $this->freePlanAbuseService->checkAbusePatterns($request);
-        if (!$abuseCheck['allowed']) {
-            Log::warning('Registration blocked due to abuse patterns', [
-                'reason' => $abuseCheck['reason'],
-                'ip' => $request->ip(),
-                'email' => $request->input('email'),
-                'user_agent' => $request->userAgent()
-            ]);
+        // Check for free plan abuse before proceeding (only if enabled)
+        if (config('free_plan_abuse.enabled', false)) {
+            $abuseCheck = $this->freePlanAbuseService->checkAbusePatterns($request);
+            if (!$abuseCheck['allowed']) {
+                Log::warning('Registration blocked due to abuse patterns', [
+                    'reason' => $abuseCheck['reason'],
+                    'ip' => $request->ip(),
+                    'email' => $request->input('email'),
+                    'user_agent' => $request->userAgent()
+                ]);
 
-            return redirect()->back()
-                ->withErrors(['email' => $abuseCheck['message']])
-                ->withInput();
+                return redirect()->back()
+                    ->withErrors(['email' => $abuseCheck['message']])
+                    ->withInput();
+            }
         }
 
         // Record the fingerprint attempt
