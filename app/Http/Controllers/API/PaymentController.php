@@ -1386,9 +1386,30 @@ class PaymentController extends Controller
             } elseif ($gateway === 'payproglobal') {
                 Log::info('PayProGlobal success callback - RAW REQUEST INCOMING', ['request_all' => $request->all()]);
 
-                // For redirects, user_id is in query parameters; for webhooks, it's in custom field
+                // PayProGlobal sends data via POST, with actual values in:
+                // 1. custom field (JSON string)
+                // 2. CHECKOUT_QUERY_STRING (URL-encoded query string)
+                // 3. Query parameters (may contain placeholders like {user_id})
+
                 $customData = json_decode($request->input('custom', '{}'), true);
-                $authToken = $request->query('auth_token');
+                $checkoutQueryString = $request->input('CHECKOUT_QUERY_STRING', '');
+
+                // Parse CHECKOUT_QUERY_STRING to extract actual values
+                $parsedCheckoutParams = [];
+                if ($checkoutQueryString) {
+                    parse_str(urldecode($checkoutQueryString), $parsedCheckoutParams);
+                    // The success-url in CHECKOUT_QUERY_STRING contains the actual parameters
+                    if (isset($parsedCheckoutParams['success-url'])) {
+                        $successUrl = $parsedCheckoutParams['success-url'];
+                        $successUrlQuery = parse_url($successUrl, PHP_URL_QUERY);
+                        if ($successUrlQuery) {
+                            parse_str($successUrlQuery, $successUrlParams);
+                            $parsedCheckoutParams = array_merge($parsedCheckoutParams, $successUrlParams);
+                        }
+                    }
+                }
+
+                $authToken = $request->query('auth_token') ?? $parsedCheckoutParams['auth_token'] ?? null;
                 $userId = null;
 
                 // If we have an auth token, use it to get user_id (for cross-domain redirect authentication)
@@ -1402,10 +1423,16 @@ class PaymentController extends Controller
                     }
                 }
 
-                $userId = $userId ?? $request->query('user_id') ?? $customData['user_id'] ?? null;
-                $packageSlug = $request->query('package') ?? $customData['package'] ?? null;
-                $pendingOrderId = $request->query('pending_order_id') ?? $customData['pending_order_id'] ?? null;
-                $action = $request->query('action') ?? $customData['action'] ?? 'new';
+                // Priority: custom field > parsed checkout params > query params
+                $userId = $userId ?? $customData['user_id'] ?? $parsedCheckoutParams['user_id'] ?? $request->query('user_id') ?? null;
+                $packageSlug = $customData['package'] ?? $parsedCheckoutParams['package'] ?? $request->query('package') ?? null;
+                $pendingOrderId = $customData['pending_order_id'] ?? $parsedCheckoutParams['pending_order_id'] ?? $request->query('pending_order_id') ?? null;
+                $action = $customData['action'] ?? $parsedCheckoutParams['action'] ?? $request->query('action') ?? 'new';
+
+                // Normalize package slug (convert to proper case)
+                if ($packageSlug) {
+                    $packageSlug = strtolower($packageSlug);
+                }
 
                 Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
                     'gateway' => $gateway,
@@ -1433,8 +1460,17 @@ class PaymentController extends Controller
                     return redirect()->route('subscription')->with('error', 'Invalid payment data from PayProGlobal');
                 }
 
+                // Try to find package by name (case-insensitive) or slug
+                $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageSlug)])
+                    ->orWhere('name', $packageSlug)
+                    ->first();
+
+                // If package not found by name, try to find by the package_id from custom data
+                if (!$package && isset($customData['package_id'])) {
+                    $package = Package::find($customData['package_id']);
+                }
+
                 $user = User::find($userId);
-                $package = Package::where('name', $packageSlug)->first();
                 $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
 
                 if (!$user || !$package || !$pendingOrder) {
@@ -1460,41 +1496,50 @@ class PaymentController extends Controller
                 $request->session()->forget('url.intended');
                 $request->session()->forget('verification_intended_url');
 
-                if (!$wasAuthenticated || $previousAuthId !== $user->id) {
-                    // Only log in if user has "User" role (not admin)
-                    if ($user->hasRole('User')) {
-                        // Only log in if user is not authenticated or is a different user
-                        Auth::guard('web')->login($user, false);
+                // Always log in the user if they have "User" role, even if already authenticated
+                // This ensures the session is fresh and persisted after cross-domain redirect
+                if ($user->hasRole('User')) {
+                    // Log in the user (this will update the session)
+                    // Use remember=true to extend session lifetime and create remember token cookie
+                    Auth::guard('web')->login($user, true);
 
-                        // Ensure session is saved and committed (without regenerating to preserve session)
-                        $request->session()->save();
-
-                        Log::info('PayProGlobal: User logged in from redirect', [
-                            'user_id' => $user->id,
-                            'was_authenticated' => $wasAuthenticated,
-                            'previous_auth_id' => $previousAuthId,
-                            'auth_check_after_login' => Auth::guard('web')->check(),
-                            'auth_id_after_login' => Auth::guard('web')->id(),
-                            'session_id' => $request->session()->getId(),
-                            'has_auth_token' => !empty($authToken)
-                        ]);
-                    } else {
-                        // If user is admin, don't auto-login - redirect to login page
-                        Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
-                            'user_id' => $user->id,
-                            'user_roles' => $user->getRoleNames()
-                        ]);
-                        return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
-                    }
-                } else {
-                    // User is already authenticated with correct ID - just ensure session is saved
+                    // Save the session immediately to ensure it's persisted
                     $request->session()->save();
 
-                    Log::info('PayProGlobal: User already authenticated, preserving session', [
+                    // Verify authentication after login
+                    $authCheckAfter = Auth::guard('web')->check();
+                    $authIdAfter = Auth::guard('web')->id();
+
+                    Log::info('PayProGlobal: User logged in/refreshed from redirect', [
                         'user_id' => $user->id,
-                        'auth_check' => Auth::guard('web')->check(),
-                        'auth_id' => Auth::guard('web')->id()
+                        'was_authenticated' => $wasAuthenticated,
+                        'previous_auth_id' => $previousAuthId,
+                        'auth_check_after_login' => $authCheckAfter,
+                        'auth_id_after_login' => $authIdAfter,
+                        'session_id' => $request->session()->getId(),
+                        'has_auth_token' => !empty($authToken),
+                        'session_driver' => config('session.driver'),
+                        'remember_token_set' => true
                     ]);
+
+                    // Double-check: if still not authenticated, try again
+                    if (!$authCheckAfter || $authIdAfter !== $user->id) {
+                        Log::warning('PayProGlobal: Authentication failed after login, retrying...', [
+                            'user_id' => $user->id,
+                            'auth_check' => $authCheckAfter,
+                            'auth_id' => $authIdAfter
+                        ]);
+                        Auth::guard('web')->logout();
+                        Auth::guard('web')->login($user, true);
+                        $request->session()->save();
+                    }
+                } else {
+                    // If user is admin, don't auto-login - redirect to login page
+                    Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
+                        'user_id' => $user->id,
+                        'user_roles' => $user->getRoleNames()
+                    ]);
+                    return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
                 }
 
                 if ($pendingOrder->status === 'completed') {
@@ -1639,8 +1684,14 @@ class PaymentController extends Controller
                     'session_id' => $request->session()->getId()
                 ]);
 
-                // Redirect with success message - session should be preserved
-                return redirect()->route('user.dashboard')->with('success', $successMessage);
+                // Check if redirect_to parameter is set to subscription-details
+                $redirectTo = $request->query('redirect_to') ?? $request->input('redirect_to');
+                if ($redirectTo === 'subscription-details') {
+                    return redirect()->route('user.subscription.details')->with('success', $successMessage);
+                }
+
+                // Default redirect to subscription details page after payment success
+                return redirect()->route('user.subscription.details')->with('success', $successMessage);
 
             } // Add other payment gateways here
             else {

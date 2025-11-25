@@ -196,14 +196,59 @@ class LicenseApiService
             $responseData = $response->json();
             Log::info("License response", $responseData);
 
-            if ($response->successful() && $responseData['code'] === 200) {
+            if ($response->successful() && isset($responseData['code']) && $responseData['code'] === 200) {
                 return true;
             } else {
+                // Extract detailed error information
+                $statusCode = $response->status();
+                $apiCode = $responseData['code'] ?? null;
+                $apiMessage = $responseData['message'] ?? 'No error message provided';
+                $apiData = $responseData['data'] ?? null;
+
                 Log::error('Failed to add license to external API', [
                     'tenant_id' => $tenantId,
                     'license_key' => $licenseKey,
-                    'response' => $response->body()
+                    'http_status' => $statusCode,
+                    'api_code' => $apiCode,
+                    'api_message' => $apiMessage,
+                    'api_data' => $apiData,
+                    'response_body' => $response->body(),
+                    'response_json' => $responseData
                 ]);
+
+                // Check for specific error cases that might be recoverable
+                if ($apiCode === 730 || (is_string($apiMessage) && (str_contains($apiMessage, '已存在') || str_contains($apiMessage, 'already exists') || str_contains($apiMessage, 'exist')))) {
+                    // License already exists - verify it's actually there
+                    Log::warning('License may already exist for tenant - verifying', [
+                        'tenant_id' => $tenantId,
+                        'license_key' => $licenseKey,
+                        'api_message' => $apiMessage
+                    ]);
+                    
+                    // Check if license actually exists in tenant's subscription summary
+                    try {
+                        $summary = $this->getSubscriptionSummary($tenantId, true);
+                        if ($summary) {
+                            foreach ($summary as $item) {
+                                if (($item['subscriptionCode'] ?? '') === $licenseKey) {
+                                    // License exists - return true to allow license record creation
+                                    Log::info('License confirmed to exist in tenant subscription - proceeding with license record creation', [
+                                        'tenant_id' => $tenantId,
+                                        'license_key' => $licenseKey
+                                    ]);
+                                    return true;
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Could not verify license existence via summary', [
+                            'tenant_id' => $tenantId,
+                            'license_key' => $licenseKey,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+
                 return false;
             }
         } catch (\Illuminate\Http\Client\ConnectionException $e) {

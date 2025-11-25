@@ -297,10 +297,31 @@ class RegisterController extends Controller
 
             $user->assignRole('User');
 
-            Log::info('User created successfully with subscriber_password', [
+            Log::info('User created in transaction, now creating tenant', [
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'has_subscriber_password' => !empty($user->subscriber_password)
+            ]);
+
+            // Create tenant and bind password - MUST succeed or transaction rolls back
+            $tenantId = $this->createTenantAndBindPassword($user, $request->password);
+            if (!$tenantId) {
+                Log::error('Tenant creation failed during registration - transaction will rollback', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+                throw new \Exception('Failed to create account. System API is temporarily unavailable. Please try again later.');
+            }
+
+            // Update user with tenant_id - this is part of the transaction
+            $user->update([
+                'tenant_id' => $tenantId
+            ]);
+
+            Log::info('User created successfully with tenant_id', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'tenant_id' => $tenantId
             ]);
 
             DB::commit();
@@ -361,5 +382,128 @@ class RegisterController extends Controller
         session(['email' => $user->email]);
 
         return redirect('/email/verify');
+    }
+
+    /**
+     * Create tenant and bind password for user
+     * Returns tenant_id on success, null on failure
+     * If this fails, the registration transaction will rollback
+     */
+    private function createTenantAndBindPassword(User $user, string $plainPassword): ?string
+    {
+        if (!$this->validatePasswordFormat($plainPassword)) {
+            Log::error('Password format validation failed before tenant creation', [
+                'user_id' => $user->id,
+                'password_length' => strlen($plainPassword)
+            ]);
+            return null;
+        }
+
+        $baseUrl = rtrim(config('services.xiaoice.base_url', 'https://openapi.xiaoice.com/vh-cp'), '/');
+
+        try {
+            // Create the tenant
+            $createResponse = Http::timeout(30)
+                ->connectTimeout(15)
+                ->retry(3, 1000)
+                ->withHeaders([
+                    'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])
+                ->post($baseUrl . '/api/partner/tenant/create', [
+                    'name' => $user->name,
+                    'regionCode' => 'CN',
+                    'adminName' => $user->name,
+                    'adminEmail' => $user->email,
+                    'adminPhone' => '',
+                    'adminPassword' => $plainPassword,
+                    'appIds' => [1],
+                ]);
+
+            $createJson = $createResponse->json();
+            if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
+                Log::error('User already registered in tenant system during registration', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+                return null;
+            }
+
+            if (!$createResponse->successful()) {
+                Log::error('Failed to create tenant during registration', [
+                    'user_id' => $user->id,
+                    'status' => $createResponse->status(),
+                    'response' => $createResponse->body()
+                ]);
+                return null;
+            }
+
+            $tenantId = $createJson['data']['tenantId'] ?? null;
+            if (!$tenantId) {
+                Log::error('Failed to extract tenantId from create response during registration', [
+                    'user_id' => $user->id,
+                    'response' => $createJson
+                ]);
+                return null;
+            }
+
+            // Bind password - MUST succeed or registration fails
+            $passwordBindResponse = Http::timeout(30)
+                ->connectTimeout(15)
+                ->retry(3, 1000)
+                ->withHeaders([
+                    'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])
+                ->post($baseUrl . '/api/partner/tenant/user/password/bind', [
+                    'email' => $user->email,
+                    'phone' => '',
+                    'newPassword' => $plainPassword
+                ]);
+
+            if (!$passwordBindResponse->successful()) {
+                Log::error('Failed to bind password after tenant creation during registration', [
+                    'user_id' => $user->id,
+                    'status' => $passwordBindResponse->status(),
+                    'response' => $passwordBindResponse->body()
+                ]);
+                return null;
+            }
+
+            $bindJson = $passwordBindResponse->json();
+            if (!isset($bindJson['code']) || $bindJson['code'] != 200) {
+                Log::error('Password bind returned error code during registration', [
+                    'user_id' => $user->id,
+                    'code' => $bindJson['code'] ?? null,
+                    'message' => $bindJson['message'] ?? null,
+                    'response' => $bindJson
+                ]);
+                return null;
+            }
+
+            Log::info('Tenant created and password bound successfully during registration', [
+                'user_id' => $user->id,
+                'tenant_id' => $tenantId
+            ]);
+
+            return $tenantId;
+        } catch (\Exception $e) {
+            Log::error('Exception while creating tenant during registration', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Validate password format
+     */
+    private function validatePasswordFormat(string $password): bool
+    {
+        $pattern = '/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/';
+        return preg_match($pattern, $password) === 1;
     }
 }
