@@ -1386,30 +1386,9 @@ class PaymentController extends Controller
             } elseif ($gateway === 'payproglobal') {
                 Log::info('PayProGlobal success callback - RAW REQUEST INCOMING', ['request_all' => $request->all()]);
 
-                // PayProGlobal sends data via POST, with actual values in:
-                // 1. custom field (JSON string)
-                // 2. CHECKOUT_QUERY_STRING (URL-encoded query string)
-                // 3. Query parameters (may contain placeholders like {user_id})
-
+                // For redirects, user_id is in query parameters; for webhooks, it's in custom field
                 $customData = json_decode($request->input('custom', '{}'), true);
-                $checkoutQueryString = $request->input('CHECKOUT_QUERY_STRING', '');
-
-                // Parse CHECKOUT_QUERY_STRING to extract actual values
-                $parsedCheckoutParams = [];
-                if ($checkoutQueryString) {
-                    parse_str(urldecode($checkoutQueryString), $parsedCheckoutParams);
-                    // The success-url in CHECKOUT_QUERY_STRING contains the actual parameters
-                    if (isset($parsedCheckoutParams['success-url'])) {
-                        $successUrl = $parsedCheckoutParams['success-url'];
-                        $successUrlQuery = parse_url($successUrl, PHP_URL_QUERY);
-                        if ($successUrlQuery) {
-                            parse_str($successUrlQuery, $successUrlParams);
-                            $parsedCheckoutParams = array_merge($parsedCheckoutParams, $successUrlParams);
-                        }
-                    }
-                }
-
-                $authToken = $request->query('auth_token') ?? $parsedCheckoutParams['auth_token'] ?? null;
+                $authToken = $request->query('auth_token');
                 $userId = null;
 
                 // If we have an auth token, use it to get user_id (for cross-domain redirect authentication)
@@ -1423,16 +1402,10 @@ class PaymentController extends Controller
                     }
                 }
 
-                // Priority: custom field > parsed checkout params > query params
-                $userId = $userId ?? $customData['user_id'] ?? $parsedCheckoutParams['user_id'] ?? $request->query('user_id') ?? null;
-                $packageSlug = $customData['package'] ?? $parsedCheckoutParams['package'] ?? $request->query('package') ?? null;
-                $pendingOrderId = $customData['pending_order_id'] ?? $parsedCheckoutParams['pending_order_id'] ?? $request->query('pending_order_id') ?? null;
-                $action = $customData['action'] ?? $parsedCheckoutParams['action'] ?? $request->query('action') ?? 'new';
-
-                // Normalize package slug (convert to proper case)
-                if ($packageSlug) {
-                    $packageSlug = strtolower($packageSlug);
-                }
+                $userId = $userId ?? $request->query('user_id') ?? $customData['user_id'] ?? null;
+                $packageSlug = $request->query('package') ?? $customData['package'] ?? null;
+                $pendingOrderId = $request->query('pending_order_id') ?? $customData['pending_order_id'] ?? null;
+                $action = $request->query('action') ?? $customData['action'] ?? 'new';
 
                 Log::info('=== PROCESSING PAYPROGLOBAL SUCCESS CALLBACK ===', [
                     'gateway' => $gateway,
@@ -1460,17 +1433,8 @@ class PaymentController extends Controller
                     return redirect()->route('subscription')->with('error', 'Invalid payment data from PayProGlobal');
                 }
 
-                // Try to find package by name (case-insensitive) or slug
-                $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageSlug)])
-                    ->orWhere('name', $packageSlug)
-                    ->first();
-
-                // If package not found by name, try to find by the package_id from custom data
-                if (!$package && isset($customData['package_id'])) {
-                    $package = Package::find($customData['package_id']);
-                }
-
                 $user = User::find($userId);
+                $package = Package::where('name', $packageSlug)->first();
                 $pendingOrder = Order::where('transaction_id', $pendingOrderId)->first();
 
                 if (!$user || !$package || !$pendingOrder) {
@@ -1496,50 +1460,41 @@ class PaymentController extends Controller
                 $request->session()->forget('url.intended');
                 $request->session()->forget('verification_intended_url');
 
-                // Always log in the user if they have "User" role, even if already authenticated
-                // This ensures the session is fresh and persisted after cross-domain redirect
-                if ($user->hasRole('User')) {
-                    // Log in the user (this will update the session)
-                    // Use remember=true to extend session lifetime and create remember token cookie
-                    Auth::guard('web')->login($user, true);
+                if (!$wasAuthenticated || $previousAuthId !== $user->id) {
+                    // Only log in if user has "User" role (not admin)
+                    if ($user->hasRole('User')) {
+                        // Only log in if user is not authenticated or is a different user
+                        Auth::guard('web')->login($user, false);
 
-                    // Save the session immediately to ensure it's persisted
-                    $request->session()->save();
-
-                    // Verify authentication after login
-                    $authCheckAfter = Auth::guard('web')->check();
-                    $authIdAfter = Auth::guard('web')->id();
-
-                    Log::info('PayProGlobal: User logged in/refreshed from redirect', [
-                        'user_id' => $user->id,
-                        'was_authenticated' => $wasAuthenticated,
-                        'previous_auth_id' => $previousAuthId,
-                        'auth_check_after_login' => $authCheckAfter,
-                        'auth_id_after_login' => $authIdAfter,
-                        'session_id' => $request->session()->getId(),
-                        'has_auth_token' => !empty($authToken),
-                        'session_driver' => config('session.driver'),
-                        'remember_token_set' => true
-                    ]);
-
-                    // Double-check: if still not authenticated, try again
-                    if (!$authCheckAfter || $authIdAfter !== $user->id) {
-                        Log::warning('PayProGlobal: Authentication failed after login, retrying...', [
-                            'user_id' => $user->id,
-                            'auth_check' => $authCheckAfter,
-                            'auth_id' => $authIdAfter
-                        ]);
-                        Auth::guard('web')->logout();
-                        Auth::guard('web')->login($user, true);
+                        // Ensure session is saved and committed (without regenerating to preserve session)
                         $request->session()->save();
+
+                        Log::info('PayProGlobal: User logged in from redirect', [
+                            'user_id' => $user->id,
+                            'was_authenticated' => $wasAuthenticated,
+                            'previous_auth_id' => $previousAuthId,
+                            'auth_check_after_login' => Auth::guard('web')->check(),
+                            'auth_id_after_login' => Auth::guard('web')->id(),
+                            'session_id' => $request->session()->getId(),
+                            'has_auth_token' => !empty($authToken)
+                        ]);
+                    } else {
+                        // If user is admin, don't auto-login - redirect to login page
+                        Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
+                            'user_id' => $user->id,
+                            'user_roles' => $user->getRoleNames()
+                        ]);
+                        return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
                     }
                 } else {
-                    // If user is admin, don't auto-login - redirect to login page
-                    Log::warning('PayProGlobal: Attempted to auto-login non-User role during initial auth', [
+                    // User is already authenticated with correct ID - just ensure session is saved
+                    $request->session()->save();
+
+                    Log::info('PayProGlobal: User already authenticated, preserving session', [
                         'user_id' => $user->id,
-                        'user_roles' => $user->getRoleNames()
+                        'auth_check' => Auth::guard('web')->check(),
+                        'auth_id' => Auth::guard('web')->id()
                     ]);
-                    return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
                 }
 
                 if ($pendingOrder->status === 'completed') {
@@ -1570,15 +1525,25 @@ class PaymentController extends Controller
                     $finalTransactionId = $payProGlobalSubscriptionId !== 0 ? (string)$payProGlobalSubscriptionId : (string)($payProGlobalOrderId ?? $pendingOrder->transaction_id);
                     Log::debug('PaymentController: finalTransactionId for order', ['id' => $finalTransactionId]);
 
-                    $pendingOrder->update([
-                        'status' => 'completed',
-                        'completed_at' => now(),
-                        'transaction_id' => $finalTransactionId,
-                        'metadata' => array_merge(($pendingOrder->metadata ?? []), [
-                            'subscription_id' => $payProGlobalSubscriptionId,
-                            'payproglobal_order_id' => $payProGlobalOrderId,
-                        ]),
-                    ]);
+                    // Check if order is already completed
+                    if ($pendingOrder->status === 'completed') {
+                        Log::info('PayProGlobal success callback: Order already completed (idempotent operation)', [
+                            'order_id' => $pendingOrder->id,
+                            'transaction_id' => $finalTransactionId,
+                            'user_id' => $user->id
+                        ]);
+                        // Order already processed, skip update
+                    } else {
+                        $pendingOrder->update([
+                            'status' => 'completed',
+                            'completed_at' => now(),
+                            'transaction_id' => $finalTransactionId,
+                            'metadata' => array_merge(($pendingOrder->metadata ?? []), [
+                                'subscription_id' => $payProGlobalSubscriptionId,
+                                'payproglobal_order_id' => $payProGlobalOrderId,
+                            ]),
+                        ]);
+                    }
 
                     Log::debug('PaymentController: Order updated with subscription_id in metadata', [
                         'order_id' => $pendingOrder->id,
@@ -1684,14 +1649,8 @@ class PaymentController extends Controller
                     'session_id' => $request->session()->getId()
                 ]);
 
-                // Check if redirect_to parameter is set to subscription-details
-                $redirectTo = $request->query('redirect_to') ?? $request->input('redirect_to');
-                if ($redirectTo === 'subscription-details') {
-                    return redirect()->route('user.subscription.details')->with('success', $successMessage);
-                }
-
-                // Default redirect to subscription details page after payment success
-                return redirect()->route('user.subscription.details')->with('success', $successMessage);
+                // Redirect with success message - session should be preserved
+                return redirect()->route('user.dashboard')->with('success', $successMessage);
 
             } // Add other payment gateways here
             else {
@@ -1971,6 +1930,35 @@ class PaymentController extends Controller
                 'order_data' => $orderData
             ]);
 
+            // Check if order already exists and is completed
+            $existingOrder = Order::where('transaction_id', $transactionId)->first();
+            if ($existingOrder && $existingOrder->status === 'completed') {
+                Log::info('Payment already processed (idempotent operation)', [
+                    'order_id' => $existingOrder->id,
+                    'transaction_id' => $transactionId,
+                    'user_id' => $user->id,
+                    'package_name' => $package->name
+                ]);
+
+                // Return success without reprocessing
+                if (!$returnRedirect) {
+                    return true;
+                }
+
+                $successMessage = $action === 'upgrade'
+                    ? 'Your plan upgrade is active now.'
+                    : "Subscription to {$package->name} bought successfully!";
+
+                if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
+                    if ($user->hasRole('User')) {
+                        Auth::guard('web')->login($user, false);
+                        request()->session()->save();
+                    }
+                }
+
+                return redirect()->route('user.subscription.details')->with('success', $successMessage);
+            }
+
             $order = Order::updateOrCreate(
                 ['transaction_id' => $transactionId],
                 array_merge($orderData, ['status' => 'pending']) // Always set to pending first
@@ -1983,25 +1971,58 @@ class PaymentController extends Controller
                 'order_amount' => $order->amount
             ]);
 
-            // Create and activate license
+            // Check if license already exists for this order/transaction
             $license = null;
-            Log::info('Creating and activating license for package', [
-                'user_id' => $user->id,
-                'package_name' => $package->name,
-                'action' => $action
-            ]);
+            $existingLicense = null;
 
-            $license = $this->licenseService->createAndActivateLicense(
-                $user,
-                $package,
-                $subscriptionId,
-                $this->getPaymentGatewayId($gateway),
-                $action === 'upgrade'
-            );
+            // Check if user already has an active license for this package and subscription
+            if ($subscriptionId) {
+                $existingLicense = UserLicence::where('user_id', $user->id)
+                    ->where('subscription_id', $subscriptionId)
+                    ->where('is_active', true)
+                    ->first();
+            }
 
-            if (!$license) {
-                Log::error('Failed to create and activate license', ['user_id' => $user->id]);
-                throw new \Exception('License generation failed');
+            // Also check if there's a license linked to this order
+            if (!$existingLicense && $order->id) {
+                $existingLicense = UserLicence::where('user_id', $user->id)
+                    ->where('package_id', $package->id)
+                    ->where('is_active', true)
+                    ->whereHas('user', function($q) use ($order) {
+                        $q->where('id', $order->user_id);
+                    })
+                    ->latest('created_at')
+                    ->first();
+            }
+
+            if ($existingLicense) {
+                Log::info('License already exists for this payment (idempotent operation)', [
+                    'user_id' => $user->id,
+                    'license_id' => $existingLicense->id,
+                    'package_name' => $package->name,
+                    'subscription_id' => $subscriptionId,
+                    'transaction_id' => $transactionId
+                ]);
+                $license = $existingLicense;
+            } else {
+                Log::info('Creating and activating license for package', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'action' => $action
+                ]);
+
+                $license = $this->licenseService->createAndActivateLicense(
+                    $user,
+                    $package,
+                    $subscriptionId,
+                    $this->getPaymentGatewayId($gateway),
+                    $action === 'upgrade'
+                );
+
+                if (!$license) {
+                    Log::error('Failed to create and activate license', ['user_id' => $user->id]);
+                    throw new \Exception('License generation failed');
+                }
             }
 
             Log::info('License created and activated successfully', [
@@ -2489,6 +2510,21 @@ class PaymentController extends Controller
                     'pending_order_id' => $pendingOrderId
                 ];
 
+                // Check if payment already processed
+                $existingOrder = Order::where('transaction_id', $orderId)->first();
+                if ($existingOrder && $existingOrder->status === 'completed') {
+                    Log::info('PayProGlobal webhook: Payment already processed (idempotent operation)', [
+                        'order_id' => $orderId,
+                        'existing_order_id' => $existingOrder->id,
+                        'user_id' => $user->id
+                    ]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Payment already processed',
+                        'order_id' => $orderId
+                    ], 200);
+                }
+
                 Log::info('PayProGlobal webhook: Processing payment', [
                     'payment_data' => $paymentData
                 ]);
@@ -2837,8 +2873,12 @@ class PaymentController extends Controller
             // Check if this transaction is already processed
             $order = Order::where('transaction_id', $transactionId)->first();
             if ($order && $order->status === 'completed') {
-                Log::info('Paddle transaction already processed', ['transaction_id' => $transactionId]);
-                return response()->json(['status' => 'already_processed']);
+                Log::info('Paddle transaction already processed (idempotent operation)', [
+                    'transaction_id' => $transactionId,
+                    'order_id' => $order->id,
+                    'user_id' => $order->user_id
+                ]);
+                return response()->json(['status' => 'already_processed', 'order_id' => $order->id]);
             }
 
             $userId = $customData['user_id'] ?? null;
@@ -3224,11 +3264,22 @@ class PaymentController extends Controller
                 'order_data' => $orderData
             ]);
 
-            // Create or update the order
-            $order = Order::updateOrCreate(
-                ['transaction_id' => $transactionId],
-                $orderData
-            );
+            // Check if order already exists and is completed
+            $existingOrder = Order::where('transaction_id', $transactionId)->first();
+            if ($existingOrder && $existingOrder->status === 'completed') {
+                Log::info('Order already processed from webhook (idempotent operation)', [
+                    'order_id' => $existingOrder->id,
+                    'transaction_id' => $transactionId,
+                    'user_id' => $user->id
+                ]);
+                $order = $existingOrder;
+            } else {
+                // Create or update the order
+                $order = Order::updateOrCreate(
+                    ['transaction_id' => $transactionId],
+                    $orderData
+                );
+            }
 
             Log::info('Order created/updated from webhook', [
                 'order_id' => $order->id,
@@ -3255,34 +3306,60 @@ class PaymentController extends Controller
                 ]);
             }
 
-            Log::info('Creating and activating license from webhook for package', [
-                'user_id' => $user->id,
-                'package_name' => $package->name,
-                'subscription_id' => $subscriptionId
-            ]);
+            // Check if license already exists for this transaction/subscription
+            $existingLicense = null;
+            if ($subscriptionId) {
+                $existingLicense = UserLicence::where('user_id', $user->id)
+                    ->where('subscription_id', $subscriptionId)
+                    ->where('is_active', true)
+                    ->first();
+            }
 
-            $license = $this->licenseService->createAndActivateLicense(
-                $user,
-                $package,
-                $subscriptionId,
-                $this->getPaymentGatewayId('paddle')
-            );
+            if ($existingLicense) {
+                Log::info('License already exists for this webhook (idempotent operation)', [
+                    'user_id' => $user->id,
+                    'license_id' => $existingLicense->id,
+                    'package_name' => $package->name,
+                    'subscription_id' => $subscriptionId,
+                    'transaction_id' => $transactionId
+                ]);
+                $license = $existingLicense;
+            } else {
+                Log::info('Creating and activating license from webhook for package', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'subscription_id' => $subscriptionId
+                ]);
 
-            if ($license) {
-                // Update user's user_license_id to link to the created license
+                $license = $this->licenseService->createAndActivateLicense(
+                    $user,
+                    $package,
+                    $subscriptionId,
+                    $this->getPaymentGatewayId('paddle')
+                );
+
+                if (!$license) {
+                    Log::error('Failed to create and activate license from webhook', [
+                        'user_id' => $user->id,
+                        'package_name' => $package->name
+                    ]);
+                    throw new \Exception('License generation failed');
+                }
+            }
+
+            // Update user's user_license_id to link to the license (idempotent)
+            if ($license && $user->user_license_id !== $license->id) {
                 $user->update(['user_license_id' => $license->id]);
-
-                Log::info('License created and user license_id updated', [
+                Log::info('License linked to user', [
                     'user_id' => $user->id,
                     'license_id' => $license->id,
                     'user_license_id' => $license->id
                 ]);
             } else {
-                Log::error('Failed to create and activate license from webhook', [
+                Log::info('License already linked to user (idempotent)', [
                     'user_id' => $user->id,
-                    'package_name' => $package->name
+                    'license_id' => $license->id
                 ]);
-                throw new \Exception('License generation failed');
             }
 
             // Update user subscription status

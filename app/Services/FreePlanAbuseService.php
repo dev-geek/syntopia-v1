@@ -44,6 +44,14 @@ class FreePlanAbuseService
      */
     public function canUseFreePlan(User $user, Request $request): array
     {
+        // If abuse prevention is disabled, allow all users
+        if (!config('free_plan_abuse.enabled', false)) {
+            return [
+                'allowed' => true,
+                'message' => 'Free plan is available for you.'
+            ];
+        }
+
         try {
             if ($this->isPrivilegedUser($request, $user)) {
                 return [
@@ -93,6 +101,11 @@ class FreePlanAbuseService
      */
     public function hasUsedFreePlan(User $user): bool
     {
+        // If abuse prevention is disabled, always return false (user hasn't used free plan)
+        if (!config('free_plan_abuse.enabled', false)) {
+            return false;
+        }
+
         // Check if user has the has_used_free_plan flag set
         if ($user->has_used_free_plan) {
             return true;
@@ -124,6 +137,14 @@ class FreePlanAbuseService
      */
     public function checkAbusePatterns(Request $request): array
     {
+        // If abuse prevention is disabled, allow all requests
+        if (!config('free_plan_abuse.enabled', false)) {
+            return [
+                'allowed' => true,
+                'message' => 'No abuse patterns detected.'
+            ];
+        }
+
         try {
             if ($this->isPrivilegedUser($request)) {
                 return [
@@ -165,7 +186,7 @@ class FreePlanAbuseService
             ];
         } catch (\Throwable $e) {
             // Never bubble up as system_error to callers that expect specific reasons
-            \Log::error('checkAbusePatterns failed', ['error' => $e->getMessage()]);
+            Log::error('checkAbusePatterns failed', ['error' => $e->getMessage()]);
             return [
                 'allowed' => true,
                 'message' => 'No abuse patterns detected.'
@@ -256,6 +277,11 @@ class FreePlanAbuseService
      */
     public function recordAttempt(Request $request, ?User $user = null): void
     {
+        // If abuse prevention is disabled, don't record attempts
+        if (!config('free_plan_abuse.enabled', false)) {
+            return;
+        }
+
         try {
             if ($this->isPrivilegedUser($request, $user)) {
                 return;
@@ -371,30 +397,32 @@ class FreePlanAbuseService
             // Record the attempt
             $this->recordAttempt($request, $user);
 
-            // Immediately block current identifiers to prevent repeat free plan in same environment
-            try {
-                $ip = $request->ip();
-                $email = $user->email;
-                $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
-                $fingerprintId = $request->cookie('fp_id', '');
+            // Immediately block current identifiers to prevent repeat free plan in same environment (only if enabled)
+            if (config('free_plan_abuse.enabled', false)) {
+                try {
+                    $ip = $request->ip();
+                    $email = $user->email;
+                    $deviceFingerprint = $this->deviceFingerprintService->generateFingerprint($request);
+                    $fingerprintId = $request->cookie('fp_id', '');
 
-                if ($ip) {
-                    $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
+                    if ($ip) {
+                        $this->blockIdentifier('ip', $ip, 'Auto-block after free plan assignment');
+                    }
+                    if ($email) {
+                        $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
+                    }
+                    if ($deviceFingerprint) {
+                        $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
+                    }
+                    if ($fingerprintId) {
+                        $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
+                    }
+                } catch (\Throwable $e) {
+                    Log::error('Failed to auto-block identifiers after free plan assignment', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage()
+                    ]);
                 }
-                if ($email) {
-                    $this->blockIdentifier('email', $email, 'Auto-block after free plan assignment');
-                }
-                if ($deviceFingerprint) {
-                    $this->blockIdentifier('device_fingerprint', $deviceFingerprint, 'Auto-block after free plan assignment');
-                }
-                if ($fingerprintId) {
-                    $this->blockIdentifier('fingerprint_id', $fingerprintId, 'Auto-block after free plan assignment');
-                }
-            } catch (\Throwable $e) {
-                Log::error('Failed to auto-block identifiers after free plan assignment', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage()
-                ]);
             }
 
             DB::commit();
@@ -431,6 +459,14 @@ class FreePlanAbuseService
      */
     public function canDowngradeToFree(User $user): array
     {
+        // If abuse prevention is disabled, allow downgrade
+        if (!config('free_plan_abuse.enabled', false)) {
+            return [
+                'allowed' => true,
+                'message' => 'You can downgrade to the free plan.'
+            ];
+        }
+
         if ($this->hasUsedFreePlan($user)) {
             return [
                 'allowed' => false,

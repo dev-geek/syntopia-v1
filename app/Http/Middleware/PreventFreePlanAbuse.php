@@ -22,6 +22,11 @@ class PreventFreePlanAbuse
 
     public function handle(Request $request, Closure $next): Response
     {
+        // If abuse prevention is disabled, bypass all checks
+        if (!config('free_plan_abuse.enabled', false)) {
+            return $next($request);
+        }
+
         // Only apply to registration routes
         if (!$request->is('register') || !$request->isMethod('POST')) {
             return $next($request);
