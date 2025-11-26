@@ -254,6 +254,40 @@ class SubscriptionService
     public function assignFreePlanImmediately(User $user, Package $package): array
     {
         try {
+            // Make free plan assignment idempotent to avoid duplicate licenses/orders
+            $user->refresh();
+            $user->load('userLicence', 'package');
+
+            if ($user->hasActiveSubscription() && (int) $user->package_id === (int) $package->id) {
+                Log::info('Skipping free plan assignment - user already has active subscription for this package', [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'user_license_id' => $user->userLicence?->id,
+                ]);
+
+                $existingOrderId = $user->orders()
+                    ->where('package_id', $package->id)
+                    ->where('amount', 0)
+                    ->where('status', 'completed')
+                    ->latest('created_at')
+                    ->value('id');
+
+                return [
+                    'success' => true,
+                    'order_id' => $existingOrderId,
+                    'license_id' => $user->userLicence?->id,
+                ];
+            }
+
+            if (!$user->tenant_id) {
+                Log::error('Cannot assign free plan - user missing tenant_id', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                ]);
+                throw new \Exception('Account is not fully initialized (missing tenant). Please verify your email and try again.');
+            }
+
             return DB::transaction(function () use ($user, $package) {
                 // Update user with free package
                 $user->update([
@@ -284,18 +318,27 @@ class SubscriptionService
                     false
                 );
 
+                if (!$license) {
+                    Log::error('Failed to create license for free plan', [
+                        'user_id' => $user->id,
+                        'package_id' => $package->id,
+                        'tenant_id' => $user->tenant_id,
+                    ]);
+                    throw new \Exception('Failed to create license for free plan.');
+                }
+
                 Log::info('Free plan assigned immediately without checkout', [
                     'user_id' => $user->id,
                     'package_id' => $package->id,
                     'package_name' => $package->name,
                     'order_id' => $order->id,
-                    'license_id' => $license?->id
+                    'license_id' => $license->id
                 ]);
 
                 return [
                     'success' => true,
                     'order_id' => $order->id,
-                    'license_id' => $license?->id
+                    'license_id' => $license->id
                 ];
             });
         } catch (\Exception $e) {

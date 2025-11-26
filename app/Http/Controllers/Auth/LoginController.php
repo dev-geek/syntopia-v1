@@ -5,20 +5,25 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use App\Models\User;
+use App\Models\Package;
 use App\Services\DeviceFingerprintService;
+use App\Services\SubscriptionService;
 
 class LoginController extends Controller
 {
     use AuthenticatesUsers;
 
     private DeviceFingerprintService $deviceFingerprintService;
+    private SubscriptionService $subscriptionService;
 
-    public function __construct(DeviceFingerprintService $deviceFingerprintService)
+    public function __construct(DeviceFingerprintService $deviceFingerprintService, SubscriptionService $subscriptionService)
     {
         $this->deviceFingerprintService = $deviceFingerprintService;
+        $this->subscriptionService = $subscriptionService;
         $this->middleware('guest')->except('logout');
         $this->middleware('auth')->only('logout');
     }
@@ -275,6 +280,9 @@ class LoginController extends Controller
 
         // For regular users, check subscription status
         if ($user->hasRole('User')) {
+            // Ensure default free plan + license for existing users without an active license
+            $this->ensureDefaultFreePlan($user);
+
             // Check for intended URL first (but filter out admin routes)
             if (session()->has('url.intended')) {
                 $intendedUrl = session('url.intended');
@@ -308,5 +316,61 @@ class LoginController extends Controller
         $exists = User::where('email', $email)->exists();
 
         return response()->json(['exists' => $exists]);
+    }
+
+    /**
+     * Ensure a verified regular user has the default Free package with an active license.
+     * This is mainly for legacy users created before automatic Free license assignment.
+     */
+    private function ensureDefaultFreePlan(User $user): void
+    {
+        try {
+            if (!$user->hasRole('User')) {
+                return;
+            }
+
+            $user->refresh();
+            $user->load('package', 'userLicence');
+
+            // Only proceed if user has tenant_id (required for license API)
+            if (!$user->tenant_id) {
+                return;
+            }
+
+            // If user already has an active license (any package), do nothing
+            $activeLicense = $user->userLicence;
+            if ($activeLicense && $activeLicense->isActive() && !$activeLicense->isExpired()) {
+                return;
+            }
+
+            // Find Free package (by price 0 or name free)
+            $freePackage = Package::where(function ($query) {
+                $query->where('price', 0)
+                    ->orWhereRaw('LOWER(name) = ?', ['free']);
+            })->first();
+
+            if (!$freePackage) {
+                Log::warning('Free package not found when ensuring default plan on login', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                ]);
+                return;
+            }
+
+            $result = $this->subscriptionService->assignFreePlanImmediately($user, $freePackage);
+
+            Log::info('Default free plan ensured on login', [
+                'user_id' => $user->id,
+                'package_id' => $freePackage->id,
+                'license_id' => $result['license_id'] ?? null,
+                'order_id' => $result['order_id'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to ensure default free plan on login', [
+                'user_id' => $user->id ?? null,
+                'email' => $user->email ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

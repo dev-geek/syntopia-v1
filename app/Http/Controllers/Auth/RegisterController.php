@@ -357,27 +357,6 @@ class RegisterController extends Controller
                 'has_subscriber_password' => !empty($user->subscriber_password)
             ]);
 
-            // Assign free package with license as part of the same registration flow
-            $freePackage = Package::where(function ($query) {
-                $query->where('price', 0)
-                    ->orWhereRaw('LOWER(name) = ?', ['free']);
-            })->first();
-
-            if (!$freePackage) {
-                Log::error('Free package not found during registration, rolling back', [
-                    'user_id' => $user->id
-                ]);
-                throw new \Exception('Free package is not configured. Please contact support.');
-            }
-
-            $subscriptionService->assignFreePlanImmediately($user, $freePackage);
-
-            Log::info('Free plan automatically assigned during registration (inside transaction)', [
-                'user_id' => $user->id,
-                'package_id' => $freePackage->id,
-                'package_name' => $freePackage->name
-            ]);
-
             DB::commit();
 
             // Send verification email with proper error handling

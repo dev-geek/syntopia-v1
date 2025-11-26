@@ -46,7 +46,7 @@ class VerificationController extends Controller
         return view('auth.verify-code', ['email' => $email]);
     }
 
-    public function verifyCode(Request $request)
+    public function verifyCode(Request $request, \App\Services\SubscriptionService $subscriptionService)
     {
         Log::info('[verifyCode] Incoming request', [
             'input' => $request->all(),
@@ -233,6 +233,22 @@ class VerificationController extends Controller
                 'verification_code' => null,
                 'tenant_id' => $apiResponse['data']['tenantId'],
             ]);
+
+            // After tenant is created and password bound, assign Free package with license
+            $freePackage = \App\Models\Package::where(function ($query) {
+                $query->where('price', 0)
+                    ->orWhereRaw('LOWER(name) = ?', ['free']);
+            })->first();
+
+            if (!$freePackage) {
+                Log::error('[verifyCode] Free package not found during verification', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $user->tenant_id,
+                ]);
+                throw new \Exception('Free package is not configured. Please contact support.');
+            }
+
+            $subscriptionService->assignFreePlanImmediately($user, $freePackage);
 
             DB::commit();
             Log::info('[verifyCode] User verified and updated', ['user_id' => $user->id]);
