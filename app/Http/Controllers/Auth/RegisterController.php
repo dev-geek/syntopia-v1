@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Package;
 use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -19,6 +20,7 @@ use App\Services\MailService;
 use App\Services\DeviceFingerprintService;
 use App\Services\FreePlanAbuseService;
 use App\Models\FreePlanAttempt;
+use App\Services\SubscriptionService;
 
 class RegisterController extends Controller
 {
@@ -196,7 +198,7 @@ class RegisterController extends Controller
         return view('auth.register');
     }
 
-    public function register(Request $request)
+    public function register(Request $request, SubscriptionService $subscriptionService)
     {
         // Validate that the email from URL parameter matches the submitted email
         $urlEmail = $request->get('email');
@@ -322,6 +324,27 @@ class RegisterController extends Controller
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'tenant_id' => $tenantId
+            ]);
+
+            // Assign free package with license as part of the same registration flow
+            $freePackage = Package::where(function ($query) {
+                $query->where('price', 0)
+                    ->orWhereRaw('LOWER(name) = ?', ['free']);
+            })->first();
+
+            if (!$freePackage) {
+                Log::error('Free package not found during registration, rolling back', [
+                    'user_id' => $user->id
+                ]);
+                throw new \Exception('Free package is not configured. Please contact support.');
+            }
+
+            $subscriptionService->assignFreePlanImmediately($user, $freePackage);
+
+            Log::info('Free plan automatically assigned during registration (inside transaction)', [
+                'user_id' => $user->id,
+                'package_id' => $freePackage->id,
+                'package_name' => $freePackage->name
             ]);
 
             DB::commit();
