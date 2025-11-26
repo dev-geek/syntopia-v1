@@ -94,8 +94,8 @@ class RegisterController extends Controller
             $isBlocked = $this->deviceFingerprintService->isBlocked($request);
             $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
                 $request,
-                config('free_plan_abuse.max_attempts', 3),
-                config('free_plan_abuse.tracking_period_days', 30)
+                config('free_plan_abuse.max_attempts', 1),
+                config('free_plan_abuse.tracking_period_days', 9999999999999)
             );
 
             if ($isBlocked || $hasRecentAttempts) {
