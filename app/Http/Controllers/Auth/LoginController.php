@@ -321,6 +321,7 @@ class LoginController extends Controller
     /**
      * Ensure a verified regular user has the default Free package with an active license.
      * This is mainly for legacy users created before automatic Free license assignment.
+     * Only assigns Free package if user hasn't purchased paid packages.
      */
     private function ensureDefaultFreePlan(User $user): void
     {
@@ -340,6 +341,33 @@ class LoginController extends Controller
             // If user already has an active license (any package), do nothing
             $activeLicense = $user->userLicence;
             if ($activeLicense && $activeLicense->isActive() && !$activeLicense->isExpired()) {
+                return;
+            }
+
+            // Check if user has ever purchased a paid package
+            $hasPaidPackageOrder = $user->orders()
+                ->where('status', 'completed')
+                ->where('amount', '>', 0)
+                ->whereHas('package', function ($query) {
+                    $query->whereRaw('LOWER(name) != ?', ['free']);
+                })
+                ->exists();
+
+            // Don't assign Free package if user has purchased paid packages
+            if ($hasPaidPackageOrder) {
+                Log::info('Skipping Free package assignment - user has purchased paid packages', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                ]);
+                return;
+            }
+
+            // Check if user has a paid package assigned (package exists and name != 'free')
+            if ($user->package && strtolower($user->package->name) !== 'free') {
+                Log::info('Skipping Free package assignment - user has paid package assigned', [
+                    'user_id' => $user->id,
+                    'package_name' => $user->package->name,
+                ]);
                 return;
             }
 

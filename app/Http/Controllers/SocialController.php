@@ -12,6 +12,8 @@ use App\Services\PasswordBindingService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use App\Services\SubscriptionService;
+use App\Models\Package;
 
 
 class SocialController extends Controller
@@ -55,33 +57,67 @@ class SocialController extends Controller
                 if ($existingUser) {
                     // Try to link Google account with existing user
                     try {
+                        DB::beginTransaction();
+
                         // Generate a compliant password for the existing user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the existing user
-                        $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                        // Check if user has tenant_id, if not, create it
+                        if (!$existingUser->tenant_id) {
+                            Log::info('[googleAuthentication] Existing user missing tenant_id, creating tenant', ['user_id' => $existingUser->id]);
+                            $apiResponse = $this->callXiaoiceApiWithCreds($existingUser, $compliantPassword);
 
-                        if (!$apiResponse['success']) {
-                            Log::warning('Failed to bind password for existing user during Google link, proceeding with fallback', [
-                                'user_id' => $existingUser->id,
-                                'error' => $apiResponse['error_message']
-                            ]);
-
-                            // Check if this is a SWAL error
                             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                                DB::rollBack();
+                                Log::error('[googleAuthentication] API returned swal error during tenant creation for existing user', [
+                                    'user_id' => $existingUser->id,
+                                    'error' => $apiResponse['error_message']
+                                ]);
                                 return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
                             }
 
-                            // Fallback: Link account without updating password
+                            if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                                DB::rollBack();
+                                Log::error('[googleAuthentication] Failed to create tenant_id for existing user', [
+                                    'user_id' => $existingUser->id,
+                                    'apiResponse' => $apiResponse
+                                ]);
+                                $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                                return redirect()->route('login')->with('error', $errorMsg);
+                            }
+
+                            // Update user with tenant_id
                             $existingUser->update([
-                                'google_id' => $googleUser->id,
-                                'email_verified_at' => Carbon::now(),
-                                'status' => 1
+                                'tenant_id' => $apiResponse['data']['tenantId'],
                             ]);
+                        } else {
+                            // User already has tenant_id, just bind password
+                            $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
 
-                            Auth::login($existingUser);
+                            if (!$apiResponse['success']) {
+                                Log::warning('Failed to bind password for existing user during Google link, proceeding with fallback', [
+                                    'user_id' => $existingUser->id,
+                                    'error' => $apiResponse['error_message']
+                                ]);
 
-                            return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Note: You may need to update your password later for full functionality.');
+                                // Check if this is a SWAL error
+                                if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                                    DB::rollBack();
+                                    return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
+                                }
+
+                                // Fallback: Link account without updating password
+                                $existingUser->update([
+                                    'google_id' => $googleUser->id,
+                                    'email_verified_at' => Carbon::now(),
+                                    'status' => 1
+                                ]);
+
+                                DB::commit();
+                                Auth::login($existingUser);
+
+                                return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Note: You may need to update your password later for full functionality.');
+                            }
                         }
 
                         // Success: Update password and link account
@@ -93,10 +129,65 @@ class SocialController extends Controller
                             'subscriber_password' => $compliantPassword
                         ]);
 
+                        // Assign Free package with license if user doesn't have a paid package
+                        $existingUser->refresh();
+                        $existingUser->load('package', 'userLicence');
+
+                        // Check if user has ever purchased a paid package
+                        $hasPaidPackageOrder = $existingUser->orders()
+                            ->where('status', 'completed')
+                            ->where('amount', '>', 0)
+                            ->whereHas('package', function ($query) {
+                                $query->whereRaw('LOWER(name) != ?', ['free']);
+                            })
+                            ->exists();
+
+                        // Only assign Free package if:
+                        // 1. User has no package OR
+                        // 2. User has Free package but no active license
+                        // Don't assign if user has a paid package (package exists and name != 'free') OR has purchased paid packages
+                        $shouldAssignFree = false;
+                        if ($hasPaidPackageOrder) {
+                            // User has purchased paid packages - don't assign Free
+                            $shouldAssignFree = false;
+                        } elseif (!$existingUser->package_id) {
+                            // User has no package - assign Free
+                            $shouldAssignFree = true;
+                        } elseif ($existingUser->package && strtolower($existingUser->package->name) === 'free') {
+                            // User has Free package but check if they have active license
+                            if (!$existingUser->hasActiveSubscription()) {
+                                $shouldAssignFree = true;
+                            }
+                        }
+                        // If user has a paid package (package exists and name != 'free'), don't assign Free
+
+                        if ($shouldAssignFree && $existingUser->tenant_id) {
+                            $freePackage = Package::where(function ($query) {
+                                $query->where('price', 0)
+                                    ->orWhereRaw('LOWER(name) = ?', ['free']);
+                            })->first();
+
+                            if ($freePackage) {
+                                $subscriptionService = app(SubscriptionService::class);
+                                try {
+                                    $subscriptionService->assignFreePlanImmediately($existingUser, $freePackage);
+                                    Log::info('[googleAuthentication] Free package assigned to existing user after tenant creation', ['user_id' => $existingUser->id]);
+                                } catch (\Exception $e) {
+                                    Log::warning('[googleAuthentication] Failed to assign Free package to existing user', [
+                                        'user_id' => $existingUser->id,
+                                        'error' => $e->getMessage()
+                                    ]);
+                                    // Continue even if Free package assignment fails
+                                }
+                            }
+                        }
+
+                        DB::commit();
                         Auth::login($existingUser);
                         return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Google successfully!');
 
                     } catch (\Exception $e) {
+                        DB::rollBack();
                         Log::error('Error during Google account linking', [
                             'user_id' => $existingUser->id,
                             'error' => $e->getMessage()
@@ -156,13 +247,33 @@ class SocialController extends Controller
                             return redirect()->route('login')->with('error', $errorMsg);
                         }
 
-                        // Update user with tenant_id
+                        // Update user with tenant_id and subscriber_password
                         $userData->update([
                             'tenant_id' => $apiResponse['data']['tenantId'],
+                            'subscriber_password' => $compliantPassword,
                         ]);
 
+                        // After tenant is created and password bound, assign Free package with license
+                        $freePackage = Package::where(function ($query) {
+                            $query->where('price', 0)
+                                ->orWhereRaw('LOWER(name) = ?', ['free']);
+                        })->first();
+
+                        if (!$freePackage) {
+                            Log::error('[googleAuthentication] Free package not found during Google registration', [
+                                'user_id' => $userData->id,
+                                'tenant_id' => $userData->tenant_id,
+                            ]);
+                            DB::rollBack();
+                            $userData->delete();
+                            return redirect()->route('login')->with('error', 'Free package is not configured. Please contact support.');
+                        }
+
+                        $subscriptionService = app(SubscriptionService::class);
+                        $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
+
                         DB::commit();
-                        Log::info('[googleAuthentication] New Google user created with tenant', ['user_id' => $userData->id]);
+                        Log::info('[googleAuthentication] New Google user created with tenant and Free package', ['user_id' => $userData->id]);
 
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
@@ -218,27 +329,66 @@ class SocialController extends Controller
                 if ($existingUser) {
                     // Try to link Facebook account with existing user
                     try {
+                        DB::beginTransaction();
+
                         // Generate a compliant password for the existing user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the existing user
-                        $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                        // Check if user has tenant_id, if not, create it
+                        if (!$existingUser->tenant_id) {
+                            Log::info('[handleFacebookCallback] Existing user missing tenant_id, creating tenant', ['user_id' => $existingUser->id]);
+                            $apiResponse = $this->callXiaoiceApiWithCreds($existingUser, $compliantPassword);
 
-                        if (!$apiResponse['success']) {
-                            Log::warning('Failed to bind password for existing user during Facebook link, proceeding with fallback', [
-                                'user_id' => $existingUser->id,
-                                'error' => $apiResponse['error_message']
-                            ]);
+                            if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                                DB::rollBack();
+                                Log::error('[handleFacebookCallback] API returned swal error during tenant creation for existing user', [
+                                    'user_id' => $existingUser->id,
+                                    'error' => $apiResponse['error_message']
+                                ]);
+                                return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
+                            }
 
-                            // Fallback: Link account without updating password
+                            if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                                DB::rollBack();
+                                Log::error('[handleFacebookCallback] Failed to create tenant_id for existing user', [
+                                    'user_id' => $existingUser->id,
+                                    'apiResponse' => $apiResponse
+                                ]);
+                                $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                                return redirect()->route('login')->with('error', $errorMsg);
+                            }
+
+                            // Update user with tenant_id
                             $existingUser->update([
-                                'facebook_id' => $facebookUser->id,
-                                'email_verified_at' => Carbon::now(),
-                                'status' => 1
+                                'tenant_id' => $apiResponse['data']['tenantId'],
                             ]);
+                        } else {
+                            // User already has tenant_id, just bind password
+                            $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
 
-                            Auth::login($existingUser);
-                            return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Note: You may need to update your password later for full functionality.');
+                            if (!$apiResponse['success']) {
+                                Log::warning('Failed to bind password for existing user during Facebook link, proceeding with fallback', [
+                                    'user_id' => $existingUser->id,
+                                    'error' => $apiResponse['error_message']
+                                ]);
+
+                                // Check if this is a SWAL error
+                                if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                                    DB::rollBack();
+                                    return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
+                                }
+
+                                // Fallback: Link account without updating password
+                                $existingUser->update([
+                                    'facebook_id' => $facebookUser->id,
+                                    'email_verified_at' => Carbon::now(),
+                                    'status' => 1
+                                ]);
+
+                                DB::commit();
+                                Auth::login($existingUser);
+                                return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Note: You may need to update your password later for full functionality.');
+                            }
                         }
 
                         // Success: Update password and link account
@@ -250,10 +400,65 @@ class SocialController extends Controller
                             'subscriber_password' => $compliantPassword
                         ]);
 
+                        // Assign Free package with license if user doesn't have a paid package
+                        $existingUser->refresh();
+                        $existingUser->load('package', 'userLicence');
+
+                        // Check if user has ever purchased a paid package
+                        $hasPaidPackageOrder = $existingUser->orders()
+                            ->where('status', 'completed')
+                            ->where('amount', '>', 0)
+                            ->whereHas('package', function ($query) {
+                                $query->whereRaw('LOWER(name) != ?', ['free']);
+                            })
+                            ->exists();
+
+                        // Only assign Free package if:
+                        // 1. User has no package OR
+                        // 2. User has Free package but no active license
+                        // Don't assign if user has a paid package (package exists and name != 'free') OR has purchased paid packages
+                        $shouldAssignFree = false;
+                        if ($hasPaidPackageOrder) {
+                            // User has purchased paid packages - don't assign Free
+                            $shouldAssignFree = false;
+                        } elseif (!$existingUser->package_id) {
+                            // User has no package - assign Free
+                            $shouldAssignFree = true;
+                        } elseif ($existingUser->package && strtolower($existingUser->package->name) === 'free') {
+                            // User has Free package but check if they have active license
+                            if (!$existingUser->hasActiveSubscription()) {
+                                $shouldAssignFree = true;
+                            }
+                        }
+                        // If user has a paid package (package exists and name != 'free'), don't assign Free
+
+                        if ($shouldAssignFree && $existingUser->tenant_id) {
+                            $freePackage = Package::where(function ($query) {
+                                $query->where('price', 0)
+                                    ->orWhereRaw('LOWER(name) = ?', ['free']);
+                            })->first();
+
+                            if ($freePackage) {
+                                $subscriptionService = app(SubscriptionService::class);
+                                try {
+                                    $subscriptionService->assignFreePlanImmediately($existingUser, $freePackage);
+                                    Log::info('[handleFacebookCallback] Free package assigned to existing user after tenant creation', ['user_id' => $existingUser->id]);
+                                } catch (\Exception $e) {
+                                    Log::warning('[handleFacebookCallback] Failed to assign Free package to existing user', [
+                                        'user_id' => $existingUser->id,
+                                        'error' => $e->getMessage()
+                                    ]);
+                                    // Continue even if Free package assignment fails
+                                }
+                            }
+                        }
+
+                        DB::commit();
                         Auth::login($existingUser);
                         return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Facebook successfully!');
 
                     } catch (\Exception $e) {
+                        DB::rollBack();
                         Log::error('Error during Facebook account linking', [
                             'user_id' => $existingUser->id,
                             'error' => $e->getMessage()
@@ -270,44 +475,15 @@ class SocialController extends Controller
                         return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Please update your password in your profile for full functionality.');
                     }
                 } else {
-                    // Create new user
+                    // Create new user with tenant creation
                     try {
+                        DB::beginTransaction();
+
                         // Generate a compliant password for the new user
                         $compliantPassword = $this->generateCompliantPassword();
 
-                        // Call password binding API for the new user
-                        $apiResponse = $passwordBindingService->bindPassword(
-                            (new User())->forceFill(['email' => $facebookUser->email]),
-                            $compliantPassword
-                        );
-
-                        if (!$apiResponse['success']) {
-                            Log::warning('Failed to bind password for new Facebook user, proceeding with fallback', [
-                                'email' => $facebookUser->email,
-                                'error' => $apiResponse['error_message']
-                            ]);
-
-                            // Fallback: Create user with temporary password
-                            $tempPassword = $this->generateCompliantPassword();
-                            $newUser = User::create([
-                                'name' => $facebookUser->name,
-                                'email' => $facebookUser->email,
-                                'facebook_id' => $facebookUser->id,
-                                'password' => Hash::make($tempPassword),
-                                'subscriber_password' => $tempPassword,
-                                'email_verified_at' => Carbon::now(),
-                                'status' => 1,
-                                'verification_code' => null
-                            ]);
-
-                            $newUser->assignRole('User');
-                            Auth::login($newUser);
-
-                            return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook. Please update your password in your profile for full functionality.');
-                        }
-
-                        // Success: Create user with proper password
-                        $newUser = User::create([
+                        // Create user first
+                        $userData = User::create([
                             'name' => $facebookUser->name,
                             'email' => $facebookUser->email,
                             'facebook_id' => $facebookUser->id,
@@ -318,34 +494,73 @@ class SocialController extends Controller
                             'verification_code' => null
                         ]);
 
-                        $newUser->assignRole('User');
-                        Auth::login($newUser);
+                        $userData->assignRole('User');
 
-                        return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook');
+                        // Create tenant and bind password using the same logic as VerificationController
+                        Log::info('[handleFacebookCallback] Calling callXiaoiceApiWithCreds for new Facebook user', ['user_id' => $userData->id]);
+                        $apiResponse = $this->callXiaoiceApiWithCreds($userData, $compliantPassword);
+                        Log::info('[handleFacebookCallback] callXiaoiceApiWithCreds response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+
+                        if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
+                            DB::rollBack();
+                            Log::error('[handleFacebookCallback] API returned swal error', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
+                            return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
+                        }
+
+                        if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                            DB::rollBack();
+                            Log::error('[handleFacebookCallback] API failed or missing tenantId', [
+                                'user_id' => $userData->id,
+                                'apiResponse' => $apiResponse
+                            ]);
+                            $userData->delete(); // Delete user data on failure
+                            $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
+                            return redirect()->route('login')->with('error', $errorMsg);
+                        }
+
+                        // Update user with tenant_id
+                        $userData->update([
+                            'tenant_id' => $apiResponse['data']['tenantId'],
+                        ]);
+
+                        // After tenant is created and password bound, assign Free package with license
+                        $freePackage = Package::where(function ($query) {
+                            $query->where('price', 0)
+                                ->orWhereRaw('LOWER(name) = ?', ['free']);
+                        })->first();
+
+                        if (!$freePackage) {
+                            Log::error('[handleFacebookCallback] Free package not found during Facebook registration', [
+                                'user_id' => $userData->id,
+                                'tenant_id' => $userData->tenant_id,
+                            ]);
+                            DB::rollBack();
+                            $userData->delete();
+                            return redirect()->route('login')->with('error', 'Free package is not configured. Please contact support.');
+                        }
+
+                        $subscriptionService = app(SubscriptionService::class);
+                        $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
+
+                        DB::commit();
+                        Log::info('[handleFacebookCallback] New Facebook user created with tenant and Free package', ['user_id' => $userData->id]);
+
+                        Auth::login($userData);
+                        return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Facebook');
 
                     } catch (\Exception $e) {
-                        Log::error('Error creating new Facebook user', [
-                            'email' => $facebookUser->email,
-                            'error' => $e->getMessage()
+                        DB::rollBack();
+                        Log::error('[handleFacebookCallback] Exception during new Facebook user creation', [
+                            'exception' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                            'email' => $facebookUser->email
                         ]);
 
-                        // Final fallback: Create user with basic info
-                        $tempPassword = $this->generateCompliantPassword();
-                        $newUser = User::create([
-                            'name' => $facebookUser->name,
-                            'email' => $facebookUser->email,
-                            'facebook_id' => $facebookUser->id,
-                            'password' => Hash::make($tempPassword),
-                            'subscriber_password' => $tempPassword,
-                            'email_verified_at' => Carbon::now(),
-                            'status' => 1,
-                            'verification_code' => null
-                        ]);
+                        if (isset($userData)) {
+                            $userData->delete(); // Delete user data on failure
+                        }
 
-                        $newUser->assignRole('User');
-                        Auth::login($newUser);
-
-                        return $this->redirectBasedOnUserRole($newUser, 'Welcome! Account created successfully with Facebook. Please update your password in your profile for full functionality.');
+                        return redirect()->route('login')->with('error', 'Failed to create account. Please try again or contact support.');
                     }
                 }
             }

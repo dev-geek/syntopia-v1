@@ -235,20 +235,51 @@ class VerificationController extends Controller
             ]);
 
             // After tenant is created and password bound, assign Free package with license
-            $freePackage = \App\Models\Package::where(function ($query) {
-                $query->where('price', 0)
-                    ->orWhereRaw('LOWER(name) = ?', ['free']);
-            })->first();
+            // Only assign if user hasn't purchased paid packages
+            $user->refresh();
+            $user->load('package', 'userLicence', 'orders');
 
-            if (!$freePackage) {
-                Log::error('[verifyCode] Free package not found during verification', [
+            // Check if user has ever purchased a paid package
+            $hasPaidPackageOrder = $user->orders()
+                ->where('status', 'completed')
+                ->where('amount', '>', 0)
+                ->whereHas('package', function ($query) {
+                    $query->whereRaw('LOWER(name) != ?', ['free']);
+                })
+                ->exists();
+
+            // Only assign Free package if user hasn't purchased paid packages
+            if (!$hasPaidPackageOrder) {
+                // Check if user has a paid package assigned (package exists and name != 'free')
+                $hasPaidPackage = $user->package && strtolower($user->package->name) !== 'free';
+
+                if (!$hasPaidPackage) {
+                    $freePackage = \App\Models\Package::where(function ($query) {
+                        $query->where('price', 0)
+                            ->orWhereRaw('LOWER(name) = ?', ['free']);
+                    })->first();
+
+                    if (!$freePackage) {
+                        Log::error('[verifyCode] Free package not found during verification', [
+                            'user_id' => $user->id,
+                            'tenant_id' => $user->tenant_id,
+                        ]);
+                        throw new \Exception('Free package is not configured. Please contact support.');
+                    }
+
+                    $subscriptionService->assignFreePlanImmediately($user, $freePackage);
+                    Log::info('[verifyCode] Free package assigned during email verification', ['user_id' => $user->id]);
+                } else {
+                    Log::info('[verifyCode] Skipping Free package assignment - user has paid package', [
+                        'user_id' => $user->id,
+                        'package_name' => $user->package->name,
+                    ]);
+                }
+            } else {
+                Log::info('[verifyCode] Skipping Free package assignment - user has purchased paid packages', [
                     'user_id' => $user->id,
-                    'tenant_id' => $user->tenant_id,
                 ]);
-                throw new \Exception('Free package is not configured. Please contact support.');
             }
-
-            $subscriptionService->assignFreePlanImmediately($user, $freePackage);
 
             DB::commit();
             Log::info('[verifyCode] User verified and updated', ['user_id' => $user->id]);
