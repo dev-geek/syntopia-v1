@@ -35,24 +35,6 @@ class SocialController extends Controller
             if ($user) {
                 // Log in the existing user
                 Auth::login($user);
-
-                // If user came from pricing page, force User routes
-                $fromPricingPage = session('from_pricing_page', false);
-                if ($fromPricingPage) {
-                    session()->forget('from_pricing_page');
-                    session()->forget('url.intended');
-                    session()->forget('verification_intended_url');
-
-                    if ($user->hasRole('User')) {
-                        if ($this->hasActiveSubscription($user)) {
-                            return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
-                        } else {
-                            return redirect()->route('subscription')->with('login_success', 'User Login Successfully');
-                        }
-                    }
-                    return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
-                }
-
                 if ($user->hasAnyRole(['Super Admin'])) {
                     return redirect()->route('admin.dashboard')->with('login_success', 'Admin Login Successfully');
                 }
@@ -339,24 +321,6 @@ class SocialController extends Controller
 
             if ($user) {
                 Auth::login($user);
-
-                // If user came from pricing page, force User routes
-                $fromPricingPage = session('from_pricing_page', false);
-                if ($fromPricingPage) {
-                    session()->forget('from_pricing_page');
-                    session()->forget('url.intended');
-                    session()->forget('verification_intended_url');
-
-                    if ($user->hasRole('User')) {
-                        if ($this->hasActiveSubscription($user)) {
-                            return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
-                        } else {
-                            return redirect()->route('subscription')->with('login_success', 'User Login Successfully');
-                        }
-                    }
-                    return redirect()->route('user.dashboard')->with('login_success', 'User Login Successfully');
-                }
-
                 return $this->redirectBasedOnUserRole($user, 'User Login Successfully');
             } else {
                 // Check if user with same email exists
@@ -643,36 +607,6 @@ class SocialController extends Controller
      */
     private function redirectBasedOnUserRole($user, $message)
     {
-        // If user came from pricing page, force User routes even for Super Admin
-        $fromPricingPage = session('from_pricing_page', false);
-        if ($fromPricingPage) {
-            session()->forget('from_pricing_page');
-
-            // Clear any admin route intended URLs
-            if (session()->has('url.intended')) {
-                $intendedUrl = session('url.intended');
-                if (str_starts_with($intendedUrl, '/admin') || str_contains($intendedUrl, '/admin/')) {
-                    session()->forget('url.intended');
-                } else {
-                    session()->forget('url.intended');
-                    return redirect()->to($intendedUrl)->with('login_success', $message);
-                }
-            }
-            session()->forget('url.intended');
-            session()->forget('verification_intended_url');
-
-            // Force User route redirect
-            if ($user->hasRole('User')) {
-                if ($this->hasActiveSubscription($user)) {
-                    return redirect()->route('user.dashboard')->with('login_success', $message);
-                } else {
-                    return redirect()->route('subscription')->with('login_success', $message);
-                }
-            }
-            // If somehow not a User role but came from pricing, still redirect to user routes
-            return redirect()->route('user.dashboard')->with('login_success', $message);
-        }
-
         // Check for intended URL first
         if (session()->has('url.intended')) {
             $intendedUrl = session('url.intended');

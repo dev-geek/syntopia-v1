@@ -44,32 +44,6 @@ class LoginController extends Controller
                 ->withErrors('Please verify your email before logging in.');
         }
 
-        // If user came from pricing page, force User routes even for Super Admin
-        $fromPricingPage = session('from_pricing_page', false);
-        if ($fromPricingPage) {
-            session()->forget('from_pricing_page');
-
-            // Clear any admin route intended URLs
-            if (session()->has('url.intended')) {
-                $intendedUrl = session('url.intended');
-                if (str_starts_with($intendedUrl, '/admin') || str_contains($intendedUrl, '/admin/')) {
-                    session()->forget('url.intended');
-                }
-            }
-            session()->forget('verification_intended_url');
-
-            // Force User route redirect
-            if ($user->hasRole('User')) {
-                if ($this->hasActiveSubscription($user)) {
-                    return redirect()->route('user.dashboard');
-                } else {
-                    return redirect()->route('subscription');
-                }
-            }
-            // If somehow not a User role but came from pricing, still redirect to user routes
-            return redirect()->route('user.dashboard');
-        }
-
         // Redirect based on user role
         if ($user->hasRole('Super Admin')) {
             return redirect()->intended(route('admin.dashboard'));
@@ -170,23 +144,6 @@ class LoginController extends Controller
         $user = Auth::user();
 
         if ($user) {
-            // If user came from pricing page, force User routes even for Super Admin
-            $fromPricingPage = session('from_pricing_page', false);
-            if ($fromPricingPage) {
-                session()->forget('from_pricing_page');
-                session()->forget('url.intended');
-                session()->forget('verification_intended_url');
-
-                if ($user->hasRole('User')) {
-                    if ($this->hasActiveSubscription($user)) {
-                        return redirect()->route('user.dashboard');
-                    } else {
-                        return redirect()->route('subscription');
-                    }
-                }
-                return redirect()->route('user.dashboard');
-            }
-
             if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
                 return redirect()->route('admin.dashboard');
             }
@@ -231,17 +188,11 @@ class LoginController extends Controller
      */
     public function showLoginForm(Request $request)
     {
-        // Check if user came from pricing page
-        $referrer = $request->header('referer');
-        if ($referrer && str_contains($referrer, 'syntopia.ai/pricing')) {
-            session(['from_pricing_page' => true]);
-        }
-
         // Check if there's an email in the session from a previous login attempt
         $email = $request->session()->get('email');
 
-        // If email exists and belongs to a Super Admin, but user came from pricing page, don't redirect to admin login
-        if ($email && !session('from_pricing_page')) {
+        // If email exists and belongs to a Super Admin, redirect to admin login
+        if ($email) {
             $user = User::where('email', $email)->first();
             if ($user && $user->hasRole('Super Admin')) {
                 return redirect()->route('admin-login');
@@ -279,10 +230,8 @@ class LoginController extends Controller
         ]);
 
         // Check if the email belongs to a Super Admin or Sub Admin
-        // But only redirect to admin login if NOT coming from pricing page
-        $fromPricingPage = session('from_pricing_page', false);
         $user = User::where('email', $request->email)->first();
-        if ($user && $user->hasAnyRole(['Super Admin', 'Sub Admin']) && !$fromPricingPage) {
+        if ($user && $user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             // Store email in session and redirect to admin login
             session(['email' => $request->email]);
             return redirect()->route('admin-login');
@@ -325,29 +274,6 @@ class LoginController extends Controller
 
         // Final redirect based on role
         $user = Auth::user();
-
-        // If user came from pricing page, force User routes even for Super Admin
-        $fromPricingPage = session('from_pricing_page', false);
-        if ($fromPricingPage) {
-            session()->forget('from_pricing_page');
-
-            // Clear any admin route intended URLs
-            session()->forget('url.intended');
-            session()->forget('verification_intended_url');
-
-            // Force User route redirect
-            if ($user->hasRole('User')) {
-                $this->ensureDefaultFreePlan($user);
-                if ($this->hasActiveSubscription($user)) {
-                    return redirect()->route('user.dashboard');
-                } else {
-                    return redirect()->route('subscription');
-                }
-            }
-            // If somehow not a User role but came from pricing, still redirect to user routes
-            return redirect()->route('user.dashboard');
-        }
-
         if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
             return redirect()->intended(route('admin.dashboard'));
         }

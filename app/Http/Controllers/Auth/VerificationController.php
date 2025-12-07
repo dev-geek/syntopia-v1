@@ -86,36 +86,12 @@ class VerificationController extends Controller
                 session()->forget('email');
                 Auth::login($user);
 
-                // If user came from pricing page, force User routes even for Super Admin
-                $fromPricingPage = session('from_pricing_page', false);
-                if ($fromPricingPage) {
-                    session()->forget('from_pricing_page');
-                    session()->forget('verification_intended_url');
-
-                    if ($user->hasRole('User')) {
-                        if ($this->hasActiveSubscription($user)) {
-                            return redirect()->route('user.dashboard')
-                                ->with('success', 'Email already verified!');
-                        } else {
-                            return redirect()->route('subscription')
-                                ->with('success', 'Email already verified!');
-                        }
-                    }
-                    return redirect()->route('user.dashboard')
-                        ->with('success', 'Email already verified!');
-                }
-
                 if ($user->hasRole('User')) {
                     if (session()->has('verification_intended_url')) {
                         $intendedUrl = session('verification_intended_url');
-                        // Only use intended URL if it's NOT an admin route
-                        if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
-                            session()->forget('verification_intended_url');
-                            return redirect()->to($intendedUrl)
-                                ->with('success', 'Email already verified!');
-                        } else {
-                            session()->forget('verification_intended_url');
-                        }
+                        session()->forget('verification_intended_url');
+                        return redirect()->to($intendedUrl)
+                            ->with('success', 'Email already verified!');
                     }
 
                     if ($this->hasActiveSubscription($user)) {
@@ -176,36 +152,12 @@ class VerificationController extends Controller
                 session()->forget('email');
                 Auth::login($user);
 
-                // If user came from pricing page, force User routes even for Super Admin
-                $fromPricingPage = session('from_pricing_page', false);
-                if ($fromPricingPage) {
-                    session()->forget('from_pricing_page');
-                    session()->forget('verification_intended_url');
-
-                    if ($user->hasRole('User')) {
-                        if ($this->hasActiveSubscription($user)) {
-                            return redirect()->route('user.dashboard')
-                                ->with('success', 'Email verified successfully!');
-                        } else {
-                            return redirect()->route('subscription')
-                                ->with('success', 'Email verified successfully!');
-                        }
-                    }
-                    return redirect()->route('user.dashboard')
-                        ->with('success', 'Email verified successfully!');
-                }
-
                 if ($user->hasRole('User')) {
                     if (session()->has('verification_intended_url')) {
                         $intendedUrl = session('verification_intended_url');
-                        // Only use intended URL if it's NOT an admin route
-                        if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
-                            session()->forget('verification_intended_url');
-                            return redirect()->to($intendedUrl)
-                                ->with('success', 'Email verified successfully!');
-                        } else {
-                            session()->forget('verification_intended_url');
-                        }
+                        session()->forget('verification_intended_url');
+                        return redirect()->to($intendedUrl)
+                            ->with('success', 'Email verified successfully!');
                     }
 
                     if ($this->hasActiveSubscription($user)) {
@@ -335,44 +287,17 @@ class VerificationController extends Controller
             session()->forget('email');
             Auth::login($user);
 
-            // If user came from pricing page, force User routes even for Super Admin
-            $fromPricingPage = session('from_pricing_page', false);
-            if ($fromPricingPage) {
-                session()->forget('from_pricing_page');
-                session()->forget('verification_intended_url');
-
-                if ($user->hasRole('User')) {
-                    if ($this->hasActiveSubscription($user)) {
-                        Log::info('[verifyCode] Redirecting to user dashboard (from pricing)', ['user_id' => $user->id]);
-                        return redirect()->route('user.dashboard')
-                            ->with('success', 'Email verified successfully!');
-                    } else {
-                        Log::info('[verifyCode] Redirecting to subscription (from pricing)', ['user_id' => $user->id]);
-                        return redirect()->route('subscription')
-                            ->with('success', 'Email verified successfully!');
-                    }
-                }
-                Log::info('[verifyCode] Redirecting to user dashboard (from pricing, non-User role)', ['user_id' => $user->id]);
-                return redirect()->route('user.dashboard')
-                    ->with('success', 'Email verified successfully!');
-            }
-
             if ($user->hasRole('User')) {
                 // Check if there's an intended URL from the subscription flow
                 if (session()->has('verification_intended_url')) {
                     $intendedUrl = session('verification_intended_url');
-                    // Only use intended URL if it's NOT an admin route
-                    if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
-                        session()->forget('verification_intended_url');
-                        Log::info('[verifyCode] Redirecting to intended URL', [
-                            'user_id' => $user->id,
-                            'intended_url' => $intendedUrl
-                        ]);
-                        return redirect()->to($intendedUrl)
-                            ->with('success', 'Email verified successfully!');
-                    } else {
-                        session()->forget('verification_intended_url');
-                    }
+                    session()->forget('verification_intended_url');
+                    Log::info('[verifyCode] Redirecting to intended URL', [
+                        'user_id' => $user->id,
+                        'intended_url' => $intendedUrl
+                    ]);
+                    return redirect()->to($intendedUrl)
+                        ->with('success', 'Email verified successfully!');
                 }
 
                 // Check if user has active subscription

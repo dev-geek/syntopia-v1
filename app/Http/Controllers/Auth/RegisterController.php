@@ -167,12 +167,6 @@ class RegisterController extends Controller
 
     public function showRegistrationForm(Request $request)
     {
-        // Check if user came from pricing page (preserve the flag if already set)
-        $referrer = $request->header('referer');
-        if ($referrer && str_contains($referrer, 'syntopia.ai/pricing')) {
-            session(['from_pricing_page' => true]);
-        }
-
         // Ensure email parameter is present in URL
         if (!$request->has('email') || empty($request->get('email'))) {
             Log::warning('Registration page accessed without email parameter', [
