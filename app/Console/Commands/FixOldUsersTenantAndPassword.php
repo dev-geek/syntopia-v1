@@ -378,7 +378,7 @@ class FixOldUsersTenantAndPassword extends Command
                 ])
                 ->post($baseUrl . '/api/partner/tenant/create', [
                     'name' => $user->name,
-                    'regionCode' => 'CN',
+                    'regionCode' => 'OTHER',
                     'adminName' => $user->name,
                     'adminEmail' => $user->email,
                     'adminPhone' => '',
