@@ -8,9 +8,9 @@
         default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
         font-src 'self' https://fonts.gstatic.com;
-        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://cdn.firstpromoter.com https://connect.facebook.net 'unsafe-inline' 'unsafe-eval';
+        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://cdn.firstpromoter.com https://connect.facebook.net https://analytics.tiktok.com 'unsafe-inline' 'unsafe-eval';
         img-src 'self' https://syntopia.ai https://sbl.onfastspring.com https://www.facebook.com data:;
-        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://api.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com https://firstpromoter.com https://*.firstpromoter.com https://www.facebook.com https://connect.facebook.net;
+        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://api.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com https://firstpromoter.com https://*.firstpromoter.com https://www.facebook.com https://connect.facebook.net https://analytics.tiktok.com;
         frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
         media-src 'self' data: https://sbl.onfastspring.com;">
 
@@ -67,6 +67,32 @@ fpr("click");
     &noscript=1"/>
     </noscript>
     <!-- End Facebook Pixel Code -->
+
+    <!-- TikTok Pixel Code Start -->
+
+<script>
+
+!function (w, d, t) {
+
+  w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
+
+var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
+
+;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
+
+
+
+
+
+  ttq.load('D4I1AK3C77U1KRQJK2Q0');
+
+  ttq.page();
+
+}(window, document, 'ttq');
+
+</script>
+
+<!-- TikTok Pixel Code End -->
 
 </head>
 <body>
