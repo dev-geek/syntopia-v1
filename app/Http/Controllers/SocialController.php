@@ -690,7 +690,7 @@ class SocialController extends Controller
 
             $createJson = $createResponse->json();
             // Handle case where tenant already exists (code 730)
-            if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
+                if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], 'User is already registered in the system')) {
                 Log::info('Tenant already exists for user (idempotent operation)', [
                     'user_id' => $user->id,
                     'email' => $user->email,

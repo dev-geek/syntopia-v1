@@ -57,7 +57,7 @@ class LicenseApiService
 
                 // output: {
                 //     "code": 200,
-                //     "message": "成功",
+                //     "message": "Success",
                 //     "traceId": "a76d893ddc5ce6eb",
                 //     "data": {
                 //         "data": [
@@ -67,7 +67,7 @@ class LicenseApiService
                 //                 "subscriptionId": "4db87c12de824ff094687d8020d1a804",
                 //                 "subscriptionType": "license",
                 //                 "subscriptionCode": "PKG-CL-FREE-02",
-                //                 "subscriptionName": "试用版",
+                //                 "subscriptionName": "Trial Version",
                 //                 "total": 10,
                 //                 "used": 10,
                 //                 "remaining": 0
@@ -78,7 +78,7 @@ class LicenseApiService
                 //                 "subscriptionId": "50c1a4b18b7447dab0d06e2e314bc7e0",
                 //                 "subscriptionType": "license",
                 //                 "subscriptionCode": "PKG-CL-STD-03",
-                //                 "subscriptionName": "云端高级直播-一年版",
+                //                 "subscriptionName": "Cloud Advanced Live Streaming – 1 Year Plan",
                 //                 "total": 1,
                 //                 "used": 1,
                 //                 "remaining": 0
@@ -216,15 +216,15 @@ class LicenseApiService
                     'response_json' => $responseData
                 ]);
 
-                // Check for specific error cases that might be recoverable
-                if ($apiCode === 730 || (is_string($apiMessage) && (str_contains($apiMessage, '已存在') || str_contains($apiMessage, 'already exists') || str_contains($apiMessage, 'exist')))) {
-                    // License already exists - verify it's actually there
+                // Check for specific error cases
+                if ($apiCode === 730 || (is_string($apiMessage) && (str_contains($apiMessage, 'already exists') || str_contains($apiMessage, 'exist')))) {
+                    // License already exists
                     Log::warning('License may already exist for tenant - verifying', [
                         'tenant_id' => $tenantId,
                         'license_key' => $licenseKey,
                         'api_message' => $apiMessage
                     ]);
-                    
+
                     // Check if license actually exists in tenant's subscription summary
                     try {
                         $summary = $this->getSubscriptionSummary($tenantId, true);
@@ -312,19 +312,15 @@ class LicenseApiService
     {
         $name = mb_strtolower($subscriptionName);
 
-        // Chinese -> English mappings for clarity
-        // 试用版 -> Trial Version
-        // 云端高级直播-一年版 -> Cloud Advanced Live Streaming – 1 Year Plan
-
 		$aliases = [
-			'free' => ['Free', 'free', 'free version', 'free plan', '免费', '免费版','Trial', 'trial', 'trial version', '试用', '试用版'],
-			'trial' => ['Trial', 'trial', 'trial version', '试用', '试用版'],
+			'free' => ['Free', 'free', 'free version', 'free plan', 'Trial', 'trial', 'trial version'],
+			'trial' => ['Trial', 'trial', 'trial version'],
 			'starter' => ['Starter','starter', 'starter plan', 'starter package', 'starter tier'],
 			'pro' => ['Pro', 'pro', 'pro plan'],
 			'business' => ['Business', 'business', 'business plan'],
-			'enterprise' => ['Enterprise', 'enterprise', 'enterprise plan', '企业版'],
-			'avatar customization' => ['Avatar Customization', 'avatar customization', 'avatar-customization', 'avatar', 'avatar 定制', '形象定制'],
-			'voice customization' => ['Voice Customization', 'voice customization', 'voice-customization', 'voice', '语音定制'],
+			'enterprise' => ['Enterprise', 'enterprise', 'enterprise plan'],
+			'avatar customization' => ['Avatar Customization', 'avatar customization', 'avatar-customization', 'avatar'],
+			'voice customization' => ['Voice Customization', 'voice customization', 'voice-customization', 'voice'],
 			'cloud-advanced-live-streaming-1-year' => ['Cloud Advanced Live Streaming – 1 Year Plan', 'cloud advanced live streaming – 1 year plan', 'cloud advanced live streaming-1 year plan'],
 		];
 

@@ -389,14 +389,11 @@ class FixOldUsersTenantAndPassword extends Command
             $createJson = $createResponse->json();
 
             // Handle case where user is already registered in tenant system
-            if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], '管理员已注册其他企业')) {
+                if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], 'User is already registered in the system')) {
                 Log::warning('User already registered in tenant system, attempting to extract tenant_id', [
                     'user_id' => $user->id,
                     'email' => $user->email
                 ]);
-                // Try to get tenant_id from existing registration - this might not be possible
-                // For now, we'll skip and just try password binding
-                // The user might need manual intervention
                 return null;
             }
 

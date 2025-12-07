@@ -291,7 +291,7 @@ class SocialAuthenticationTest extends TestCase
         Http::fake([
             '*/api/partner/tenant/create' => Http::response([
                 'code' => 730,
-                'message' => '管理员已注册其他企业',
+                'message' => 'User is already registered in the system',
                 'data' => null
             ], 200),
         ]);
