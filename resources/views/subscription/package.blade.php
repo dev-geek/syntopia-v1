@@ -81,7 +81,7 @@
                 <div class="stat-line"><span>Current</span><span class="value">0</span><span>Minutes</span></div>
                 <div class="total-right">
                   @if($latest_order_package == 'Free')
-                  Total 120 Minutes
+                  Total 19 Minutes
                 @elseif($latest_order_package == 'Starter')
                 Total 60 Hours
                 @elseif($latest_order_package == 'Pro')
@@ -101,11 +101,11 @@
                   @if($latest_order_package == 'Free')
                   Total 5 MB
                 @elseif($latest_order_package == 'Starter')
-                Total 5 GB
+                Total 1 GB
                 @elseif($latest_order_package == 'Pro')
-                Total 5 GB
+                Total 1 GB
                 @elseif($latest_order_package == 'Business')
-                Total 5 GB
+                Total 1 GB
                 @endif
                 </div>
                 <div class="progress-bar"><div class="progress-fill gray" style="width: 0%;"></div></div>

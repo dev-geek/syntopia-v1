@@ -562,7 +562,7 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
                             src="https://syntopia.ai/wp-content/uploads/2025/02/facebook-icon.png"
                             alt="Facebook Logo"> Continue with Facebook</button>
                 </a> -->
-                <p class="terms">By signing up to the Synthesia platform, you understand and agree with our <a
+                <p class="terms">By signing up to the Syntopia platform, you understand and agree with our <a
                         href="#">Customer Terms of Service</a> and <a href="#">Privacy Policy</a>.</p>
             </div>
             <p class="support">Having trouble? Contact us at <a href="mailto:info@syntopia.ai">info@syntopia.ai</a></p>

@@ -94,9 +94,9 @@ class ProfileController extends Controller
     public function package($package_name)
     {
         $packages = [
-            'starter' => ['name' => 'Starter', 'amount' => 390],
+            'starter' => ['name' => 'Starter', 'amount' => 380],
             'pro' => ['name' => 'Pro', 'amount' => 780],
-            'business' => ['name' => 'Business', 'amount' => 2800],
+            'business' => ['name' => 'Business', 'amount' => 2580],
             'free' => ['name' => 'Free', 'amount' => 0],
         ];
 
