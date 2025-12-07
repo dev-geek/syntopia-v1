@@ -8,9 +8,9 @@
         default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
         font-src 'self' https://fonts.gstatic.com;
-        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://cdn.firstpromoter.com 'unsafe-inline' 'unsafe-eval';
-        img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
-        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://api.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com https://firstpromoter.com https://*.firstpromoter.com;
+        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://cdn.firstpromoter.com https://connect.facebook.net 'unsafe-inline' 'unsafe-eval';
+        img-src 'self' https://syntopia.ai https://sbl.onfastspring.com https://www.facebook.com data:;
+        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://api.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com https://firstpromoter.com https://*.firstpromoter.com https://www.facebook.com https://connect.facebook.net;
         frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
         media-src 'self' data: https://sbl.onfastspring.com;">
 
@@ -47,6 +47,26 @@ fpr("click");
 
 </script>
 <script src="https://cdn.firstpromoter.com/fpr.js" async></script>
+
+    <!-- Facebook Pixel Code -->
+    <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window,document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1908567163348981');
+    fbq('track', 'PageView');
+    </script>
+    <noscript>
+    <img height="1" width="1"
+    src="https://www.facebook.com/tr?id=1908567163348981&ev=PageView
+    &noscript=1"/>
+    </noscript>
+    <!-- End Facebook Pixel Code -->
 
 </head>
 <body>

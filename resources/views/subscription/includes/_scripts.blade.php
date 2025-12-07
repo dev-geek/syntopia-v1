@@ -17,6 +17,24 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
+        // Track Facebook Pixel CompleteRegistration event for newly verified users
+        @if(session('success') && str_contains(session('success'), 'verified'))
+            if (typeof fbq !== 'undefined') {
+                fbq('track', 'CompleteRegistration', {
+                    content_name: 'Email Verification Complete'
+                });
+                console.log('Facebook Pixel CompleteRegistration event tracked');
+            }
+        @endif
+
+        // Track Facebook Pixel Lead event for new users without subscription
+        if (typeof fbq !== 'undefined' && hasActiveSubscription === 'false' && pageType === 'new') {
+            fbq('track', 'Lead', {
+                content_name: 'Subscription Page Visit'
+            });
+            console.log('Facebook Pixel Lead event tracked for new user');
+        }
+
         console.log('Page configuration:', {
             currentPackage,
             currentPackagePrice,
@@ -268,6 +286,21 @@
                     return;
                 }
 
+                // Track Facebook Pixel InitiateCheckout event
+                if (typeof fbq !== 'undefined') {
+                    const packagePrice = parseFloat(this.closest('.card')?.querySelector('.price')?.textContent?.replace(/[^0-9.]/g, '') || '0') || 0;
+                    fbq('track', 'InitiateCheckout', {
+                        value: packagePrice,
+                        currency: 'USD',
+                        content_name: packageName
+                    });
+                    console.log('Facebook Pixel InitiateCheckout event tracked:', {
+                        value: packagePrice,
+                        currency: 'USD',
+                        content_name: packageName
+                    });
+                }
+
                 // Show loading state
                 setButtonLoading(this, true);
                 showSpinner('Preparing payment...', `Setting up ${packageName} plan checkout`);
@@ -481,18 +514,18 @@
             // Create a proper event callback function
             const paddleEventCallback = function(eventData) {
                 console.log('Paddle event callback triggered:', eventData);
-                
+
                 // Track referral when checkout is completed
                 if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {
                     const email = eventData.data?.customer?.email || userEmail;
                     const uid = eventData.data?.customer?.id || loggedInUserId;
-                    
+
                     if (email && uid && typeof fpr !== 'undefined') {
                         console.log('Tracking FirstPromoter referral:', { email, uid });
                         fpr("referral", { email, uid });
                     }
                 }
-                
+
                 handlePaddleEvent(eventData, action);
             };
 
