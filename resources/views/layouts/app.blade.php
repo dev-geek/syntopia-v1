@@ -8,9 +8,9 @@
         default-src 'self' data: gap: https://ssl.gstatic.com https://livebuzzstudio.test;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com;
         font-src 'self' https://fonts.gstatic.com;
-        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com 'unsafe-inline' 'unsafe-eval';
+        script-src 'self' https://livebuzzstudio.test https://somedomain.com https://sbl.onfastspring.com https://cdn.jsdelivr.net https://cdn.paddle.com https://sandbox-cdn.paddle.com https://secure.payproglobal.com https://cdn.firstpromoter.com 'unsafe-inline' 'unsafe-eval';
         img-src 'self' https://syntopia.ai https://sbl.onfastspring.com data:;
-        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://api.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com;
+        connect-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://sandbox-api.paddle.com https://sandbox-cdn.paddle.com https://api.paddle.com https://cdn.paddle.com https://store.payproglobal.com https://secure.payproglobal.com https://firstpromoter.com https://*.firstpromoter.com;
         frame-src 'self' https://livebuzzstudio.test https://livebuzzstudio.test.onfastspring.com https://sbl.onfastspring.com https://cdn.paddle.com https://sandbox-cdn.paddle.com https://sandbox-buy.paddle.com;
         media-src 'self' data: https://sbl.onfastspring.com;">
 
@@ -38,7 +38,15 @@
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 
+    <!-- FirstPromoter Tracking Script -->
+    <script>(function(w){w.fpr=w.fpr||function(){w.fpr.q = w.fpr.q||[];w.fpr.q[arguments[0]=='set'?'unshift':'push'](arguments);};})(window);
 
+fpr("init", {cid:"s5acbg16"});
+
+fpr("click");
+
+</script>
+<script src="https://cdn.firstpromoter.com/fpr.js" async></script>
 
 </head>
 <body>

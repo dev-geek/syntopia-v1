@@ -10,6 +10,11 @@
     const selectedPackage = @json($selectedPackage ?? null);
     const currentPaymentGateway = "{{ $currentLoggedInUserPaymentGateway ?? '' }}";
     const loggedInUserId = "{{ Auth::id() ?? '' }}";
+    const userEmail = "{{ Auth::user()->email ?? '' }}";
+
+    function getFPTid() {
+        return window.FPROM && window.FPROM.data && window.FPROM.data.tid;
+    }
 
     document.addEventListener("DOMContentLoaded", function() {
         console.log('Page configuration:', {
@@ -460,18 +465,51 @@
                 transactionId: transactionId
             });
 
+            // Get FirstPromoter tracking ID
+            const fpTid = getFPTid();
+            console.log('FirstPromoter tracking ID:', fpTid);
+
+            // Prepare custom data for FirstPromoter tracking
+            const customData = {};
+            if (fpTid) {
+                customData.fp_tid = fpTid;
+            }
+            if (userEmail) {
+                customData.email = userEmail;
+            }
+
             // Create a proper event callback function
             const paddleEventCallback = function(eventData) {
                 console.log('Paddle event callback triggered:', eventData);
+                
+                // Track referral when checkout is completed
+                if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {
+                    const email = eventData.data?.customer?.email || userEmail;
+                    const uid = eventData.data?.customer?.id || loggedInUserId;
+                    
+                    if (email && uid && typeof fpr !== 'undefined') {
+                        console.log('Tracking FirstPromoter referral:', { email, uid });
+                        fpr("referral", { email, uid });
+                    }
+                }
+                
                 handlePaddleEvent(eventData, action);
             };
 
             // Open Paddle checkout with proper error handling
             try {
-                Paddle.Checkout.open({
+                const checkoutOptions = {
                     transactionId: transactionId,
                     eventCallback: paddleEventCallback
-                });
+                };
+
+                // Add customData if we have FirstPromoter tracking ID or email
+                if (Object.keys(customData).length > 0) {
+                    checkoutOptions.customData = customData;
+                    console.log('Paddle checkout with customData:', customData);
+                }
+
+                Paddle.Checkout.open(checkoutOptions);
             } catch (error) {
                 console.error('Error opening Paddle checkout:', error);
                 showError('Checkout Error', 'Failed to open payment checkout. Please try again.');
