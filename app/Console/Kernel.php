@@ -14,13 +14,13 @@ class Kernel extends ConsoleKernel
     {
         // $schedule->command('inspire')->hourly();
 
-        $schedule->command('tenant:retry-assignment')
-            ->hourly()
+        $schedule->command('tenant:retry-assignment --limit=50')
+            ->everyFiveMinutes()
             ->withoutOverlapping()
             ->runInBackground();
 
-        $schedule->command('password:retry-binding')
-            ->hourly()
+        $schedule->command('password:retry-binding --limit=50')
+            ->everyFiveMinutes()
             ->withoutOverlapping()
             ->runInBackground();
     }
