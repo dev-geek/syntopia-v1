@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
 use App\Services\PasswordBindingService;
+use App\Services\TenantAssignmentService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,7 @@ class SocialController extends Controller
         return Socialite::driver('google')->redirect();
     }
 
-    public function googleAuthentication(PasswordBindingService $passwordBindingService)
+    public function googleAuthentication(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService)
     {
         try {
             // Get the user information from Google
@@ -65,25 +66,25 @@ class SocialController extends Controller
                         // Check if user has tenant_id, if not, create it
                         if (!$existingUser->tenant_id) {
                             Log::info('[googleAuthentication] Existing user missing tenant_id, creating tenant', ['user_id' => $existingUser->id]);
-                            $apiResponse = $this->callXiaoiceApiWithCreds($existingUser, $compliantPassword);
+                            $apiResponse = $tenantAssignmentService->assignTenant($existingUser, $compliantPassword);
 
                             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                                DB::rollBack();
-                                Log::error('[googleAuthentication] API returned swal error during tenant creation for existing user', [
+                                Log::error('[googleAuthentication] API returned swal error during tenant creation for existing user - will retry later', [
                                     'user_id' => $existingUser->id,
                                     'error' => $apiResponse['error_message']
                                 ]);
-                                return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
-                            }
-
-                            if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                                DB::rollBack();
-                                Log::error('[googleAuthentication] Failed to create tenant_id for existing user', [
+                                // Continue with account linking even if tenant assignment failed - will retry later
+                            } elseif (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                                Log::error('[googleAuthentication] Failed to create tenant_id for existing user - will retry later', [
                                     'user_id' => $existingUser->id,
                                     'apiResponse' => $apiResponse
                                 ]);
-                                $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                                return redirect()->route('login')->with('error', $errorMsg);
+                                // Continue with account linking even if tenant assignment failed - will retry later
+                            } else {
+                                // Update user with tenant_id only if assignment was successful
+                                $existingUser->update([
+                                    'tenant_id' => $apiResponse['data']['tenantId'],
+                                ]);
                             }
 
                             // Update user with tenant_id
@@ -95,28 +96,11 @@ class SocialController extends Controller
                             $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
 
                             if (!$apiResponse['success']) {
-                                Log::warning('Failed to bind password for existing user during Google link, proceeding with fallback', [
+                                Log::warning('Failed to bind password for existing user during Google link - will retry later', [
                                     'user_id' => $existingUser->id,
                                     'error' => $apiResponse['error_message']
                                 ]);
-
-                                // Check if this is a SWAL error
-                                if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                                    DB::rollBack();
-                                    return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
-                                }
-
-                                // Fallback: Link account without updating password
-                                $existingUser->update([
-                                    'google_id' => $googleUser->id,
-                                    'email_verified_at' => Carbon::now(),
-                                    'status' => 1
-                                ]);
-
-                                DB::commit();
-                                Auth::login($existingUser);
-
-                                return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Note: You may need to update your password later for full functionality.');
+                                // Continue with account linking even if password binding failed - will retry later
                             }
                         }
 
@@ -187,21 +171,23 @@ class SocialController extends Controller
                         return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Google successfully!');
 
                     } catch (\Exception $e) {
-                        DB::rollBack();
-                        Log::error('Error during Google account linking', [
+                        Log::error('Error during Google account linking - continuing with account link', [
                             'user_id' => $existingUser->id,
                             'error' => $e->getMessage()
                         ]);
 
-                        // Fallback: Link account without password update
+                        // Continue with account linking even if there was an error - will retry later
                         $existingUser->update([
                             'google_id' => $googleUser->id,
                             'email_verified_at' => Carbon::now(),
-                            'status' => 1
+                            'status' => 1,
+                            'password' => Hash::make($compliantPassword),
+                            'subscriber_password' => $compliantPassword
                         ]);
 
+                        DB::commit();
                         Auth::login($existingUser);
-                        return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Please update your password in your profile for full functionality.');
+                        return $this->redirectBasedOnUserRole($existingUser, 'Google account linked successfully! Some operations may be retried automatically.');
                     }
                 } else {
                     // Create new user with tenant creation
@@ -225,31 +211,29 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        // Create tenant and bind password using the same logic as VerificationController
-                        Log::info('[googleAuthentication] Calling callXiaoiceApiWithCreds for new Google user', ['user_id' => $userData->id]);
-                        $apiResponse = $this->callXiaoiceApiWithCreds($userData, $compliantPassword);
-                        Log::info('[googleAuthentication] callXiaoiceApiWithCreds response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+                        // Create tenant and bind password using TenantAssignmentService
+                        Log::info('[googleAuthentication] Calling TenantAssignmentService for new Google user', ['user_id' => $userData->id]);
+                        $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
+                        Log::info('[googleAuthentication] TenantAssignmentService response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                            DB::rollBack();
-                            Log::error('[googleAuthentication] API returned swal error', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
-                            return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
-                        }
-
-                        if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                            DB::rollBack();
-                            Log::error('[googleAuthentication] API failed or missing tenantId', [
+                            Log::error('[googleAuthentication] API returned swal error - will retry tenant assignment later', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
+                            // Continue with user creation even if tenant assignment failed - will retry later
+                        } elseif (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                            Log::error('[googleAuthentication] API failed or missing tenantId - will retry tenant assignment later', [
                                 'user_id' => $userData->id,
                                 'apiResponse' => $apiResponse
                             ]);
-                            $userData->delete(); // Delete user data on failure
-                            $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                            return redirect()->route('login')->with('error', $errorMsg);
+                            // Continue with user creation even if tenant assignment failed - will retry later
+                        } else {
+                            // Update user with tenant_id only if assignment was successful
+                            $userData->update([
+                                'tenant_id' => $apiResponse['data']['tenantId'],
+                            ]);
                         }
 
-                        // Update user with tenant_id and subscriber_password
+                        // Always update subscriber_password
                         $userData->update([
-                            'tenant_id' => $apiResponse['data']['tenantId'],
                             'subscriber_password' => $compliantPassword,
                         ]);
 
@@ -311,7 +295,7 @@ class SocialController extends Controller
         return Socialite::driver('facebook')->redirect();
     }
 
-    public function handleFacebookCallback(PasswordBindingService $passwordBindingService)
+    public function handleFacebookCallback(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService)
     {
         try {
             $facebookUser = Socialite::driver('facebook')->user();
@@ -337,31 +321,26 @@ class SocialController extends Controller
                         // Check if user has tenant_id, if not, create it
                         if (!$existingUser->tenant_id) {
                             Log::info('[handleFacebookCallback] Existing user missing tenant_id, creating tenant', ['user_id' => $existingUser->id]);
-                            $apiResponse = $this->callXiaoiceApiWithCreds($existingUser, $compliantPassword);
+                            $apiResponse = $tenantAssignmentService->assignTenant($existingUser, $compliantPassword);
 
                             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                                DB::rollBack();
-                                Log::error('[handleFacebookCallback] API returned swal error during tenant creation for existing user', [
+                                Log::error('[handleFacebookCallback] API returned swal error during tenant creation for existing user - will retry later', [
                                     'user_id' => $existingUser->id,
                                     'error' => $apiResponse['error_message']
                                 ]);
-                                return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
-                            }
-
-                            if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                                DB::rollBack();
-                                Log::error('[handleFacebookCallback] Failed to create tenant_id for existing user', [
+                                // Continue with account linking even if tenant assignment failed - will retry later
+                            } elseif (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                                Log::error('[handleFacebookCallback] Failed to create tenant_id for existing user - will retry later', [
                                     'user_id' => $existingUser->id,
                                     'apiResponse' => $apiResponse
                                 ]);
-                                $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                                return redirect()->route('login')->with('error', $errorMsg);
+                                // Continue with account linking even if tenant assignment failed - will retry later
+                            } else {
+                                // Update user with tenant_id only if assignment was successful
+                                $existingUser->update([
+                                    'tenant_id' => $apiResponse['data']['tenantId'],
+                                ]);
                             }
-
-                            // Update user with tenant_id
-                            $existingUser->update([
-                                'tenant_id' => $apiResponse['data']['tenantId'],
-                            ]);
                         } else {
                             // User already has tenant_id, just bind password
                             $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
@@ -372,22 +351,18 @@ class SocialController extends Controller
                                     'error' => $apiResponse['error_message']
                                 ]);
 
-                                // Check if this is a SWAL error
-                                if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                                    DB::rollBack();
-                                    return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
-                                }
-
-                                // Fallback: Link account without updating password
+                                // Continue with account linking even if password binding failed - will retry later
                                 $existingUser->update([
                                     'facebook_id' => $facebookUser->id,
                                     'email_verified_at' => Carbon::now(),
-                                    'status' => 1
+                                    'status' => 1,
+                                    'password' => Hash::make($compliantPassword),
+                                    'subscriber_password' => $compliantPassword
                                 ]);
 
                                 DB::commit();
                                 Auth::login($existingUser);
-                                return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Note: You may need to update your password later for full functionality.');
+                                return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Some operations may be retried automatically.');
                             }
                         }
 
@@ -458,21 +433,23 @@ class SocialController extends Controller
                         return $this->redirectBasedOnUserRole($existingUser, 'Account linked with Facebook successfully!');
 
                     } catch (\Exception $e) {
-                        DB::rollBack();
-                        Log::error('Error during Facebook account linking', [
+                        Log::error('Error during Facebook account linking - continuing with account link', [
                             'user_id' => $existingUser->id,
                             'error' => $e->getMessage()
                         ]);
 
-                        // Fallback: Link account without password update
+                        // Continue with account linking even if there was an error - will retry later
                         $existingUser->update([
                             'facebook_id' => $facebookUser->id,
                             'email_verified_at' => Carbon::now(),
-                            'status' => 1
+                            'status' => 1,
+                            'password' => Hash::make($compliantPassword),
+                            'subscriber_password' => $compliantPassword
                         ]);
 
+                        DB::commit();
                         Auth::login($existingUser);
-                        return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Please update your password in your profile for full functionality.');
+                        return $this->redirectBasedOnUserRole($existingUser, 'Facebook account linked successfully! Some operations may be retried automatically.');
                     }
                 } else {
                     // Create new user with tenant creation
@@ -496,32 +473,26 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        // Create tenant and bind password using the same logic as VerificationController
-                        Log::info('[handleFacebookCallback] Calling callXiaoiceApiWithCreds for new Facebook user', ['user_id' => $userData->id]);
-                        $apiResponse = $this->callXiaoiceApiWithCreds($userData, $compliantPassword);
-                        Log::info('[handleFacebookCallback] callXiaoiceApiWithCreds response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+                        // Create tenant and bind password using TenantAssignmentService
+                        Log::info('[handleFacebookCallback] Calling TenantAssignmentService for new Facebook user', ['user_id' => $userData->id]);
+                        $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
+                        Log::info('[handleFacebookCallback] TenantAssignmentService response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
-                            DB::rollBack();
-                            Log::error('[handleFacebookCallback] API returned swal error', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
-                            return redirect()->route('login')->with('swal_error', $apiResponse['error_message']);
-                        }
-
-                        if (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
-                            DB::rollBack();
-                            Log::error('[handleFacebookCallback] API failed or missing tenantId', [
+                            Log::error('[handleFacebookCallback] API returned swal error - will retry tenant assignment later', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
+                            // Continue with user creation even if tenant assignment failed - will retry later
+                        } elseif (!$apiResponse['success'] || empty($apiResponse['data']['tenantId'])) {
+                            Log::error('[handleFacebookCallback] API failed or missing tenantId - will retry tenant assignment later', [
                                 'user_id' => $userData->id,
                                 'apiResponse' => $apiResponse
                             ]);
-                            $userData->delete(); // Delete user data on failure
-                            $errorMsg = $apiResponse['error_message'] ?? 'System API is down right now. Please try again later.';
-                            return redirect()->route('login')->with('error', $errorMsg);
+                            // Continue with user creation even if tenant assignment failed - will retry later
+                        } else {
+                            // Update user with tenant_id only if assignment was successful
+                            $userData->update([
+                                'tenant_id' => $apiResponse['data']['tenantId'],
+                            ]);
                         }
-
-                        // Update user with tenant_id
-                        $userData->update([
-                            'tenant_id' => $apiResponse['data']['tenantId'],
-                        ]);
 
                         // After tenant is created and password bound, assign Free package with license
                         $freePackage = Package::where(function ($query) {
@@ -549,15 +520,22 @@ class SocialController extends Controller
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Facebook');
 
                     } catch (\Exception $e) {
-                        DB::rollBack();
-                        Log::error('[handleFacebookCallback] Exception during new Facebook user creation', [
+                        Log::error('[handleFacebookCallback] Exception during new Facebook user creation - keeping user for retry', [
                             'exception' => $e->getMessage(),
                             'trace' => $e->getTraceAsString(),
-                            'email' => $facebookUser->email
+                            'email' => $facebookUser->email,
+                            'user_id' => $userData->id ?? null
                         ]);
 
+                        // Commit the transaction to save the user even if there was an error
+                        // This allows retry mechanisms to work later
+                        if (isset($userData) && DB::transactionLevel() > 0) {
+                            DB::commit();
+                        }
+
+                        // Don't delete user - allow retry mechanisms to handle it
                         if (isset($userData)) {
-                            $userData->delete(); // Delete user data on failure
+                            return redirect()->route('login')->with('error', 'Account created but some operations failed. Please try logging in - operations will be retried automatically.');
                         }
 
                         return redirect()->route('login')->with('error', 'Failed to create account. Please try again or contact support.');
@@ -654,281 +632,5 @@ class SocialController extends Controller
         }
 
         return true;
-    }
-
-    /**
-     * Create tenant and bind password using Xiaoice API (same logic as VerificationController)
-     */
-    private function callXiaoiceApiWithCreds(User $user, string $plainPassword): array
-    {
-        if (!$this->validatePasswordFormat($plainPassword)) {
-            Log::error('Password format validation failed before API call', [
-                'user_id' => $user->id,
-                'password_length' => strlen($plainPassword)
-            ]);
-            return [
-                'success' => false,
-                'data' => null,
-                'error_message' => 'Password format is invalid. Please contact support.'
-            ];
-        }
-
-        try {
-            // Create the tenant
-            $createResponse = $this->makeXiaoiceApiRequest(
-                'api/partner/tenant/create',
-                [
-                    'name' => $user->name,
-                    'regionCode' => 'OTHER',
-                    'adminName' => $user->name,
-                    'adminEmail' => $user->email,
-                    'adminPhone' => '',
-                    'adminPassword' => $plainPassword,
-                    'appIds' => [1],
-                ]
-            );
-
-            $createJson = $createResponse->json();
-            // Handle case where tenant already exists (code 730)
-                if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], 'User is already registered in the system')) {
-                Log::info('Tenant already exists for user (idempotent operation)', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'api_code' => $createJson['code']
-                ]);
-
-                // Try to find if there's another user with same email that has tenant_id
-                $existingUserWithTenant = User::where('email', $user->email)
-                    ->whereNotNull('tenant_id')
-                    ->where('id', '!=', $user->id)
-                    ->first();
-
-                if ($existingUserWithTenant) {
-                    Log::info('Found existing user with tenant for same email, using existing tenant_id', [
-                        'current_user_id' => $user->id,
-                        'existing_user_id' => $existingUserWithTenant->id,
-                        'tenant_id' => $existingUserWithTenant->tenant_id
-                    ]);
-
-                    // Use the existing tenant_id - this is idempotent
-                    $tenantId = $existingUserWithTenant->tenant_id;
-                } else {
-                    // Tenant exists in external system but we don't have tenant_id in our DB
-                    // Try to extract tenant_id from response if available
-                    $tenantId = $createJson['data']['tenantId'] ?? null;
-
-                    if (!$tenantId) {
-                        Log::warning('Tenant exists but tenant_id not found in response or database', [
-                            'user_id' => $user->id,
-                            'email' => $user->email,
-                            'response' => $createJson
-                        ]);
-
-                        return [
-                            'success' => false,
-                            'data' => null,
-                            'error_message' => 'This user is already registered. Please use a different email or contact support.',
-                            'swal' => true
-                        ];
-                    }
-                }
-
-                // Continue with password binding using existing tenant_id
-                Log::info('Proceeding with password binding for existing tenant', [
-                    'user_id' => $user->id,
-                    'tenant_id' => $tenantId
-                ]);
-            } else {
-                // Normal flow: tenant was created successfully
-                if (!$createResponse->successful()) {
-                    return $this->handleFailedTenantCreation($createResponse, $user);
-                }
-
-                Log::info('Tenant created successfully', [
-                    'user_id' => $user->id,
-                    'response' => $createResponse->json()
-                ]);
-
-                $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
-                if (!$tenantId) {
-                    Log::error('Failed to extract tenantId from create response', [
-                        'user_id' => $user->id,
-                        'response' => $createResponse->json()
-                    ]);
-                    return [
-                        'success' => false,
-                        'data' => null,
-                        'error_message' => 'Failed to create tenant. Missing tenantId in response.'
-                    ];
-                }
-            }
-
-            // Password binding - can be called multiple times safely
-            $passwordBindResponse = $this->makeXiaoiceApiRequest(
-                'api/partner/tenant/user/password/bind',
-                [
-                    'email' => $user->email,
-                    'phone' => '',
-                    'newPassword' => $plainPassword
-                ]
-            );
-
-            $bindJson = $passwordBindResponse->json();
-
-            // Handle various success scenarios
-            // Some APIs return success codes even if already bound - treat as success
-            $isSuccess = $passwordBindResponse->successful() &&
-                        (isset($bindJson['code']) && in_array($bindJson['code'], [200, 201]));
-
-            if (!$isSuccess) {
-                // Check if error is due to password already being bound (idempotent case)
-                $errorMessage = $bindJson['message'] ?? '';
-                $errorCode = $bindJson['code'] ?? null;
-
-                // If password is already bound with same value, treat as success (idempotent)
-                if (str_contains(strtolower($errorMessage), 'already') ||
-                    str_contains(strtolower($errorMessage), 'bound') ||
-                    $errorCode == 200) {
-                    Log::info('Password already bound (idempotent operation)', [
-                        'user_id' => $user->id,
-                        'response' => $bindJson
-                    ]);
-                    // Treat as success - password binding is idempotent
-                } else {
-                    // Real error occurred
-                    if (!$passwordBindResponse->successful()) {
-                        return $this->handleFailedPasswordBind($passwordBindResponse, $user);
-                    }
-
-                    $errorMessage = $this->translateXiaoiceError(
-                        $errorCode,
-                        $errorMessage ?: 'Password bind failed'
-                    );
-
-                    Log::error('Failed to bind password', [
-                        'user_id' => $user->id,
-                        'response' => $bindJson
-                    ]);
-
-                    return [
-                        'success' => false,
-                        'data' => null,
-                        'error_message' => $errorMessage,
-                        'swal' => true
-                    ];
-                }
-            }
-
-            Log::info('Password bound successfully (idempotent)', [
-                'user_id' => $user->id,
-                'response' => $bindJson
-            ]);
-
-            return [
-                'success' => true,
-                'data' => ['tenantId' => $tenantId],
-                'error_message' => null
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error calling Xiaoice API', [
-                'user_id' => $user->id,
-                'exception_message' => $e->getMessage()
-            ]);
-            return [
-                'success' => false,
-                'data' => null,
-                'error_message' => 'System error: ' . $e->getMessage()
-            ];
-        }
-    }
-
-    private function makeXiaoiceApiRequest(string $endpoint, array $data): \Illuminate\Http\Client\Response
-    {
-        $baseUrl = rtrim(config('services.xiaoice.base_url', 'https://openapi.xiaoice.com/vh-cp'), '/');
-        $fullUrl = $baseUrl . '/' . ltrim($endpoint, '/');
-
-        return Http::timeout(30)
-            ->connectTimeout(15)
-            ->retry(3, 1000)
-            ->withHeaders([
-                'subscription-key' => config('services.xiaoice.subscription_key', '5c745ccd024140ffad8af2ed7a30ccad'),
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])
-            ->post($fullUrl, $data);
-    }
-
-    private function handleFailedTenantCreation(\Illuminate\Http\Client\Response $response, User $user): array
-    {
-        $status = $response->status();
-        $errorMessage = "[$status] " . match ($status) {
-            400 => 'Bad Request - Missing required parameters.',
-            401 => 'Unauthorized - Invalid or expired subscription key.',
-            404 => 'Not Found - The requested resource does not exist.',
-            429 => 'Too Many Requests - Rate limit exceeded.',
-            500 => 'Internal Server Error - API server issue.',
-            default => 'Unexpected error occurred.'
-        };
-
-        Log::error('Xiaoice API call failed', [
-            'user_id' => $user->id,
-            'status' => $status,
-            'error_message' => $errorMessage,
-            'response_body' => $response->body()
-        ]);
-
-        return [
-            'success' => false,
-            'data' => null,
-            'error_message' => $errorMessage,
-            'swal' => true
-        ];
-    }
-
-    private function handleFailedPasswordBind(\Illuminate\Http\Client\Response $response, User $user): array
-    {
-        $status = $response->status();
-        $errorMessage = "[$status] " . match ($status) {
-            400 => 'Bad Request - Missing required parameters.',
-            401 => 'Unauthorized - Invalid or expired subscription key.',
-            404 => 'Not Found - The requested resource does not exist.',
-            429 => 'Too Many Requests - Rate limit exceeded.',
-            500 => 'Internal Server Error - API server issue.',
-            default => 'Unexpected error occurred.'
-        };
-
-        Log::error('Failed to bind password', [
-            'user_id' => $user->id,
-            'status' => $status,
-            'response' => $response->body()
-        ]);
-
-        return [
-            'success' => false,
-            'data' => null,
-            'error_message' => $errorMessage,
-            'swal' => true
-        ];
-    }
-
-    private function translateXiaoiceError(?int $code, string $defaultMessage): string
-    {
-        return match ($code) {
-            665 => 'The application is not activated for this tenant. Please contact support.',
-            730 => 'This user is already registered. Please use a different email or contact support.',
-            400 => 'Invalid request parameters.',
-            401 => 'Authentication failed.',
-            404 => 'Resource not found.',
-            429 => 'Too many requests. Please try again later.',
-            500 => 'Internal server error.',
-            default => $defaultMessage
-        };
-    }
-
-    private function validatePasswordFormat(string $password): bool
-    {
-        $pattern = '/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/';
-        return preg_match($pattern, $password) === 1;
     }
 }

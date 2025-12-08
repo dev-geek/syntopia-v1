@@ -13,6 +13,16 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('inspire')->hourly();
+
+        $schedule->command('tenant:retry-assignment')
+            ->hourly()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        $schedule->command('password:retry-binding')
+            ->hourly()
+            ->withoutOverlapping()
+            ->runInBackground();
     }
 
     /**

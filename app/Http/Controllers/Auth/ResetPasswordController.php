@@ -98,16 +98,15 @@ class ResetPasswordController extends Controller
             $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
 
             if (!$apiResponse['success']) {
-                Log::error('Password binding API failed during reset', [
+                Log::warning('Password binding API failed during reset - will retry later', [
                     'user_id' => $user->id,
                     'email' => $user->email,
                     'error' => $apiResponse['error_message']
                 ]);
-                return back()->withErrors(['password' => 'Unable to update password in external system. Please try again or contact support.'])->withInput();
+                // Continue with password update even if binding failed - will retry later
             }
 
-            // Update password in database within a transaction
-            DB::beginTransaction();
+            // Update password in database even if binding failed - will retry later
             try {
                 $user->password = $validated['password'];
                 $user->subscriber_password = $validated['password'];
@@ -118,21 +117,23 @@ class ResetPasswordController extends Controller
                     ->where('email', $validated['email'])
                     ->delete();
 
-                DB::commit();
-
                 Log::info('Password reset successful', [
                     'user_id' => $user->id,
                     'email' => $user->email,
-                    'ip' => $request->ip()
+                    'ip' => $request->ip(),
+                    'password_binding_success' => $apiResponse['success'] ?? false
                 ]);
 
                 // Log the user in after successful password reset
                 auth()->login($user);
 
-                return redirect($this->redirectTo)->with('success', 'Password successfully updated and synchronized with external services.');
+                $message = $apiResponse['success']
+                    ? 'Password successfully updated and synchronized with external services.'
+                    : 'Password updated successfully. Password binding will be retried automatically.';
+
+                return redirect($this->redirectTo)->with('success', $message);
 
             } catch (Exception $e) {
-                DB::rollBack();
                 Log::error('Database error during password reset', [
                     'user_id' => $user->id,
                     'email' => $user->email,

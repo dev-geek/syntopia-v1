@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use App\Models\User;
 use App\Models\Order;
 use Maatwebsite\Excel\Facades\Excel;
@@ -169,10 +170,14 @@ class AdminController extends Controller
             $apiResponse = $passwordBindingService->bindPassword($user, $request->password);
 
             if (!$apiResponse['success']) {
-                return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+                Log::warning('Password binding failed during admin user update - will retry later', [
+                    'user_id' => $user->id,
+                    'error' => $apiResponse['error_message']
+                ]);
+                // Continue with password update even if binding failed - will retry later
             }
 
-            // Only update password if API call was successful
+            // Update password even if binding failed - will retry later
             $user->password = $request->password;
             $user->subscriber_password = $request->password;
         }
@@ -228,17 +233,7 @@ class AdminController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // Call password binding API before creating the user
-        $apiResponse = $passwordBindingService->bindPassword(
-            (new User())->forceFill(['email' => $validated['email']]),
-            $validated['password']
-        );
-
-        if (!$apiResponse['success']) {
-            return back()->with('swal_error', $apiResponse['error_message'])->withInput();
-        }
-
-        // Create the user only if API call was successful
+        // Create the user first
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
@@ -246,6 +241,17 @@ class AdminController extends Controller
             'subscriber_password' => $validated['password'],
             'status' => $request->input('status'),
         ]);
+
+        // Try to bind password (requires tenant_id, so may fail if tenant not assigned yet)
+        $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
+
+        if (!$apiResponse['success']) {
+            Log::warning('Password binding failed during admin user creation - will retry later', [
+                'user_id' => $user->id,
+                'error' => $apiResponse['error_message']
+            ]);
+            // Continue even if password binding failed - will retry later
+        }
 
         // Assign the role of 'User'
         $user->assignRole('User');

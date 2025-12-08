@@ -34,12 +34,25 @@ class PasswordBindingService
             return [
                 'success' => false,
                 'data' => null,
-                'error_message' => 'Password format is invalid. Please contact support.'
+                'error_message' => 'Password format is invalid. Please contact support.',
+                'swal' => true
+            ];
+        }
+
+        if (!$user->tenant_id) {
+            Log::warning('Cannot bind password - user missing tenant_id', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+            return [
+                'success' => false,
+                'data' => null,
+                'error_message' => 'Cannot bind password without tenant_id. Tenant assignment will be retried automatically.',
+                'swal' => false
             ];
         }
 
         try {
-            // Call password binding API
             $passwordBindResponse = $this->makeXiaoiceApiRequest(
                 'api/partner/tenant/user/password/bind',
                 [
@@ -49,15 +62,36 @@ class PasswordBindingService
                 ]
             );
 
+            $bindJson = $passwordBindResponse->json();
+
+            $isSuccess = $passwordBindResponse->successful() &&
+                        (isset($bindJson['code']) && in_array($bindJson['code'], [200, 201]));
+
+            if (!$isSuccess) {
+                $errorMessage = $bindJson['message'] ?? '';
+                $errorCode = $bindJson['code'] ?? null;
+
+                if (str_contains(strtolower($errorMessage), 'already') ||
+                    str_contains(strtolower($errorMessage), 'bound') ||
+                    $errorCode == 200) {
+                    Log::info('Password already bound (idempotent operation)', [
+                        'user_id' => $user->id,
+                        'response' => $bindJson
+                    ]);
+                    return [
+                        'success' => true,
+                        'data' => $bindJson['data'] ?? null,
+                        'error_message' => null
+                    ];
+                }
+
             if (!$passwordBindResponse->successful()) {
                 return $this->handleFailedPasswordBind($passwordBindResponse, $user);
             }
 
-            $bindJson = $passwordBindResponse->json();
-            if (!isset($bindJson['code']) || $bindJson['code'] != 200) {
                 $errorMessage = $this->translateXiaoiceError(
-                    $bindJson['code'] ?? null,
-                    $bindJson['message'] ?? 'Password bind failed'
+                    $errorCode,
+                    $errorMessage ?: 'Password bind failed'
                 );
 
                 Log::error('Failed to bind password', [
@@ -68,7 +102,8 @@ class PasswordBindingService
                 return [
                     'success' => false,
                     'data' => null,
-                    'error_message' => $errorMessage
+                    'error_message' => $errorMessage,
+                    'swal' => true
                 ];
             }
 
@@ -91,7 +126,8 @@ class PasswordBindingService
             return [
                 'success' => false,
                 'data' => null,
-                'error_message' => 'System error: ' . $e->getMessage()
+                'error_message' => 'System error: ' . $e->getMessage(),
+                'swal' => true
             ];
         }
     }
@@ -117,7 +153,8 @@ class PasswordBindingService
         return [
             'success' => false,
             'data' => null,
-            'error_message' => $errorMessage
+            'error_message' => $errorMessage,
+            'swal' => true
         ];
     }
 

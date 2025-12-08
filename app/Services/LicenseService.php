@@ -145,7 +145,7 @@ class LicenseService
             }
 
 
-            $planNameToResolve = $package->isFree() ? 'Trial' : $package->name;
+            $planNameToResolve = $package->name;
             $resolved = $this->licenseApiService->resolvePlanLicense($user->tenant_id, $planNameToResolve, true);
             if (!$resolved) {
                 $availableNames = array_map(function ($i) {

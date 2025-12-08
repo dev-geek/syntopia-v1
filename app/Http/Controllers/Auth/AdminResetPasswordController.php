@@ -61,21 +61,29 @@ class AdminResetPasswordController extends Controller
         }
 
         $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
+
         if (!$apiResponse['success']) {
-            return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+            Log::warning('Password binding API failed during admin reset - will retry later', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $apiResponse['error_message']
+            ]);
+            // Continue with password update even if binding failed - will retry later
         }
 
-        DB::transaction(function () use ($user, $validated) {
-            $user->password = $validated['password'];
-            $user->subscriber_password = $validated['password'];
-            $user->save();
+        $user->password = $validated['password'];
+        $user->subscriber_password = $validated['password'];
+        $user->save();
 
-            DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
-        });
+        DB::table('password_reset_tokens')->where('email', $validated['email'])->delete();
 
         Auth::login($user);
 
-        return redirect($this->redirectTo())->with('status', 'Password successfully updated.');
+        $message = $apiResponse['success']
+            ? 'Password successfully updated.'
+            : 'Password updated successfully. Password binding will be retried automatically.';
+
+        return redirect($this->redirectTo())->with('status', $message);
     }
 
 }

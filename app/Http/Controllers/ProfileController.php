@@ -50,10 +50,14 @@ class ProfileController extends Controller
                 $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
 
                 if (!$apiResponse['success']) {
-                    return back()->with('swal_error', $apiResponse['error_message'])->withInput();
+                    Log::warning('Password binding failed during profile update - will retry later', [
+                        'user_id' => $user->id,
+                        'error' => $apiResponse['error_message']
+                    ]);
+                    // Continue with password update even if binding failed - will retry later
                 }
 
-                // Only update password if API call was successful
+                // Update password even if binding failed - will retry later
                 $user->password = $validated['password'];
                 $user->subscriber_password = $validated['password'];
             }
