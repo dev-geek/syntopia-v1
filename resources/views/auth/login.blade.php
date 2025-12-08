@@ -513,8 +513,7 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
         <!-- Right Side -->
         <div class="right-section">
             <div class="login-container">
-                <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Logo"
-                    class="logo">
+                <x-logo alt="Logo" />
                 <h2>Welcome to Syntopia</h2>
                 <form method="POST" action="{{ route('login.post') }}" id="loginForm">
                     @csrf

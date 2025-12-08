@@ -184,7 +184,7 @@
         <!-- Right Side - Login Form -->
         <div class="right-section">
             <div class="login-container">
-                <img src="https://syntopia.ai/wp-content/uploads/2025/02/Syntopiaa-logo.webp" alt="Logo" class="logo">
+                <x-logo alt="Logo" />
                 <h2>Welcome to Syntopia</h2>
                 <br>
                 <form method="POST" action="{{ route('login.post') }}">

@@ -67,7 +67,7 @@
 <body>
 
     <div class="login-container">
-        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Logo" class="logo">
+        <x-logo alt="Logo" />
         <h2>Create New Password</h2>
         <p>Your new password must be different from previous used passwords.</p>
 

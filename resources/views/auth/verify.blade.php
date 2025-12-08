@@ -99,7 +99,7 @@
 
     <!-- Logo at the top -->
     <div class="logo-container">
-        <img src="https://syntopia.ai/wp-content/uploads/2025/02/Syntopiaa-logo.webp" alt="Syntopia Logo">
+        <x-logo />
      </div>
 
     <!-- Centered Signup Form -->

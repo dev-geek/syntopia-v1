@@ -34,7 +34,7 @@
 </head>
 <body>
     <div class="login-container">
-        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo" class="logo">
+        <x-logo />
         <h2>Set a New Password</h2>
         <p>Your new password must meet security requirements.</p>
 

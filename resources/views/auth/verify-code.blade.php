@@ -437,7 +437,7 @@
     <div class="d-flex justify-content-center align-items-center">
         <div class="container-box text-center">
             <div class="logo-container">
-                <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
+                <x-logo />
             </div>
             <h1 class="heading-text">Check your Email</h1>
             <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>

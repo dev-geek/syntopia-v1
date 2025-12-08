@@ -481,36 +481,111 @@ body.layout-navbar-fixed .wrapper .content-wrapper {
         position: relative;
     }
 
-    .dropdown-toggle {
+    .account-dropdown .dropdown-toggle {
         font-size: 14px;
         font-weight: 500;
         color: #2563eb;
         background: transparent;
         border: none;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
     }
 
-    .dropdown-menu {
+    .account-dropdown .dropdown-toggle i {
+        font-size: 18px;
+    }
+
+    .account-dropdown .dropdown-toggle:hover {
+        background: #f8fafd;
+        color: #0d6efd;
+    }
+
+    .account-dropdown .dropdown-menu {
         display: none;
         position: absolute;
         right: 0;
-        top: 100%;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 4px;
-        padding: 10px;
-        z-index: 10;
+        top: calc(100% + 8px);
+        background: #f8fafd;
+        border: 1px solid #e3eafc;
+        border-radius: 1.1rem;
+        box-shadow: 0 8px 32px rgba(13, 110, 253, 0.13);
+        padding: 0.5rem 0;
+        min-width: 200px;
+        z-index: 1000;
+        animation: fadeInDown 0.35s ease-out;
     }
 
-    .dropdown-menu a {
+    .account-dropdown .dropdown-menu.show {
         display: block;
-        padding: 5px 10px;
-        color: #2563eb;
-        text-decoration: none;
     }
 
-    .dropdown-menu a:hover {
-        background: #f0f0f0;
+    .account-dropdown .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0.8rem 1.2rem;
+        color: #222;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 14px;
+        transition: all 0.18s ease;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+    }
+
+    .account-dropdown .dropdown-item i {
+        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+        color: #fff;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(13, 110, 253, 0.10);
+    }
+
+    .account-dropdown .dropdown-item:hover {
+        background: #e9f3ff;
+        color: #0d6efd;
+    }
+
+    .account-dropdown .dropdown-item.logout-item {
+        color: #dc3545;
+    }
+
+    .account-dropdown .dropdown-item.logout-item:hover {
+        background: #ffe9e9;
+        color: #c82333;
+    }
+
+    .account-dropdown .dropdown-item.logout-item i {
+        background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%);
+    }
+
+    .account-dropdown .dropdown-divider {
+        margin: 0.3rem 0;
+        border-top: 1px solid #e3eafc;
+        border-bottom: none;
+    }
+
+    @keyframes fadeInDown {
+        from {
+            opacity: 0;
+            transform: translateY(-8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
 .subscription-card {

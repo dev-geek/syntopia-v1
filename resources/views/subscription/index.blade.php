@@ -72,13 +72,23 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
     @include('components.spinner-overlay')
 
     <div class="pricing-header">
-        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo">
-        <div class="dropdown">
-            <button class="dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false">Account</button>
+        <x-logo />
+        <div class="dropdown account-dropdown">
+            <button class="dropdown-toggle" type="button" aria-haspopup="true" aria-expanded="false">
+                <i class="fas fa-user-circle"></i>
+                Account
+            </button>
             <div class="dropdown-menu">
-                <a href="{{ route('user.dashboard') }}">Dashboard</a>
-                <a href="#"
-                    onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
+                <a href="{{ route('user.dashboard') }}" class="dropdown-item">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="#" class="dropdown-item logout-item"
+                    onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
             </div>
         </div>
         <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">

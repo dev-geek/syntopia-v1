@@ -222,7 +222,7 @@
 </head>
 <body>
     <div class="login-container">
-        <img src="https://syntopia.ai/wp-content/uploads/2025/01/logo-syntopia-black-scaled.webp" alt="Syntopia Logo" class="logo">
+        <x-logo />
         <h2>Admin Password Reset</h2>
 
         @if (session('status'))

@@ -25,7 +25,7 @@
 <div class="sidebar-content p-3">
     <!-- Syntopia Logo -->
     <div class="d-flex justify-content-center mb-3">
-        <img src="{{ asset('syntopia-logo.webp') }}" alt="Syntopia" class="sidebar-logo">
+        <x-logo variant="sidebar" alt="Syntopia" class="sidebar-logo" />
     </div>
 
     <div class="d-flex flex-column align-items-center mb-4">
