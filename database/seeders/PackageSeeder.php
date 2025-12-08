@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
+use App\Models\Package;
 
 class PackageSeeder extends Seeder
 {
@@ -13,12 +13,12 @@ class PackageSeeder extends Seeder
      */
     public function run(): void
     {
-        DB::table('packages')->insert([
+        $packages = [
             [
                 'name' => 'Free',
                 'price' => 0,
                 'duration' => 'month',
-                'features' => json_encode([
+                'features' => [
                     '1 user',
                     '1 livestream room',
                     '1 live broadcast (single anchor)',
@@ -27,13 +27,13 @@ class PackageSeeder extends Seeder
                     '1 Q&A base',
                     '19 min live stream duration',
                     '5MB storage',
-                ]),
+                ],
             ],
             [
                 'name' => 'Starter',
                 'price' => 380,
                 'duration' => '60hrs a month',
-                'features' => json_encode([
+                'features' => [
                     '1 user',
                     '1 livestream room',
                     '1 live broadcast (single anchor)',
@@ -43,13 +43,13 @@ class PackageSeeder extends Seeder
                     '60 hrs streaming',
                     '1GB storage',
                     'AI: 10 creations, 10 rewrites',
-                ]),
+                ],
             ],
             [
                 'name' => 'Pro',
                 'price' => 780,
                 'duration' => '120hrs a month',
-                'features' => json_encode([
+                'features' => [
                     '2 users',
                     '3 livestream room',
                     '3 live broadcast (single anchor)',
@@ -60,13 +60,13 @@ class PackageSeeder extends Seeder
                     '120 hrs streaming',
                     '1GB storage',
                     'AI: 30 creations, 30 rewrites',
-                ]),
+                ],
             ],
             [
                 'name' => 'Business',
                 'price' => 2580,
                 'duration' => 'unlimited',
-                'features' => json_encode([
+                'features' => [
                     '3 user',
                     '1 livestream room',
                     '1 live broadcast',
@@ -78,13 +78,13 @@ class PackageSeeder extends Seeder
                     'Unlimited streaming',
                     '1GB storage',
                     'AI: 90 creations, 90 rewrites',
-                ]),
+                ],
             ],
             [
                 'name' => 'Enterprise',
                 'price' => null,
                 'duration' => 'custom',
-                'features' => json_encode([
+                'features' => [
                     'Custom users & rooms',
                     'Custom livestream features',
                     'Custom Q&A bases',
@@ -92,29 +92,32 @@ class PackageSeeder extends Seeder
                     'Unlimited resources',
                     'Tailored support & solutions',
                     'Dual Live Stream (two anchor in one live room)',
-                ]),
+                ],
             ],
             // Add-on products (one-time purchases)
             [
-                'name' => 'Avatar Customization',
-                'price' => 2800,
+                'name' => 'Avatar Customization (Clone Yourself)',
+                'price' => 1380,
                 'duration' => 'one-time',
-                'features' => json_encode([
-                    'Create a hyperrealistic AI avatar matching your face, hairstyle, and outfit',
-                    'Includes recording guidelines',
-                    'One-time setup; no recurring fees',
-                ]),
+                'features' => [
+                    '7 min of training video recorded required from you',
+                    'You get 1 Digital avatar',
+                    'Step-by-step video recording guide will be provided - https://syntopia.ai/custom-avatar-shooting-guide/',
+                    'Minor imperfections may remain',
+                    'One-time setup, no annual fee',
+                ],
             ],
-            [
-                'name' => 'Voice Customization',
-                'price' => 2200,
-                'duration' => 'one-time',
-                'features' => json_encode([
-                    'Custom AI voice based on your audio sample',
-                    'Guide provided for best results',
-                    'One-time setup; no usage fees',
-                ]),
-            ],
-        ]);
+        ];
+
+        foreach ($packages as $packageData) {
+            Package::updateOrCreate(
+                ['name' => $packageData['name']],
+                [
+                    'price' => $packageData['price'],
+                    'duration' => $packageData['duration'],
+                    'features' => $packageData['features'],
+                ]
+            );
+        }
     }
 }

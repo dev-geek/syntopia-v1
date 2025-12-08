@@ -319,8 +319,7 @@ class LicenseApiService
 			'pro' => ['Pro', 'pro', 'pro plan'],
 			'business' => ['Business', 'business', 'business plan'],
 			'enterprise' => ['Enterprise', 'enterprise', 'enterprise plan'],
-			'avatar customization' => ['Avatar Customization', 'avatar customization', 'avatar-customization', 'avatar'],
-			'voice customization' => ['Voice Customization', 'voice customization', 'voice-customization', 'voice'],
+			'avatar customization' => ['Avatar Customization (Clone Yourself)', 'avatar customization', 'avatar-customization', 'avatar', 'avatar customization (clone yourself)'],
 			'cloud-advanced-live-streaming-1-year' => ['Cloud Advanced Live Streaming – 1 Year Plan', 'cloud advanced live streaming – 1 year plan', 'cloud advanced live streaming-1 year plan'],
 		];
 

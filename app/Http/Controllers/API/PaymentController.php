@@ -1737,8 +1737,7 @@ class PaymentController extends Controller
             // Resolve package_id from addon slug
             $addonKey = strtolower((string)$addon);
             $addonName = match ($addonKey) {
-                'avatar_customization', 'avatar-customization' => 'Avatar Customization',
-                'voice_customization', 'voice-customization' => 'Voice Customization',
+                'avatar_customization', 'avatar-customization' => 'Avatar Customization (Clone Yourself)',
                 default => null,
             };
             $packageId = $addonName ? (\App\Models\Package::where('name', $addonName)->value('id')) : null;

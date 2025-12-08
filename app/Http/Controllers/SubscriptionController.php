@@ -541,7 +541,7 @@ class SubscriptionController extends Controller
         }
 
         // Resolve add-on package IDs to include orders linked by package_id
-        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization', 'Voice Customization'])
+        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
             ->pluck('id')
             ->toArray();
 
@@ -653,7 +653,7 @@ class SubscriptionController extends Controller
         $gateways = collect($targetGateway ? [$targetGateway] : []);
         // Exclude one-time add-ons from plan listing
         $packages = Package::select('name', 'price', 'duration', 'features')
-            ->whereNotIn('name', ['Avatar Customization', 'Voice Customization'])
+            ->whereNotIn('name', ['Avatar Customization (Clone Yourself)'])
             ->orderBy('id', 'asc')
             ->get();
 
@@ -678,7 +678,7 @@ class SubscriptionController extends Controller
         }
 
         // Resolve active add-ons for the current user
-        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization', 'Voice Customization'])
+        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
             ->pluck('id')
             ->toArray();
         $completedAddonOrders = \App\Models\Order::with('package')
@@ -695,10 +695,8 @@ class SubscriptionController extends Controller
         $activeAddonSlugs = [];
         foreach ($completedAddonOrders as $order) {
             $name = $order->package->name ?? null;
-            if ($name === 'Avatar Customization') {
+            if ($name === 'Avatar Customization (Clone Yourself)') {
                 $activeAddonSlugs[] = 'avatar_customization';
-            } elseif ($name === 'Voice Customization') {
-                $activeAddonSlugs[] = 'voice_customization';
             } elseif (is_array($order->metadata) && !empty($order->metadata['addon'])) {
                 $activeAddonSlugs[] = strtolower(str_replace('-', '_', $order->metadata['addon']));
             }
