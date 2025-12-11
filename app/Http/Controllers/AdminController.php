@@ -401,37 +401,122 @@ class AdminController extends Controller
     {
         $results = [
             'timestamp' => now()->toDateTimeString(),
-            'scheduler_command' => 'schedule:run',
-            'exit_code' => null,
-            'execution_time_ms' => 0,
-            'output' => '',
-            'error' => null,
+            'commands' => [],
+            'summary' => [
+                'total_commands' => 0,
+                'succeeded' => 0,
+                'failed' => 0,
+            ],
         ];
 
-        try {
-            $startTime = microtime(true);
-            $exitCode = Artisan::call('schedule:run');
-            $endTime = microtime(true);
-            $executionTime = round(($endTime - $startTime) * 1000, 2);
+        $commands = [
+            [
+                'command' => 'tenant:retry-assignment',
+                'arguments' => ['--limit' => 50],
+                'name' => 'Tenant Retry Assignment',
+            ],
+            [
+                'command' => 'password:retry-binding',
+                'arguments' => ['--limit' => 50],
+                'name' => 'Password Retry Binding',
+            ],
+        ];
 
-            $output = Artisan::output();
-            $success = $exitCode === 0;
+        foreach ($commands as $cmd) {
+            $results['summary']['total_commands']++;
 
-            $results['status'] = $success ? 'success' : 'failed';
-            $results['exit_code'] = $exitCode;
-            $results['execution_time_ms'] = $executionTime;
-            $results['output'] = trim($output);
-            $results['message'] = $success
-                ? 'Scheduler ran successfully. All due scheduled tasks have been executed.'
-                : 'Scheduler completed with errors. Check the output for details.';
+            try {
+                $startTime = microtime(true);
+                $exitCode = Artisan::call($cmd['command'], $cmd['arguments']);
+                $endTime = microtime(true);
+                $executionTime = round(($endTime - $startTime) * 1000, 2);
 
-        } catch (\Exception $e) {
-            $results['status'] = 'error';
-            $results['exit_code'] = -1;
-            $results['error'] = $e->getMessage();
-            $results['message'] = 'An error occurred while running the scheduler: ' . $e->getMessage();
+                $output = Artisan::output();
+                $success = $exitCode === 0;
+
+                if ($success) {
+                    $results['summary']['succeeded']++;
+                } else {
+                    $results['summary']['failed']++;
+                }
+
+                $usersProcessed = $this->parseCommandOutput($output, $cmd['command']);
+
+                $results['commands'][] = [
+                    'name' => $cmd['name'],
+                    'command' => $cmd['command'],
+                    'status' => $success ? 'success' : 'failed',
+                    'exit_code' => $exitCode,
+                    'execution_time_ms' => $executionTime,
+                    'output' => trim($output),
+                    'users' => $usersProcessed,
+                    'ran_at' => now()->toDateTimeString(),
+                ];
+            } catch (\Exception $e) {
+                $results['summary']['failed']++;
+                $results['commands'][] = [
+                    'name' => $cmd['name'],
+                    'command' => $cmd['command'],
+                    'status' => 'error',
+                    'exit_code' => -1,
+                    'execution_time_ms' => 0,
+                    'output' => $e->getMessage(),
+                    'error' => $e->getMessage(),
+                    'users' => [],
+                    'ran_at' => now()->toDateTimeString(),
+                ];
+            }
         }
 
+        $results['overall_status'] = $results['summary']['failed'] === 0 ? 'success' : 'partial_failure';
+        $results['message'] = $results['overall_status'] === 'success'
+            ? 'All scheduled commands executed successfully.'
+            : 'Some commands failed. Check individual command results.';
+
         dd($results);
+    }
+
+    private function parseCommandOutput(string $output, string $command): array
+    {
+        $users = [
+            'successful' => [],
+            'failed' => [],
+        ];
+
+        $lines = explode("\n", $output);
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+
+            if (str_contains($command, 'tenant')) {
+                if (preg_match('/✓ Successfully assigned tenant_id for user: (.+?) \(ID: (\d+)\)/', $line, $matches)) {
+                    $users['successful'][] = [
+                        'email' => $matches[1],
+                        'id' => (int) $matches[2],
+                    ];
+                } elseif (preg_match('/✗ (?:Failed to assign tenant_id|Exception) for user: (.+?) \(ID: (\d+)\)(?: - (.+))?/', $line, $matches)) {
+                    $users['failed'][] = [
+                        'email' => $matches[1],
+                        'id' => (int) $matches[2],
+                        'error' => $matches[3] ?? 'Unknown error',
+                    ];
+                }
+            } elseif (str_contains($command, 'password')) {
+                if (preg_match('/✓ Successfully bound password for user: (.+?) \(ID: (\d+)\)/', $line, $matches)) {
+                    $users['successful'][] = [
+                        'email' => $matches[1],
+                        'id' => (int) $matches[2],
+                    ];
+                } elseif (preg_match('/✗ (?:Failed to bind password|Exception) for user: (.+?) \(ID: (\d+)\)(?: - (.+))?/', $line, $matches)) {
+                    $users['failed'][] = [
+                        'email' => $matches[1],
+                        'id' => (int) $matches[2],
+                        'error' => $matches[3] ?? 'Unknown error',
+                    ];
+                }
+            }
+        }
+
+        return $users;
     }
 }
