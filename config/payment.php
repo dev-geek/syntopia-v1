@@ -98,4 +98,20 @@ return [
             'subscription_code' => env('SUBSCRIPTION_CODE', ''),
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | FirstPromoter Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for FirstPromoter affiliate tracking. Used for tracking
+    | sales and commissions for Pay Pro Global and Paddle payments.
+    |
+    */
+    'firstpromoter' => [
+        'api_key' => env('FIRSTPROMOTER_API_KEY', ''),
+        'account_id' => env('FIRSTPROMOTER_ACCOUNT_ID', ''),
+        'default_currency' => env('FIRSTPROMOTER_DEFAULT_CURRENCY', 'USD'),
+        'enabled' => env('FIRSTPROMOTER_ENABLED', false),
+    ],
 ];

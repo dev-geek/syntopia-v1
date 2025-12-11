@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
 use App\Services\SubscriptionService;
 use App\Services\PayProGlobalClient;
 use App\Services\DeviceFingerprintService;
+use App\Services\FirstPromoterService;
 use Carbon\Carbon;
 
 class PaymentController extends Controller
@@ -27,13 +28,15 @@ class PaymentController extends Controller
     private $subscriptionService;
     private $deviceFingerprintService;
     private $payProGlobalClient;
+    private $firstPromoterService;
 
     public function __construct(
         LicenseService $licenseService,
         LicenseApiService $licenseApiService,
         SubscriptionService $subscriptionService,
         DeviceFingerprintService $deviceFingerprintService,
-        PayProGlobalClient $payProGlobalClient
+        PayProGlobalClient $payProGlobalClient,
+        FirstPromoterService $firstPromoterService
     )
     {
         $this->licenseService = $licenseService;
@@ -41,6 +44,7 @@ class PaymentController extends Controller
         $this->subscriptionService = $subscriptionService;
         $this->deviceFingerprintService = $deviceFingerprintService;
         $this->payProGlobalClient = $payProGlobalClient;
+        $this->firstPromoterService = $firstPromoterService;
     }
 
     private function isPrivilegedUser(?\App\Models\User $user): bool
@@ -923,6 +927,16 @@ class PaymentController extends Controller
             }
 
             $pendingOrderId = 'PPG-PENDING-' . Str::random(10);
+            $orderMetadata = [
+                'package' => $processedPackage,
+                'pending_order_id' => $pendingOrderId,
+                'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
+            ];
+
+            if ($request->has('fp_tid') && $request->input('fp_tid')) {
+                $orderMetadata['fp_tid'] = $request->input('fp_tid');
+            }
+
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $packageData->id,
@@ -931,11 +945,7 @@ class PaymentController extends Controller
                 'transaction_id' => $pendingOrderId,
                 'payment_gateway_id' => $this->getPaymentGatewayId('payproglobal'),
                 'status' => 'pending',
-                'metadata' => [
-                    'package' => $processedPackage,
-                    'pending_order_id' => $pendingOrderId,
-                    'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
-                ]
+                'metadata' => $orderMetadata
             ]);
 
             // Generate a temporary authentication token for cross-domain redirect
@@ -955,18 +965,24 @@ class PaymentController extends Controller
 
             $successUrl = url(route('payments.success', $successParams));
 
+            $customData = [
+                'user_id' => $user->id,
+                'package_id' => $packageData->id,
+                'package' => $processedPackage,
+                'pending_order_id' => $order->transaction_id,
+                'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
+            ];
+
+            if ($request->has('fp_tid') && $request->input('fp_tid')) {
+                $customData['fp_tid'] = $request->input('fp_tid');
+            }
+
             $checkoutParams = [
                 'products[1][id]' => $productId,
                 'email' => $user->email,
                 'first_name' => $user->first_name ?? '',
                 'last_name' => $user->last_name ?? '',
-                'custom' => json_encode([
-                    'user_id' => $user->id,
-                    'package_id' => $packageData->id,
-                    'package' => $processedPackage,
-                    'pending_order_id' => $order->transaction_id,
-                    'action' => $request->input('is_upgrade') ? 'upgrade' : ($request->input('is_downgrade') ? 'downgrade' : 'new')
-                ]),
+                'custom' => json_encode($customData),
                 'page-template' => 'ID',
                 'currency' => 'USD',
                 'use-test-mode' => config('payment.gateways.PayProGlobal.test_mode', true) ? 'true' : 'false',
@@ -1260,6 +1276,15 @@ class PaymentController extends Controller
                                 'auth_check_before_redirect' => auth()->check(),
                                 'auth_id_before_redirect' => auth()->id()
                             ]);
+
+                            // Track sale with FirstPromoter for Paddle
+                            if (config('payment.firstpromoter.enabled', false) && $pendingOrder->amount > 0) {
+                                $paymentData = [
+                                    'custom_data' => $customData,
+                                    'metadata' => $transactionData
+                                ];
+                                $this->trackFirstPromoterSale($pendingOrder, $user, $package, $paymentData);
+                            }
 
                             $successMessage = $isUpgrade
                                 ? "Successfully upgraded to {$package->name}!"
@@ -2041,6 +2066,11 @@ class PaymentController extends Controller
             // Now mark order as completed
             $order->update(['status' => 'completed']);
 
+            // Track sale with FirstPromoter for Pay Pro Global and Paddle
+            if (in_array($gateway, ['payproglobal', 'paddle']) && config('payment.firstpromoter.enabled', false) && $amount > 0) {
+                $this->trackFirstPromoterSale($order, $user, $package, $paymentData);
+            }
+
             Log::info('=== PAYMENT PROCESSING COMPLETED ===', [
                 'gateway' => $gateway,
                 'transaction_id' => $transactionId,
@@ -2095,6 +2125,113 @@ class PaymentController extends Controller
             // Ensure we're redirecting to user route, not admin route
             return redirect()->route('user.subscription.details')->with('success', $successMessage);
         });
+    }
+
+    private function trackFirstPromoterSale(Order $order, User $user, Package $package, array $paymentData): void
+    {
+        try {
+            $metadata = $order->metadata ?? [];
+            $customData = $paymentData['custom_data'] ?? [];
+            $checkoutQueryString = $paymentData['checkout_query_string'] ?? null;
+
+            $tid = null;
+            $refId = null;
+
+            if ($checkoutQueryString) {
+                parse_str($checkoutQueryString, $checkoutParams);
+                $customDataJson = $checkoutParams['custom'] ?? null;
+                if ($customDataJson) {
+                    $decodedCustom = json_decode($customDataJson, true);
+                    if (!$decodedCustom) {
+                        $decodedCustom = json_decode(urldecode($customDataJson), true);
+                    }
+                    if ($decodedCustom) {
+                        $tid = $decodedCustom['fp_tid'] ?? $decodedCustom['tid'] ?? null;
+                        $refId = $decodedCustom['ref_id'] ?? null;
+                    }
+                }
+            }
+
+            if (!$tid && !$refId) {
+                $tid = $metadata['fp_tid'] ?? $metadata['tid'] ?? $customData['fp_tid'] ?? $customData['tid'] ?? null;
+                $refId = $metadata['ref_id'] ?? $customData['ref_id'] ?? null;
+            }
+
+            // Also check transaction metadata for Paddle custom_data
+            if (!$tid && !$refId && isset($paymentData['metadata']['custom_data'])) {
+                $transactionCustomData = $paymentData['metadata']['custom_data'];
+                $tid = $transactionCustomData['fp_tid'] ?? $transactionCustomData['tid'] ?? null;
+                $refId = $transactionCustomData['ref_id'] ?? null;
+            }
+
+            $trackingData = [
+                'email' => $user->email,
+                'event_id' => $order->transaction_id,
+                'amount' => $order->amount,
+                'currency' => $order->currency ?? 'USD',
+                'plan' => $package->name,
+            ];
+
+            if ($tid) {
+                $trackingData['tid'] = $tid;
+            }
+
+            if ($refId) {
+                $trackingData['ref_id'] = $refId;
+            }
+
+            $response = $this->firstPromoterService->trackSale($trackingData);
+
+            if ($response) {
+                $currentMetadata = $order->metadata ?? [];
+
+                if (isset($response['duplicate']) && $response['duplicate']) {
+                    $currentMetadata['firstpromoter'] = [
+                        'duplicate' => true,
+                        'message' => $response['message'] ?? 'Sale already tracked',
+                        'event_id' => $trackingData['event_id'],
+                        'tracked_at' => now()->toIso8601String(),
+                    ];
+
+                    Log::info('FirstPromoter: Sale already tracked (duplicate event_id)', [
+                        'order_id' => $order->id,
+                        'event_id' => $trackingData['event_id']
+                    ]);
+                } else {
+                    $currentMetadata['firstpromoter'] = [
+                        'sale_id' => $response['id'] ?? null,
+                        'sale_amount' => $response['sale_amount'] ?? null,
+                        'referral_id' => $response['referral']['id'] ?? null,
+                        'referral_email' => $response['referral']['email'] ?? null,
+                        'commissions' => array_map(function ($commission) {
+                            return [
+                                'id' => $commission['id'] ?? null,
+                                'status' => $commission['status'] ?? null,
+                                'amount' => $commission['amount'] ?? null,
+                                'promoter_email' => $commission['promoter_campaign']['promoter']['email'] ?? null,
+                                'campaign_name' => $commission['promoter_campaign']['campaign']['name'] ?? null,
+                            ];
+                        }, $response['commissions'] ?? []),
+                        'tracked_at' => now()->toIso8601String(),
+                    ];
+
+                    Log::info('FirstPromoter: Sale tracked and stored in order metadata', [
+                        'order_id' => $order->id,
+                        'sale_id' => $response['id'] ?? null,
+                        'referral_id' => $response['referral']['id'] ?? null,
+                        'commissions_count' => count($response['commissions'] ?? [])
+                    ]);
+                }
+
+                $order->update(['metadata' => $currentMetadata]);
+            }
+        } catch (\Exception $e) {
+            Log::error('FirstPromoter: Error tracking sale', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+                'user_id' => $user->id
+            ]);
+        }
     }
 
     private function verifyPayProGlobalPayment($orderId, $paymentId)
@@ -2506,7 +2643,8 @@ class PaymentController extends Controller
                     'customer_email' => $customerEmail,
                     'product_id' => $productId,
                     'action' => $action,
-                    'pending_order_id' => $pendingOrderId
+                    'pending_order_id' => $pendingOrderId,
+                    'checkout_query_string' => $checkoutQueryString ?? null
                 ];
 
                 // Check if payment already processed
@@ -2962,6 +3100,15 @@ class PaymentController extends Controller
                             'subscription_id' => $subscriptionId
                         ]);
                     }
+
+                    // Track sale with FirstPromoter for Paddle
+                    if (config('payment.firstpromoter.enabled', false) && $pendingOrder->amount > 0) {
+                        $paymentData = [
+                            'custom_data' => $customData,
+                            'metadata' => $eventData
+                        ];
+                        $this->trackFirstPromoterSale($pendingOrder, $user, $package, $paymentData);
+                    }
                 }
 
                 return response()->json(['status' => 'processed']);
@@ -3393,6 +3540,15 @@ class PaymentController extends Controller
                     'amount' => $order->amount
                 ]
             ]);
+
+            // Track sale with FirstPromoter for Paddle
+            if (config('payment.firstpromoter.enabled', false) && $amount > 0) {
+                $paymentData = [
+                    'custom_data' => $transactionData['custom_data'] ?? [],
+                    'metadata' => $transactionData
+                ];
+                $this->trackFirstPromoterSale($order, $user, $package, $paymentData);
+            }
 
             return true;
         });

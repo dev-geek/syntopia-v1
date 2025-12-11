@@ -826,14 +826,22 @@
         }
 
         function createRequestBody(packageName, action) {
-            if (action === 'downgrade') {
-                return { package: packageName };
-            }
-            return {
+            const fpTid = getFPTid();
+            const body = {
                 package: packageName,
                 is_upgrade: action === 'upgrade',
                 is_downgrade: action === 'downgrade'
             };
+
+            if (action === 'downgrade') {
+                return { package: packageName };
+            }
+
+            if (fpTid) {
+                body.fp_tid = fpTid;
+            }
+
+            return body;
         }
 
         function logAddonDebug(message, context = {}, level = 'info') {
@@ -969,12 +977,12 @@
         // Account dropdown toggle functionality
         const dropdownToggle = document.querySelector('.account-dropdown .dropdown-toggle');
         const dropdownMenu = document.querySelector('.account-dropdown .dropdown-menu');
-        
+
         if (dropdownToggle && dropdownMenu) {
             dropdownToggle.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const isOpen = dropdownMenu.classList.contains('show');
-                
+
                 if (isOpen) {
                     dropdownMenu.classList.remove('show');
                     this.setAttribute('aria-expanded', 'false');
