@@ -25,7 +25,7 @@ class PackageSeeder extends Seeder
                     'Lite Live Stream (one anchor)',
                     '1 livestream room',
                     '1 Q&A base',
-                    '19 min live stream duration',
+                    '190 min live stream duration',
                     '5MB storage',
                 ],
             ],
