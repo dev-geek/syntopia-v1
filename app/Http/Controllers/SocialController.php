@@ -585,18 +585,31 @@ class SocialController extends Controller
      */
     private function redirectBasedOnUserRole($user, $message)
     {
-        // Check for intended URL first
-        if (session()->has('url.intended')) {
-            $intendedUrl = session('url.intended');
+        if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
+            // Clear any intended URLs that might redirect to user routes
             session()->forget('url.intended');
-            return redirect()->to($intendedUrl)->with('login_success', $message);
-        }
-
-        if ($user->hasAnyRole(['Super Admin'])) {
+            session()->forget('verification_intended_url');
             return redirect()->route('admin.dashboard')->with('login_success', $message);
         }
 
         if ($user->hasRole('User')) {
+            // Check for intended URL first (but filter out admin routes)
+            if (session()->has('url.intended')) {
+                $intendedUrl = session('url.intended');
+                // Only use intended URL if it's NOT an admin route
+                if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                    session()->forget('url.intended');
+                    return redirect()->to($intendedUrl)->with('login_success', $message);
+                } else {
+                    // Clear admin route intended URLs
+                    session()->forget('url.intended');
+                }
+            }
+
+            // Clear any remaining intended URLs before redirecting
+            session()->forget('url.intended');
+            session()->forget('verification_intended_url');
+
             if ($this->hasActiveSubscription($user)) {
                 return redirect()->route('user.dashboard')->with('login_success', $message);
             } else {
@@ -604,6 +617,9 @@ class SocialController extends Controller
             }
         }
 
+        // Clear any intended URLs that might redirect to admin routes
+        session()->forget('url.intended');
+        session()->forget('verification_intended_url');
         return redirect()->route('user.profile')->with('login_success', $message);
     }
 

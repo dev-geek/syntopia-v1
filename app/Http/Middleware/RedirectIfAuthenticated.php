@@ -25,11 +25,17 @@ class RedirectIfAuthenticated
 
                 // Redirect based on user role
                 if ($user->hasRole('Super Admin')) {
-                    return redirect()->intended(route('admin.profile'));
+                    // Clear any intended URLs that might redirect to user routes
+                    session()->forget('url.intended');
+                    session()->forget('verification_intended_url');
+                    return redirect()->route('admin.profile');
                 }
 
                 // Default redirect for regular users
-                return redirect()->intended(route('user.profile'));
+                // Clear any intended URLs that might redirect to admin routes
+                session()->forget('url.intended');
+                session()->forget('verification_intended_url');
+                return redirect()->route('user.profile');
             }
         }
 

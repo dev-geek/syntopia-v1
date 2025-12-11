@@ -46,7 +46,10 @@ class LoginController extends Controller
 
         // Redirect based on user role
         if ($user->hasRole('Super Admin')) {
-            return redirect()->intended(route('admin.dashboard'));
+            // Clear any intended URLs that might redirect to user routes
+            session()->forget('url.intended');
+            session()->forget('verification_intended_url');
+            return redirect()->route('admin.dashboard');
         }
 
         // Check if Sub Admin is active
@@ -55,7 +58,10 @@ class LoginController extends Controller
                 Auth::logout();
                 return redirect()->route('admin-login')->with('error', 'Your account is not active. Please contact support to activate your account.');
             }
-            return redirect()->intended(route('admin.dashboard'));
+            // Clear any intended URLs that might redirect to user routes
+            session()->forget('url.intended');
+            session()->forget('verification_intended_url');
+            return redirect()->route('admin.dashboard');
         }
 
                 // For regular users, check subscription status
@@ -98,7 +104,10 @@ class LoginController extends Controller
         }
 
         // Default redirect for regular users
-        return redirect()->intended(route('user.profile'));
+        // Clear any intended URLs that might redirect to admin routes
+        session()->forget('url.intended');
+        session()->forget('verification_intended_url');
+        return redirect()->route('user.profile');
     }
 
     /**
@@ -275,7 +284,10 @@ class LoginController extends Controller
         // Final redirect based on role
         $user = Auth::user();
         if ($user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
-            return redirect()->intended(route('admin.dashboard'));
+            // Clear any intended URLs that might redirect to user routes
+            session()->forget('url.intended');
+            session()->forget('verification_intended_url');
+            return redirect()->route('admin.dashboard');
         }
 
         // For regular users, check subscription status

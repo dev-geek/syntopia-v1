@@ -88,12 +88,23 @@ class VerificationController extends Controller
                 Auth::login($user);
 
                 if ($user->hasRole('User')) {
+                    // Check for intended URL (but filter out admin routes)
                     if (session()->has('verification_intended_url')) {
                         $intendedUrl = session('verification_intended_url');
-                        session()->forget('verification_intended_url');
-                        return redirect()->to($intendedUrl)
-                            ->with('success', 'Email already verified!');
+                        // Only use intended URL if it's NOT an admin route
+                        if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                            session()->forget('verification_intended_url');
+                            return redirect()->to($intendedUrl)
+                                ->with('success', 'Email already verified!');
+                        } else {
+                            // Clear admin route intended URLs
+                            session()->forget('verification_intended_url');
+                        }
                     }
+
+                    // Clear any remaining intended URLs before redirecting
+                    session()->forget('url.intended');
+                    session()->forget('verification_intended_url');
 
                     if ($this->hasActiveSubscription($user)) {
                         return redirect()->route('user.dashboard')
@@ -154,12 +165,23 @@ class VerificationController extends Controller
                 Auth::login($user);
 
                 if ($user->hasRole('User')) {
+                    // Check for intended URL (but filter out admin routes)
                     if (session()->has('verification_intended_url')) {
                         $intendedUrl = session('verification_intended_url');
-                        session()->forget('verification_intended_url');
-                        return redirect()->to($intendedUrl)
-                            ->with('success', 'Email verified successfully!');
+                        // Only use intended URL if it's NOT an admin route
+                        if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                            session()->forget('verification_intended_url');
+                            return redirect()->to($intendedUrl)
+                                ->with('success', 'Email verified successfully!');
+                        } else {
+                            // Clear admin route intended URLs
+                            session()->forget('verification_intended_url');
+                        }
                     }
+
+                    // Clear any remaining intended URLs before redirecting
+                    session()->forget('url.intended');
+                    session()->forget('verification_intended_url');
 
                     if ($this->hasActiveSubscription($user)) {
                         return redirect()->route('user.dashboard')
@@ -297,17 +319,45 @@ class VerificationController extends Controller
             Auth::login($user);
 
             if ($user->hasRole('User')) {
-                // Check if there's an intended URL from the subscription flow
+                // Check if there's an intended URL from the subscription flow (but filter out admin routes)
                 if (session()->has('verification_intended_url')) {
                     $intendedUrl = session('verification_intended_url');
-                    session()->forget('verification_intended_url');
-                    Log::info('[verifyCode] Redirecting to intended URL', [
-                        'user_id' => $user->id,
-                        'intended_url' => $intendedUrl
-                    ]);
-                    return redirect()->to($intendedUrl)
-                        ->with('success', 'Email verified successfully!');
+                    // Only use intended URL if it's NOT an admin route
+                    if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                        session()->forget('verification_intended_url');
+                        Log::info('[verifyCode] Redirecting to intended URL', [
+                            'user_id' => $user->id,
+                            'intended_url' => $intendedUrl
+                        ]);
+                        return redirect()->to($intendedUrl)
+                            ->with('success', 'Email verified successfully!');
+                    } else {
+                        // Clear admin route intended URLs
+                        session()->forget('verification_intended_url');
+                    }
                 }
+
+                // Also check for regular intended URL (but filter out admin routes)
+                if (session()->has('url.intended')) {
+                    $intendedUrl = session('url.intended');
+                    // Only use intended URL if it's NOT an admin route
+                    if (!str_starts_with($intendedUrl, '/admin') && !str_contains($intendedUrl, '/admin/')) {
+                        session()->forget('url.intended');
+                        Log::info('[verifyCode] Redirecting to intended URL', [
+                            'user_id' => $user->id,
+                            'intended_url' => $intendedUrl
+                        ]);
+                        return redirect()->to($intendedUrl)
+                            ->with('success', 'Email verified successfully!');
+                    } else {
+                        // Clear admin route intended URLs
+                        session()->forget('url.intended');
+                    }
+                }
+
+                // Clear any remaining intended URLs before redirecting
+                session()->forget('url.intended');
+                session()->forget('verification_intended_url');
 
                 // Check if user has active subscription
                 if ($this->hasActiveSubscription($user)) {

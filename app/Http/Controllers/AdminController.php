@@ -78,8 +78,12 @@ class AdminController extends Controller
         // Regenerate the session
         $request->session()->regenerate();
 
+        // Clear any intended URLs that might redirect to user routes
+        session()->forget('url.intended');
+        session()->forget('verification_intended_url');
+
         // Redirect to admin dashboard
-        return redirect()->intended(route('admin.dashboard'));
+        return redirect()->route('admin.dashboard');
     }
     public function register()
     {
