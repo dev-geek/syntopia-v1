@@ -14,6 +14,7 @@ use App\Services\PasswordBindingService;
 use Spatie\Permission\Models\Role;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Artisan;
 use Carbon\Carbon;
 
 
@@ -394,5 +395,43 @@ class AdminController extends Controller
                 ? 'Cron jobs are running successfully'
                 : 'Cron jobs may not be running. Check your server cron configuration.',
         ], $overallStatus === 'ok' ? 200 : 503);
+    }
+
+    public function runScheduler()
+    {
+        $results = [
+            'timestamp' => now()->toDateTimeString(),
+            'scheduler_command' => 'schedule:run',
+            'exit_code' => null,
+            'execution_time_ms' => 0,
+            'output' => '',
+            'error' => null,
+        ];
+
+        try {
+            $startTime = microtime(true);
+            $exitCode = Artisan::call('schedule:run');
+            $endTime = microtime(true);
+            $executionTime = round(($endTime - $startTime) * 1000, 2);
+
+            $output = Artisan::output();
+            $success = $exitCode === 0;
+
+            $results['status'] = $success ? 'success' : 'failed';
+            $results['exit_code'] = $exitCode;
+            $results['execution_time_ms'] = $executionTime;
+            $results['output'] = trim($output);
+            $results['message'] = $success
+                ? 'Scheduler ran successfully. All due scheduled tasks have been executed.'
+                : 'Scheduler completed with errors. Check the output for details.';
+
+        } catch (\Exception $e) {
+            $results['status'] = 'error';
+            $results['exit_code'] = -1;
+            $results['error'] = $e->getMessage();
+            $results['message'] = 'An error occurred while running the scheduler: ' . $e->getMessage();
+        }
+
+        dd($results);
     }
 }

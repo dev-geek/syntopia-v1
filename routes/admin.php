@@ -30,6 +30,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:Super Admin|Su
     Route::put('/profile/update', [AdminController::class, 'updateProfile'])->name('profile.update');
     Route::get('/orders', [AdminController::class, 'adminOrders'])->name('orders');
     Route::get('/user-logs', [UserLogController::class, 'index'])->name('users-logs');
+    Route::get('/run-scheduler', [AdminController::class, 'runScheduler'])->name('run-scheduler');
     Route::delete('users/{user}', [AdminController::class, 'destroy'])->name('users.destroy');
 
     // Payment Gateway Management
