@@ -63,14 +63,29 @@ class RetryPasswordBinding extends Command
                     $this->line("\n[DRY RUN] Would retry password binding for user: {$user->email} (ID: {$user->id})");
                     $this->skippedCount++;
                 } else {
-                    $result = $this->passwordBindingService->bindPassword($user, $user->subscriber_password);
+                    $maxRetries = 3;
+                    $result = null;
+                    $lastError = null;
 
-                    if ($result['success']) {
-                        $this->successCount++;
-                        $this->line("\n✓ Successfully bound password for user: {$user->email} (ID: {$user->id})");
-                    } else {
+                    for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                        $result = $this->passwordBindingService->bindPassword($user, $user->subscriber_password);
+
+                        if ($result['success']) {
+                            $this->successCount++;
+                            $this->line("\n✓ Successfully bound password for user: {$user->email} (ID: {$user->id})" . ($attempt > 1 ? " (attempt {$attempt})" : ''));
+                            break;
+                        } else {
+                            $lastError = $result['error_message'];
+                            if ($attempt < $maxRetries) {
+                                $this->line("\n⚠ Attempt {$attempt} failed for user: {$user->email} (ID: {$user->id}) - Retrying...");
+                                sleep(1);
+                            }
+                        }
+                    }
+
+                    if (!$result['success']) {
                         $this->errorCount++;
-                        $this->line("\n✗ Failed to bind password for user: {$user->email} (ID: {$user->id}) - {$result['error_message']}");
+                        $this->line("\n✗ Failed to bind password for user: {$user->email} (ID: {$user->id}) after {$maxRetries} attempts - {$lastError}");
                     }
                 }
             } catch (\Exception $e) {

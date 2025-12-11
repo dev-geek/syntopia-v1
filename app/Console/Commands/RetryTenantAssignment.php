@@ -63,14 +63,29 @@ class RetryTenantAssignment extends Command
                     $this->line("\n[DRY RUN] Would retry tenant assignment for user: {$user->email} (ID: {$user->id})");
                     $this->skippedCount++;
                 } else {
-                    $result = $this->tenantAssignmentService->assignTenant($user);
+                    $maxRetries = 3;
+                    $result = null;
+                    $lastError = null;
 
-                    if ($result['success']) {
-                        $this->successCount++;
-                        $this->line("\n✓ Successfully assigned tenant_id for user: {$user->email} (ID: {$user->id})");
-                    } else {
+                    for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                        $result = $this->tenantAssignmentService->assignTenant($user);
+
+                        if ($result['success']) {
+                            $this->successCount++;
+                            $this->line("\n✓ Successfully assigned tenant_id for user: {$user->email} (ID: {$user->id})" . ($attempt > 1 ? " (attempt {$attempt})" : ''));
+                            break;
+                        } else {
+                            $lastError = $result['error_message'];
+                            if ($attempt < $maxRetries) {
+                                $this->line("\n⚠ Attempt {$attempt} failed for user: {$user->email} (ID: {$user->id}) - Retrying...");
+                                sleep(1);
+                            }
+                        }
+                    }
+
+                    if (!$result['success']) {
                         $this->errorCount++;
-                        $this->line("\n✗ Failed to assign tenant_id for user: {$user->email} (ID: {$user->id}) - {$result['error_message']}");
+                        $this->line("\n✗ Failed to assign tenant_id for user: {$user->email} (ID: {$user->id}) after {$maxRetries} attempts - {$lastError}");
                     }
                 }
             } catch (\Exception $e) {

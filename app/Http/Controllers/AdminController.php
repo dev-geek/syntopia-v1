@@ -487,6 +487,13 @@ class AdminController extends Controller
             'failed' => [],
         ];
 
+        $translations = [
+            '用户不存在' => 'User does not exist',
+            '用户已存在' => 'User already exists',
+            '密码绑定失败' => 'Password binding failed',
+            '租户分配失败' => 'Tenant assignment failed',
+        ];
+
         $lines = explode("\n", $output);
 
         foreach ($lines as $line) {
@@ -499,10 +506,17 @@ class AdminController extends Controller
                         'id' => (int) $matches[2],
                     ];
                 } elseif (preg_match('/✗ (?:Failed to assign tenant_id|Exception) for user: (.+?) \(ID: (\d+)\)(?: - (.+))?/', $line, $matches)) {
+                    $error = $matches[3] ?? 'Unknown error';
+                    // Translate Chinese error messages
+                    foreach ($translations as $chinese => $english) {
+                        if (str_contains($error, $chinese)) {
+                            $error = str_replace($chinese, $english, $error);
+                        }
+                    }
                     $users['failed'][] = [
                         'email' => $matches[1],
                         'id' => (int) $matches[2],
-                        'error' => $matches[3] ?? 'Unknown error',
+                        'error' => $error,
                     ];
                 }
             } elseif (str_contains($command, 'password')) {
@@ -512,10 +526,17 @@ class AdminController extends Controller
                         'id' => (int) $matches[2],
                     ];
                 } elseif (preg_match('/✗ (?:Failed to bind password|Exception) for user: (.+?) \(ID: (\d+)\)(?: - (.+))?/', $line, $matches)) {
+                    $error = $matches[3] ?? 'Unknown error';
+                    // Translate Chinese error messages
+                    foreach ($translations as $chinese => $english) {
+                        if (str_contains($error, $chinese)) {
+                            $error = str_replace($chinese, $english, $error);
+                        }
+                    }
                     $users['failed'][] = [
                         'email' => $matches[1],
                         'id' => (int) $matches[2],
-                        'error' => $matches[3] ?? 'Unknown error',
+                        'error' => $error,
                     ];
                 }
             }
