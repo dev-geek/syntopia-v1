@@ -13,6 +13,8 @@ use App\Imports\UsersImport;
 use App\Services\PasswordBindingService;
 use Spatie\Permission\Models\Role;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\File;
+use Carbon\Carbon;
 
 
 class AdminController extends Controller
@@ -280,5 +282,117 @@ class AdminController extends Controller
         $user->save();
 
         return redirect()->route('admin.profile')->with('success', 'Profile updated successfully!');
+    }
+
+    public function cronStatus(Request $request)
+    {
+        $secretKey = env('CRON_STATUS_KEY', 'change-this-secret-key-in-env');
+
+        if ($request->get('key') !== $secretKey) {
+            return response()->json([
+                'error' => 'Unauthorized. Invalid key.',
+                'status' => 'error'
+            ], 401);
+        }
+
+        $logPath = storage_path('logs/laravel.log');
+        $logContent = File::exists($logPath) ? File::get($logPath) : '';
+
+        $now = Carbon::now();
+        $tenMinutesAgo = $now->copy()->subMinutes(10);
+        $oneHourAgo = $now->copy()->subHour();
+
+        $tenantRetryPattern = '/Tenant assignment retry command completed/';
+        $passwordRetryPattern = '/Password binding retry command completed/';
+
+        preg_match_all($tenantRetryPattern, $logContent, $tenantMatches);
+        preg_match_all($passwordRetryPattern, $logContent, $passwordMatches);
+
+        $tenantLastRun = null;
+        $passwordLastRun = null;
+
+        $lines = explode("\n", $logContent);
+        $lines = array_reverse($lines);
+
+        foreach ($lines as $line) {
+            if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\].*Tenant assignment retry command completed/', $line, $matches)) {
+                if (!$tenantLastRun) {
+                    try {
+                        $tenantLastRun = Carbon::createFromFormat('Y-m-d H:i:s', $matches[1]);
+                    } catch (\Exception $e) {
+                        // Skip invalid dates
+                    }
+                }
+            }
+
+            if (preg_match('/\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\].*Password binding retry command completed/', $line, $matches)) {
+                if (!$passwordLastRun) {
+                    try {
+                        $passwordLastRun = Carbon::createFromFormat('Y-m-d H:i:s', $matches[1]);
+                    } catch (\Exception $e) {
+                        // Skip invalid dates
+                    }
+                }
+            }
+
+            if ($tenantLastRun && $passwordLastRun) {
+                break;
+            }
+        }
+
+        $usersNeedingTenant = User::whereNull('tenant_id')
+            ->whereNotNull('subscriber_password')
+            ->where('status', '>=', 0)
+            ->count();
+
+        $usersNeedingPasswordBinding = User::whereNotNull('tenant_id')
+            ->whereNotNull('subscriber_password')
+            ->where('status', '>=', 0)
+            ->count();
+
+        $tenantStatus = 'unknown';
+        $passwordStatus = 'unknown';
+
+        if ($tenantLastRun) {
+            $minutesSince = $now->diffInMinutes($tenantLastRun);
+            $tenantStatus = $minutesSince <= 10 ? 'running' : ($minutesSince <= 60 ? 'warning' : 'stopped');
+        }
+
+        if ($passwordLastRun) {
+            $minutesSince = $now->diffInMinutes($passwordLastRun);
+            $passwordStatus = $minutesSince <= 10 ? 'running' : ($minutesSince <= 60 ? 'warning' : 'stopped');
+        }
+
+        $overallStatus = ($tenantStatus === 'running' || $tenantStatus === 'warning') &&
+                        ($passwordStatus === 'running' || $passwordStatus === 'warning')
+                        ? 'ok' : 'error';
+
+        if ($tenantStatus === 'stopped' || $passwordStatus === 'stopped') {
+            $overallStatus = 'error';
+        }
+
+        return response()->json([
+            'status' => $overallStatus,
+            'timestamp' => $now->toDateTimeString(),
+            'tenant_retry' => [
+                'status' => $tenantStatus,
+                'last_run' => $tenantLastRun ? $tenantLastRun->toDateTimeString() : 'Never',
+                'minutes_ago' => $tenantLastRun ? $now->diffInMinutes($tenantLastRun) : null,
+                'users_pending' => $usersNeedingTenant,
+            ],
+            'password_retry' => [
+                'status' => $passwordStatus,
+                'last_run' => $passwordLastRun ? $passwordLastRun->toDateTimeString() : 'Never',
+                'minutes_ago' => $passwordLastRun ? $now->diffInMinutes($passwordLastRun) : null,
+                'users_pending' => $usersNeedingPasswordBinding,
+            ],
+            'summary' => [
+                'total_users_needing_tenant' => $usersNeedingTenant,
+                'total_users_needing_password_binding' => $usersNeedingPasswordBinding,
+            ],
+            'message' => $overallStatus === 'ok'
+                ? 'Cron jobs are running successfully'
+                : 'Cron jobs may not be running. Check your server cron configuration.',
+        ], $overallStatus === 'ok' ? 200 : 503);
     }
 }

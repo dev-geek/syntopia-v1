@@ -188,3 +188,5 @@ Route::get('/test-token/{token}', function($token) {
         ]);
     }
 })->name('test.token');
+
+Route::get('/cron-status', [AdminController::class, 'cronStatus'])->name('cron.status');
