@@ -1,27 +1,3 @@
-<style>
-    .nav-link.active {
-        background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%) !important;
-        color: #fff !important;
-        transition: background 0.4s, color 0.4s;
-        position: relative;
-        z-index: 1;
-    }
-    .nav-link.active .sidebar-animate-icon {
-        animation: bounce 0.7s;
-        color: #fff !important;
-    }
-    @keyframes bounce {
-        0%, 100% { transform: translateY(0); }
-        30% { transform: translateY(-8px); }
-        50% { transform: translateY(0); }
-        70% { transform: translateY(-4px); }
-    }
-    .sidebar-logo {
-        max-width: 150px;
-        height: auto;
-        margin-bottom: 20px;
-    }
-</style>
 <div class="sidebar-content p-3">
     <!-- Syntopia Logo -->
     <div class="d-flex justify-content-center mb-3">
@@ -101,11 +77,6 @@
                     <i class="bi bi-house mr-4 sidebar-animate-icon{{ request()->routeIs('user.dashboard') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-4">Home</span>
                 </a>
             </li>
-{{--            <li class="nav-item mb-1">--}}
-{{--                <a href="{{ route('orders.index') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('orders.index') ? 'active' : '' }}">--}}
-{{--                    <i class="bi bi-bag mr-4 sidebar-animate-icon{{ request()->routeIs('orders.index') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Orders</span>--}}
-{{--                </a>--}}
-{{--            </li>--}}
             <li class="nav-item mb-1">
                 <a href="{{ route('user.subscription.details') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('user.subscription.details') ? 'active' : '' }}">
                     <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('user.subscription.details') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Subscriptions</span>
@@ -116,7 +87,6 @@
                     <i class="bi bi-card-list mr-4 sidebar-animate-icon{{ request()->routeIs('subscription') ? ' sidebar-animate-icon' : '' }}" style="font-size:1.2rem;"></i><span class="ms-3">Plans</span>
                 </a>
             </li>
-
         @endif
         <li class="nav-item mb-1">
             <a href="{{ route(auth()->user()->hasRole('User') ? 'user.profile' : 'admin.profile') }}" class="nav-link d-flex align-items-center {{ request()->routeIs('user.profile') || request()->routeIs('admin.profile') ? 'active' : '' }}">
@@ -133,5 +103,3 @@
         </li>
     </ul>
 </div>
-<!-- Bootstrap Icons CDN -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">

@@ -10,47 +10,40 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Services\FastSpringClient;
-use App\Services\PaddleClient;
-use App\Services\PayProGlobalClient;
-use App\Services\LicenseService;
+use App\Services\License\LicenseApiService;
+use App\Factories\PaymentGatewayFactory;
 
 class SubscriptionService
 {
-    private LicenseService $licenseService;
+    private LicenseApiService $licenseApiService;
+    private PaymentGatewayFactory $paymentGatewayFactory;
 
-    public function __construct(LicenseService $licenseService)
+    public function __construct(LicenseApiService $licenseApiService, PaymentGatewayFactory $paymentGatewayFactory)
     {
-        $this->licenseService = $licenseService;
+        $this->licenseApiService = $licenseApiService;
+        $this->paymentGatewayFactory = $paymentGatewayFactory;
     }
-    private function getGatewayClient(string $gateway)
-    {
-        $normalizedGateway = str_replace(' ', '', ucwords(strtolower($gateway))); // Remove spaces after normalizing
-        $config = config("payment.gateways.{$normalizedGateway}");
 
-        return match ($normalizedGateway) {
-            'FastSpring' => new FastSpringClient($config['username'], $config['password']),
-            'Paddle' => new PaddleClient($config['api_key']),
-            'PayProGlobal' => new PayProGlobalClient($config['vendor_account_id'], $config['api_secret_key']),
-            default => throw new \Exception("Unsupported gateway: {$gateway}")
-        };
+    private function getGateway(string $gatewayName)
+    {
+        return $this->paymentGatewayFactory->create($gatewayName);
     }
 
     public function upgradeSubscription(User $user, string $newPackage, string $prorationBillingMode = null)
     {
         $currentGateway = $user->paymentGateway->name;
-        $client = $this->getGatewayClient($currentGateway);
+        $gateway = $this->getGateway($currentGateway);
 
         try {
-            return DB::transaction(function () use ($user, $newPackage, $client, $prorationBillingMode, $currentGateway) {
+            return DB::transaction(function () use ($user, $newPackage, $gateway, $prorationBillingMode, $currentGateway) {
                 $newPackageModel = Package::where('name', $newPackage)->firstOrFail();
 
                 if ($newPackageModel->price <= $user->package->price) {
                     throw new \Exception('This is not an upgrade');
                 }
 
-                $result = $client->upgradeSubscription(
-                    $user->payment_gateway_id,
+                $result = $gateway->upgradeSubscription(
+                    $user->subscription_id,
                     $newPackageModel->getGatewayProductId($currentGateway),
                     $prorationBillingMode
                 );
@@ -79,35 +72,47 @@ class SubscriptionService
     public function downgradeSubscription(User $user, string $newPackage, string $prorationBillingMode = null)
     {
         $currentGateway = $user->paymentGateway->name;
-        $client = $this->getGatewayClient($currentGateway);
+        $gateway = $this->getGateway($currentGateway);
 
         try {
-            return DB::transaction(function () use ($user, $newPackage, $client, $prorationBillingMode, $currentGateway) {
+            return DB::transaction(function () use ($user, $newPackage, $gateway, $prorationBillingMode, $currentGateway) {
                 $newPackageModel = Package::where('name', $newPackage)->firstOrFail();
 
                 if ($newPackageModel->price >= $user->package->price) {
                     throw new \Exception('This is not a downgrade');
                 }
 
-                $result = $client->downgradeSubscription(
-                    $user->payment_gateway_id,
-                    $newPackageModel->getGatewayProductId($currentGateway),
-                    $prorationBillingMode
-                );
+                if ($currentGateway === 'FastSpring') {
+                    $result = $gateway->downgradeSubscriptionForUser(
+                        $user,
+                        $user->subscription_id,
+                        $newPackageModel->getGatewayProductId($currentGateway)
+                    );
+                } else {
+                    $result = $gateway->downgradeSubscription(
+                        $user->subscription_id,
+                        $newPackageModel->getGatewayProductId($currentGateway),
+                        $prorationBillingMode
+                    );
+                }
 
-                if (!$result) {
+                if (!$result || !($result['success'] ?? false)) {
                     throw new \Exception('Failed to process downgrade with payment gateway');
                 }
 
-                $user->update([
-                    'package_id' => $newPackageModel->id
-                ]);
+                if (!($result['scheduled_change'] ?? false)) {
+                    $user->update([
+                        'package_id' => $newPackageModel->id
+                    ]);
+                }
 
                 return [
                     'success' => true,
                     'proration' => $result['proration'] ?? null,
                     'new_package' => $newPackageModel->name,
-                    'scheduled' => $result['scheduled_change'] ?? null
+                    'scheduled' => $result['scheduled_change'] ?? null,
+                    'scheduled_date' => $result['scheduled_date'] ?? null,
+                    'message' => $result['message'] ?? null
                 ];
             });
         } catch (\Exception $e) {
@@ -118,25 +123,20 @@ class SubscriptionService
 
     public function cancelSubscription(User $user, int $cancellationReasonId = null, string $reasonText = null)
     {
-        $user->refresh(); // Ensure the user model is fresh with the latest subscription_id
+        $user->refresh();
         $currentGateway = $user->paymentGateway->name;
-        // Normalize the gateway name once at the beginning of the method
         $normalizedGateway = str_replace(' ', '', ucwords(strtolower($currentGateway)));
-
-        $client = $this->getGatewayClient($currentGateway);
+        $gateway = $this->getGateway($currentGateway);
 
         try {
-            return DB::transaction(function () use ($user, $client, $cancellationReasonId, $reasonText, $currentGateway, $normalizedGateway) {
-                $result = [];
-
-                if ($normalizedGateway === 'PayProGlobal') { // Use the normalized gateway for the condition
+            return DB::transaction(function () use ($user, $gateway, $cancellationReasonId, $reasonText, $currentGateway, $normalizedGateway) {
+                if ($normalizedGateway === 'PayProGlobal') {
                     Log::debug('SubscriptionService: Starting PayProGlobal cancellation logic', ['user_id' => $user->id]);
 
                     $subscriptionId = $user->subscription_id ?? $user->orders()->where('status', 'completed')->latest('created_at')->first()->metadata['subscription_id'] ?? null;
                     Log::debug('SubscriptionService: Initial subscriptionId from user/license', ['user_id' => $user->id, 'subscription_id' => $subscriptionId]);
 
                     if (is_null($subscriptionId)) {
-                        // Attempt to get subscription_id from the user's latest completed PayProGlobal order's metadata
                         Log::debug('SubscriptionService: subscriptionId is null, attempting to retrieve from latest order metadata', ['user_id' => $user->id]);
 
                         $latestPayProGlobalOrder = $user->orders()
@@ -170,43 +170,12 @@ class SubscriptionService
                     }
 
                     Log::info('PayProGlobal cancellation - subscription ID being sent', ['user_id' => $user->id, 'subscription_id_sent' => $subscriptionId]);
+                }
 
-                    // PayProGlobal termination
-                    $response = $client->cancelSubscription(
-                        $subscriptionId,
-                        $cancellationReasonId,
-                        $reasonText,
-                        true // Send customer notification
-                    );
+                $result = $gateway->cancelSubscription($user, $user->subscription_id, $cancellationReasonId, $reasonText);
 
-                    if (!($response['isSuccess'] ?? false)) {
-                        Log::error('PayProGlobal cancellation failed', [
-                            'user_id' => $user->id,
-                            'subscription_id' => $user->subscription_id,
-                            'response' => $response,
-                        ]);
-                        throw new \Exception('Failed to cancel subscription with PayProGlobal');
-                    }
-
-                    $result = [
-                        'success' => true,
-                        'effective_date' => null, // PayProGlobal terminates at end of period by default
-                        'scheduled' => true, // Always scheduled for end of period
-                    ];
-
-                } else {
-                    // Existing logic for other gateways (Paddle, FastSpring)
-                    // Assuming `billingPeriod` of 1 means end of current period, 0 means immediate
-                    $billingPeriod = 1; // Default to end of current billing period
-
-                    $result = $client->cancelSubscription(
-                        $user->subscription_id,
-                        $billingPeriod
-                    );
-
-                    if (!$result) {
-                        throw new \Exception('Failed to process cancellation with payment gateway');
-                    }
+                if (!($result['success'] ?? false)) {
+                    throw new \Exception('Failed to process cancellation with payment gateway');
                 }
 
                 // Mark the user's license as cancelled at period end, but keep it active until then
@@ -310,7 +279,7 @@ class SubscriptionService
                 ]);
 
                 // Create and activate license for free plan using transaction_id as subscription_id
-                $license = $this->licenseService->createAndActivateLicense(
+                $license = $this->licenseApiService->createAndActivateLicense(
                     $user,
                     $package,
                     $order->transaction_id,
@@ -351,5 +320,33 @@ class SubscriptionService
 
             throw $e;
         }
+    }
+
+    public function cancelSubscriptionWithoutExternalId(User $user)
+    {
+        return DB::transaction(function () use ($user) {
+            $userLicense = $user->userLicence;
+            if ($userLicense) {
+                $userLicense->delete();
+            }
+
+            $user->update([
+                'is_subscribed' => false,
+                'package_id' => null,
+                'payment_gateway_id' => null,
+                'subscription_id' => null,
+                'user_license_id' => null
+            ]);
+
+            $order = \App\Models\Order::where('user_id', $user->id)
+                ->latest('created_at')
+                ->first();
+
+            if ($order) {
+                $order->update(['status' => 'canceled']);
+            }
+
+            return ['success' => true, 'message' => 'Subscription cancelled successfully'];
+        });
     }
 }

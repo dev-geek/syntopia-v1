@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\API\PaymentController;
+use App\Http\Controllers\Payments\PaymentController;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Package;
@@ -269,6 +269,13 @@ class SubscriptionController extends Controller
 
     public function downgrade(Request $request)
     {
+        Log::info('=== SubscriptionController::downgrade called ===', [
+            'method' => $request->method(),
+            'user_id' => Auth::id(),
+            'is_post' => $request->isMethod('post'),
+            'all_data' => $request->all()
+        ]);
+
         $user = Auth::user();
 
         if (!$user) {
@@ -290,50 +297,33 @@ class SubscriptionController extends Controller
                 return $paymentController->payproglobalDowngrade($request);
             }
 
-            // Existing logic for other payment gateways (scheduled downgrade)
-            // Check if there is an active license and its expiry
-            $activeLicense = $user->userLicence;
-            if (!$activeLicense || !$activeLicense->expires_at) {
-                return redirect()->route('user.subscription.details')->with('error', 'No active subscription found to downgrade.');
-            }
-
+            // For FastSpring and Paddle, use PaymentService to handle downgrade via gateway
             try {
-                DB::transaction(function () use ($user, $targetPackage, $activeLicense) {
-                    // Cancel any existing scheduled downgrades for the user
-                    Order::where('user_id', $user->id)
-                        ->where('order_type', 'downgrade')
-                        ->where('status', 'scheduled_downgrade')
-                        ->update(['status' => 'cancelled']);
+                Log::info('=== SubscriptionController::downgrade POST called ===', [
+                    'user_id' => $user->id,
+                    'target_package_id' => $targetPackageId,
+                    'gateway' => $user->paymentGateway->name ?? 'FastSpring'
+                ]);
 
-                    // Create a new scheduled downgrade order
-                    $order = new Order();
-                    $order->user_id = $user->id;
-                    $order->package_id = $targetPackage->id;
-                    $order->order_type = 'downgrade';
-                    $order->status = 'scheduled_downgrade';
-                    $order->transaction_id = 'SCHEDULED-DOWNGRADE-' . uniqid(); // Unique ID for scheduled order
-                    $order->amount = $targetPackage->price;
-                    $order->currency = 'USD'; // Assuming USD, adjust if dynamic
-                    $order->payment_method = $user->paymentGateway->name ?? 'N/A';
-                    $order->metadata = [
-                        'original_package_id' => $user->package->id,
-                        'original_package_name' => $user->package->name,
-                        'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
-                        'downgrade_processed' => false,
-                    ];
-                    $order->save();
+                $paymentService = app(\App\Services\Payment\PaymentService::class);
+                $gatewayName = $user->paymentGateway->name ?? 'FastSpring';
 
-                    Log::info('Subscription downgrade scheduled', [
-                        'user_id' => $user->id,
-                        'original_package' => $user->package->name,
-                        'target_package' => $targetPackage->name,
-                        'scheduled_activation_date' => $activeLicense->expires_at->toDateTimeString(),
-                        'order_id' => $order->id,
-                    ]);
-                });
+                Log::info('Processing downgrade via PaymentService', [
+                    'user_id' => $user->id,
+                    'target_package' => $targetPackage->name,
+                    'gateway' => $gatewayName
+                ]);
+
+                $result = $paymentService->handleDowngradeSubscription($user, $targetPackage->name, $gatewayName);
+
+                if ($result['success'] && isset($result['checkout_url'])) {
+                    // For FastSpring, checkout_url is actually a redirect URL, not a checkout
+                    // It contains the success message parameters
+                    return redirect($result['checkout_url']);
+                }
 
                 return redirect()->route('user.subscription.details')
-                    ->with('success', "Downgrade to {$targetPackage->name} scheduled successfully. It will activate on " . Carbon::parse($activeLicense->expires_at)->format('M d, Y') . '.');
+                    ->with('success', $result['message'] ?? "Downgrade to {$targetPackage->name} scheduled successfully.");
             } catch (\Exception $e) {
                 Log::error('Failed to schedule downgrade', [
                     'user_id' => $user->id,
@@ -341,7 +331,7 @@ class SubscriptionController extends Controller
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                 ]);
-                return redirect()->route('user.subscription.details')->with('error', 'Failed to schedule downgrade. Please try again.');
+                return redirect()->route('user.subscription.details')->with('error', 'Failed to schedule downgrade: ' . $e->getMessage());
             }
         }
         return $this->showSubscriptionPage('downgrade');

@@ -1,33 +1,342 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\License;
 
 use App\Models\User;
 use App\Models\Package;
 use App\Models\PaymentGateways;
 use App\Models\UserLicence;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use App\Models\Order;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
-class LicenseService
+class LicenseApiService
 {
-    private $licenseApiService;
+    private const API_BASE_URL = 'https://openapi.xiaoice.com/vh-cp';
+    private const SUBSCRIPTION_KEY = '5c745ccd024140ffad8af2ed7a30ccad';
+    private const CACHE_TTL = 300;
 
-    public function __construct(LicenseApiService $licenseApiService)
+    private function getHeaders(): array
     {
-        $this->licenseApiService = $licenseApiService;
+        return [
+            'subscription-key' => self::SUBSCRIPTION_KEY,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json'
+        ];
     }
 
-    /**
-     * Create a new license for a user and activate it
-     */
+    public function getSubscriptionSummary(?string $tenantId = null, bool $bypassCache = false): ?array
+    {
+        $cacheKey = $this->getCacheKey('subscription_summary', $tenantId);
+
+        if ($bypassCache) {
+            Log::info('Making fresh license API call (bypassing cache)', [
+                'tenant_id' => $tenantId
+            ]);
+            return $this->fetchSubscriptionSummary($tenantId);
+        }
+
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($tenantId) {
+            return $this->fetchSubscriptionSummary($tenantId);
+        });
+    }
+
+    private function fetchSubscriptionSummary(?string $tenantId = null): ?array
+    {
+        $payload = [
+            'pageIndex' => 1,
+            'pageSize' => 100,
+            'appIds' => [1],
+            'subscriptionType' => 'license',
+        ];
+
+        if ($tenantId) {
+            $payload['tenantId'] = $tenantId;
+        }
+
+        try {
+            $response = Http::withHeaders($this->getHeaders())
+                ->timeout(30)
+                ->post(self::API_BASE_URL . '/api/partner/channel/inventory/subscription/summary/search', $payload);
+
+            if (!$response->successful() || $response->json('code') !== 200) {
+                Log::error('Failed to fetch subscription summary', [
+                    'response' => $response->body(),
+                    'tenant_id' => $tenantId
+                ]);
+                return null;
+            }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('cURL connection error when fetching subscription summary', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Unexpected error when fetching subscription summary', [
+                'tenant_id' => $tenantId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+
+        $allLicenses = $response->json('data.data') ?? [];
+
+        $availableLicenses = array_filter($allLicenses, function ($license) {
+            return ($license['remaining'] ?? 0) > 0;
+        });
+
+        Log::info('License availability filtered', [
+            'total_licenses' => count($allLicenses),
+            'available_licenses' => count($availableLicenses),
+            'tenant_id' => $tenantId
+        ]);
+
+        return array_values($availableLicenses);
+    }
+
+    public function addLicenseToTenant(string $tenantId, string $licenseKey): bool
+    {
+        $payload = [
+            'tenantId' => $tenantId,
+            'subscriptionCode' => $licenseKey,
+        ];
+
+        try {
+            $response = Http::withHeaders($this->getHeaders())
+                ->timeout(30)
+                ->post(self::API_BASE_URL . '/api/partner/tenant/subscription/license/add', $payload);
+
+            $responseData = $response->json();
+            Log::info("License response", $responseData);
+
+            if ($response->successful() && isset($responseData['code']) && $responseData['code'] === 200) {
+                return true;
+            } else {
+                $statusCode = $response->status();
+                $apiCode = $responseData['code'] ?? null;
+                $apiMessage = $responseData['message'] ?? 'No error message provided';
+                $apiData = $responseData['data'] ?? null;
+
+                Log::error('Failed to add license to external API', [
+                    'tenant_id' => $tenantId,
+                    'license_key' => $licenseKey,
+                    'http_status' => $statusCode,
+                    'api_code' => $apiCode,
+                    'api_message' => $apiMessage,
+                    'api_data' => $apiData,
+                    'response_body' => $response->body(),
+                    'response_json' => $responseData
+                ]);
+
+                if ($apiCode === 730 || (is_string($apiMessage) && (str_contains($apiMessage, 'already exists') || str_contains($apiMessage, 'exist')))) {
+                    Log::warning('License may already exist for tenant - verifying', [
+                        'tenant_id' => $tenantId,
+                        'license_key' => $licenseKey,
+                        'api_message' => $apiMessage
+                    ]);
+
+                    try {
+                        $summary = $this->getSubscriptionSummary($tenantId, true);
+                        if ($summary) {
+                            foreach ($summary as $item) {
+                                if (($item['subscriptionCode'] ?? '') === $licenseKey) {
+                                    Log::info('License confirmed to exist in tenant subscription - proceeding with license record creation', [
+                                        'tenant_id' => $tenantId,
+                                        'license_key' => $licenseKey
+                                    ]);
+                                    return true;
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Could not verify license existence via summary', [
+                            'tenant_id' => $tenantId,
+                            'license_key' => $licenseKey,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+
+                return false;
+            }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('cURL connection error when adding license to external API', [
+                'tenant_id' => $tenantId,
+                'license_key' => $licenseKey,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        } catch (\Exception $e) {
+            Log::error('Unexpected error when adding license to external API', [
+                'tenant_id' => $tenantId,
+                'license_key' => $licenseKey,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    public function resolvePlanLicense(?string $tenantId, string $planName, bool $bypassCache = false): ?array
+    {
+        $summaryData = $this->getSubscriptionSummary($tenantId, $bypassCache) ?? [];
+
+        if (empty($summaryData)) {
+            return null;
+        }
+
+        $normalized = $this->normalizePlanName($planName);
+
+        foreach ($summaryData as $item) {
+            $name = (string)($item['subscriptionName'] ?? '');
+            $code = (string)($item['subscriptionCode'] ?? '');
+            $remaining = (int)($item['remaining'] ?? 0);
+
+            if ($remaining <= 0) {
+                continue;
+            }
+
+            if ($this->planMatches($normalized, $name, $code)) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizePlanName(string $planName): string
+    {
+        $p = trim(mb_strtolower($planName));
+        $p = str_replace([' plan', '-plan'], '', $p);
+        return $p;
+    }
+
+    private function planMatches(string $normalizedPlan, string $subscriptionName, string $subscriptionCode): bool
+    {
+        $name = mb_strtolower($subscriptionName);
+
+		$aliases = [
+			'free' => ['Free', 'free', 'free version', 'free plan', 'Trial', 'trial', 'trial version'],
+			'trial' => ['Trial', 'trial', 'trial version'],
+			'starter' => ['Starter','starter', 'starter plan', 'starter package', 'starter tier'],
+			'pro' => ['Pro', 'pro', 'pro plan'],
+			'business' => ['Business', 'business', 'business plan'],
+			'enterprise' => ['Enterprise', 'enterprise', 'enterprise plan'],
+			'avatar customization' => ['Avatar Customization (Clone Yourself)', 'avatar customization', 'avatar-customization', 'avatar', 'avatar customization (clone yourself)'],
+			'cloud-advanced-live-streaming-1-year' => ['Cloud Advanced Live Streaming – 1 Year Plan', 'cloud advanced live streaming – 1 year plan', 'cloud advanced live streaming-1 year plan'],
+		];
+
+        $key = $normalizedPlan;
+        if (!isset($aliases[$key])) {
+            $map = [
+                'trial version' => 'trial',
+                'cloud advanced live streaming – 1 year plan' => 'cloud-advanced-live-streaming-1-year',
+                'cloud advanced live streaming-1 year plan' => 'cloud-advanced-live-streaming-1-year',
+                'avatar-customization' => 'avatar customization',
+                'voice-customization' => 'voice customization',
+            ];
+            if (isset($map[$key])) {
+                $key = $map[$key];
+            }
+        }
+
+        if (isset($aliases[$key])) {
+            foreach ($aliases[$key] as $alias) {
+                if (mb_strpos($name, mb_strtolower($alias)) !== false) {
+                    return true;
+                }
+            }
+        }
+
+		$codeExactMap = [
+			'starter' => ['PKG-CL-OVS-02'],
+			'pro' => ['PKG-CL-OVS-03'],
+			'business' => ['PKG-CL-OVS-04'],
+			'trial' => ['PKG-CL-GLB-01'],
+		];
+		if (isset($codeExactMap[$key]) && in_array($subscriptionCode, $codeExactMap[$key], true)) {
+			return true;
+		}
+
+		$prefixMap = [
+			'free' => ['PKG-CL-FREE'],
+			'starter' => ['PKG-CL-OVS-02'],
+			'pro' => ['PKG-CL-OVS-03'],
+			'business' => ['PKG-CL-OVS-04'],
+			'trial' => ['PKG-CL-GLB'],
+		];
+		if (isset($prefixMap[$key])) {
+			foreach ($prefixMap[$key] as $prefix) {
+				if (stripos($subscriptionCode, $prefix) === 0) {
+					return true;
+				}
+			}
+		}
+
+        return false;
+    }
+
+    public function checkLicenseAvailability(): bool
+    {
+        $summaryData = $this->getSubscriptionSummary();
+
+        if (empty($summaryData)) {
+            Log::error('No subscription data found in license availability check');
+            return false;
+        }
+
+        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        if (!$licenseKey) {
+            Log::error('No license codes available in license availability check');
+            return false;
+        }
+
+        Log::info('License availability check passed', ['available' => true]);
+        return true;
+    }
+
+    public function makeLicense(?string $tenantId = null, bool $bypassCache = false): ?string
+    {
+        $summaryData = $this->getSubscriptionSummary($tenantId, $bypassCache);
+
+        if (empty($summaryData)) {
+            Log::error('No subscription data found in summary response', [
+                'bypass_cache' => $bypassCache,
+                'tenant_id' => $tenantId
+            ]);
+            return null;
+        }
+
+        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        if (!$licenseKey) {
+            Log::error('Subscription code not found in summary response', [
+                'bypass_cache' => $bypassCache,
+                'tenant_id' => $tenantId
+            ]);
+            return null;
+        }
+
+        Log::info('License key retrieved', [
+            'license_key' => $licenseKey,
+            'bypass_cache' => $bypassCache,
+            'tenant_id' => $tenantId
+        ]);
+
+        return $licenseKey;
+    }
+
+    private function getCacheKey(string $prefix, ?string $tenantId = null): string
+    {
+        return $prefix . '_' . ($tenantId ?? 'general');
+    }
+
     public function createAndActivateLicense(User $user, Package $package, string $subscriptionId = null, string $paymentGateway = null, bool $isUpgradeAttempt = false): ?UserLicence
     {
         try {
             DB::beginTransaction();
 
-            // Check if user has tenant_id
             if (!$user->tenant_id) {
                 Log::error('User does not have tenant_id', [
                     'user_id' => $user->id,
@@ -37,12 +346,11 @@ class LicenseService
                 return null;
             }
 
-            // Get license keys from external API
             $summaryData = null;
             try {
-                $summaryData = $this->licenseApiService->getSubscriptionSummary($user->tenant_id, true);
+                $summaryData = $this->getSubscriptionSummary($user->tenant_id, true);
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                Log::error('LicenseService: cURL connection error when getting subscription summary', [
+                Log::error('LicenseApiService: cURL connection error when getting subscription summary', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
                     'error' => $e->getMessage()
@@ -50,12 +358,11 @@ class LicenseService
                 DB::rollBack();
                 throw new \Exception('Failed to connect to the license server to get subscription details. Please check your internet connection and try again.');
             } catch (\Exception $e) {
-                Log::error('LicenseService: Unexpected error when getting subscription summary', [
+                Log::error('LicenseApiService: Unexpected error when getting subscription summary', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
                     'error' => $e->getMessage()
                 ]);
-                // Fall through to general error handling if empty
             }
 
             if (empty($summaryData)) {
@@ -77,7 +384,6 @@ class LicenseService
             $isFastSpring = $paymentGateway == ($fastspringGateway ? $fastspringGateway->id : null);
             $isPaddle = $paymentGateway == ($paddleGateway ? $paddleGateway->id : null);
 
-            // If subscription_id is not provided, try to get it from the user's latest completed order's transaction_id
             if (!$subscriptionId) {
                 $latestOrder = Order::where('user_id', $user->id)
                     ->where('status', 'completed')
@@ -144,9 +450,8 @@ class LicenseService
                 ]);
             }
 
-
             $planNameToResolve = $package->name;
-            $resolved = $this->licenseApiService->resolvePlanLicense($user->tenant_id, $planNameToResolve, true);
+            $resolved = $this->resolvePlanLicense($user->tenant_id, $planNameToResolve, true);
             if (!$resolved) {
                 $availableNames = array_map(function ($i) {
                     $n = (string)($i['subscriptionName'] ?? '');
@@ -177,9 +482,9 @@ class LicenseService
 
                 $licenseApiSuccess = false;
                 try {
-                    $licenseApiSuccess = $this->licenseApiService->addLicenseToTenant($user->tenant_id, $licenseKey);
+                    $licenseApiSuccess = $this->addLicenseToTenant($user->tenant_id, $licenseKey);
                 } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                    Log::error('LicenseService: cURL connection error when adding license to external API', [
+                    Log::error('LicenseApiService: cURL connection error when adding license to external API', [
                         'user_id' => $user->id,
                         'package_name' => $package->name,
                         'license_key' => $licenseKey,
@@ -188,13 +493,12 @@ class LicenseService
                     DB::rollBack();
                     throw new \Exception('Failed to connect to the license server. Please check your internet connection and try again.');
                 } catch (\Exception $e) {
-                    Log::error('LicenseService: Unexpected error when calling addLicenseToTenant', [
+                    Log::error('LicenseApiService: Unexpected error when calling addLicenseToTenant', [
                         'user_id' => $user->id,
                         'package_name' => $package->name,
                         'license_key' => $licenseKey,
                         'error' => $e->getMessage()
                     ]);
-
                 }
 
                 if (!$licenseApiSuccess) {
@@ -269,9 +573,6 @@ class LicenseService
         }
     }
 
-    /**
-     * Get the active license for a user
-     */
     public function getActiveLicense(User $user): ?UserLicence
     {
         return UserLicence::where('user_id', $user->id)
@@ -280,9 +581,6 @@ class LicenseService
             ->first();
     }
 
-    /**
-     * Get all licenses for a user
-     */
     public function getUserLicenses(User $user): \Illuminate\Database\Eloquent\Collection
     {
         return UserLicence::where('user_id', $user->id)
@@ -291,15 +589,11 @@ class LicenseService
             ->get();
     }
 
-    /**
-     * Activate a specific license for a user
-     */
     public function activateLicense(UserLicence $license): bool
     {
         try {
             $license->activate();
 
-            // Update user's user_license_id for backward compatibility
             $license->user->update([
                 'user_license_id' => $license->id
             ]);
@@ -320,18 +614,12 @@ class LicenseService
         }
     }
 
-    /**
-     * Check if user has an active license for a specific package
-     */
     public function hasActiveLicenseForPackage(User $user, string $packageName): bool
     {
         $activeLicense = $this->getActiveLicense($user);
         return $activeLicense && strtolower($activeLicense->package->name) === strtolower($packageName);
     }
 
-    /**
-     * Get the newest license for a user (most recently created)
-     */
     public function getNewestLicense(User $user): ?UserLicence
     {
         return UserLicence::where('user_id', $user->id)
@@ -340,14 +628,10 @@ class LicenseService
             ->first();
     }
 
-    /**
-     * Deactivate all licenses for a user
-     */
     public function deactivateAllLicenses(User $user): void
     {
         UserLicence::where('user_id', $user->id)->update(['is_active' => false]);
 
-        // Clear user's user_license_id for backward compatibility
         $user->update([
             'user_license_id' => null
         ]);
@@ -355,17 +639,10 @@ class LicenseService
         Log::info('All licenses deactivated for user', ['user_id' => $user->id]);
     }
 
-    /**
-     * Check if a user is currently restricted from changing their plan.
-     *
-     * @param User $user
-     * @return bool
-     */
     public function canUserChangePlan(User $user): bool
     {
         $activeLicense = $this->getActiveLicense($user);
 
-        // Block changes if there is a pending or scheduled downgrade
         $hasPendingOrScheduledDowngrade = Order::where('user_id', $user->id)
             ->where('order_type', 'downgrade')
             ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
@@ -375,21 +652,18 @@ class LicenseService
             return false;
         }
 
-        // If no active license or current license is expired, user can change plan.
         if (!$activeLicense || ($activeLicense->expires_at && $activeLicense->expires_at->isPast())) {
             return true;
         }
 
-        // If an active license exists and it's an upgrade license, prevent further changes.
         if ($activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
             return false;
         }
 
-        // If an active license exists but it's NOT an upgrade license, allow one upgrade.
         if (!$activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
-            return true; // This allows the first upgrade to a new plan
+            return true;
         }
 
-        return true; // Default to allowing changes if none of the above conditions are met (should not be reached in most cases)
+        return true;
     }
 }

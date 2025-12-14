@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Event;
 use App\Listeners\LogUserActivity;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
+use Laravel\Paddle\Events\WebhookReceived;
+use App\Listeners\HandlePaddleWebhook;
 
 
 class EventServiceProvider extends ServiceProvider
@@ -19,13 +21,16 @@ class EventServiceProvider extends ServiceProvider
      * @var array<class-string, array<int, class-string>>
      */
     protected $listen = [
-        
+
         Registered::class => [
             SendEmailVerificationNotification::class,
         ],
         Login::class => [LogUserActivity::class],
         Logout::class => [LogUserActivity::class],
-            
+        WebhookReceived::class => [
+            HandlePaddleWebhook::class,
+        ],
+
     ];
 
     /**

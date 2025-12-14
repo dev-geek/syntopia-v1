@@ -40,11 +40,11 @@ class ProfileController extends Controller
 
         // Handle password update
         if (!empty($validated['password'])) {
-            // Skip password binding API for Super Admin role
-            if ($user->hasRole('Super Admin')) {
-                // Direct password update for admin users
+            $isAdmin = $user->hasAnyRole(['Super Admin', 'Sub Admin']);
+
+            if ($isAdmin) {
+                // Direct password update for admin users (no password binding or subscriber_password needed)
                 $user->password = $validated['password'];
-                $user->subscriber_password = $validated['password'];
             } else {
                 // Call password binding API for regular users
                 $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);

@@ -3,24 +3,13 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Models\Package;
 use Illuminate\Foundation\Auth\RegistersUsers;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\VerifyEmail;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
-use App\Services\MailService;
-use App\Services\DeviceFingerprintService;
-use App\Services\FreePlanAbuseService;
-use App\Models\FreePlanAttempt;
-use App\Services\SubscriptionService;
+use App\Services\Auth\RegistrationService;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\ShowRegistrationFormRequest;
 
 class RegisterController extends Controller
 {
@@ -64,143 +53,24 @@ class RegisterController extends Controller
 
     protected $redirectTo = '/email/verify';
 
-    /**
-     * Create a new controller instance.
-     *
-     * @return void
-     */
-    protected $deviceFingerprintService;
-    protected $freePlanAbuseService;
-
-    public function __construct(DeviceFingerprintService $deviceFingerprintService, FreePlanAbuseService $freePlanAbuseService)
-    {
+    public function __construct(
+        private RegistrationService $registrationService
+    ) {
         $this->middleware('guest');
-        $this->deviceFingerprintService = $deviceFingerprintService;
-        $this->freePlanAbuseService = $freePlanAbuseService;
     }
 
-    /**
-     * Get a validator for an incoming registration request.
-     *
-     * @param  array  $data
-     * @return \Illuminate\Contracts\Validation\Validator
-     */
-    protected function validator(array $data, Request $request = null)
+
+    public function showRegistrationForm(ShowRegistrationFormRequest $request)
     {
-        Log::info('Registration attempt', $data);
-
-        // Check for device fingerprint abuse (only if enabled)
-        if ($request && config('free_plan_abuse.enabled', false)) {
-            $isBlocked = $this->deviceFingerprintService->isBlocked($request);
-            $hasRecentAttempts = $this->deviceFingerprintService->hasRecentAttempts(
-                $request,
-                config('free_plan_abuse.max_attempts', 1),
-                config('free_plan_abuse.tracking_period_days', 9999999999999)
-            );
-
-            if ($isBlocked || $hasRecentAttempts) {
-                Log::warning('Registration blocked due to fingerprint abuse', [
-                    'ip' => $request->ip(),
-                    'email' => $data['email'] ?? null,
-                    'fingerprint_id' => $data['fingerprint_id'] ?? null,
-                    'is_blocked' => $isBlocked,
-                    'has_recent_attempts' => $hasRecentAttempts
-                ]);
-
-                abort(403, 'Registration is not allowed from this device. Please contact support if you believe this is an error.');
-            }
-        }
-
-        $validator = Validator::make($data, [
-            'email' => [
-                'required',
-                'string',
-                'email',
-                'max:255',
-                'unique:users',
-            ],
-            'password' => [
-                'required',
-                'string',
-                'min:8',
-                'max:30',
-                'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[A-Za-z0-9,.<>{}~!@#$%^&_]{8,30}$/'
-            ],
-            'first_name' => ['required', 'string', 'max:255'],
-            'last_name' => ['required', 'string', 'max:255'],
-            'status' => ['nullable', 'integer'],
-            'subscriber_password' => ['nullable', 'string'],
-        ], [
-            'password.required' => 'Password is required.',
-            'password.string' => 'Password must be a valid string.',
-            'password.min' => 'Password must be at least 8 characters.',
-            'password.max' => 'Password must not exceed 30 characters.',
-            'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
-        ]);
-
-        return $validator;
-    }
-
-    /**
-     * Create a new user instance after a valid registration.
-     *
-     * @param  array  $data
-     * @return \App\Models\User
-     */
-    protected function create(array $data)
-    {
-        $user = User::create([
-            'name' => trim($data['first_name'] . ' ' . $data['last_name']),
-            'first_name' => $data['first_name'],
-            'last_name' => $data['last_name'],
-            'email' => $data['email'],
-            'password' => $data['password'], // Let the mutator handle hashing
-            'status' => 0,
-            'subscriber_password' => $data['password'], // Store plain text for API
-        ]);
-
-        // Ensure guard matches when assigning role
-        $user->assignRole('User');
-
-        return $user;
-    }
-
-    public function showRegistrationForm(Request $request)
-    {
-        // Ensure email parameter is present in URL
-        if (!$request->has('email') || empty($request->get('email'))) {
-            Log::warning('Registration page accessed without email parameter', [
-                'ip' => $request->ip(),
-                'user_agent' => $request->userAgent()
-            ]);
-
-            return redirect()->route('login')
-                ->withErrors(['email' => 'Please enter your email address on the login page first.']);
-        }
-
-        // Validate email format
-        if (!filter_var($request->get('email'), FILTER_VALIDATE_EMAIL)) {
-            Log::warning('Invalid email format in registration URL', [
-                'email' => $request->get('email'),
-                'ip' => $request->ip()
-            ]);
-
-            return redirect()->route('login')
-                ->withErrors(['email' => 'Invalid email format. Please enter a valid email address.']);
-        }
-
-        // Preserve the intended URL if it exists
         if (session()->has('url.intended')) {
-            // Keep the intended URL in session for after registration
             session(['registration_intended_url' => session('url.intended')]);
         }
 
         return view('auth.register');
     }
 
-    public function register(Request $request, SubscriptionService $subscriptionService)
+    public function register(RegisterRequest $request)
     {
-        // Validate that the email from URL parameter matches the submitted email
         $urlEmail = $request->get('email');
         $submittedEmail = $request->input('email');
 
@@ -216,173 +86,35 @@ class RegisterController extends Controller
                 ->withInput();
         }
 
-        // Validate the request including fingerprint data
-        $validator = $this->validator($request->all(), $request);
+        $validationResult = $this->registrationService->validateRegistration($request);
 
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput();
-        }
-
-        // Check for free plan abuse before proceeding (only if enabled)
-        if (config('free_plan_abuse.enabled', false)) {
-            $abuseCheck = $this->freePlanAbuseService->checkAbusePatterns($request);
-            if (!$abuseCheck['allowed']) {
-                Log::warning('Registration blocked due to abuse patterns', [
-                    'reason' => $abuseCheck['reason'],
-                    'ip' => $request->ip(),
-                    'email' => $request->input('email'),
-                    'user_agent' => $request->userAgent()
-                ]);
-
+        if (!$validationResult['success']) {
+            if (isset($validationResult['error']) && $validationResult['error'] === 'email') {
                 return redirect()->back()
-                    ->withErrors(['email' => $abuseCheck['message']])
+                    ->withErrors(['email' => $validationResult['message']])
                     ->withInput();
             }
+            abort(403, $validationResult['error'] ?? 'Registration not allowed.');
         }
-
-        // Record the fingerprint attempt
-        try {
-            $this->deviceFingerprintService->recordAttempt($request);
-        } catch (\Exception $e) {
-            Log::error('Failed to record fingerprint attempt: ' . $e->getMessage(), [
-                'exception' => $e,
-                'ip' => $request->ip(),
-                'email' => $request->input('email')
-            ]);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'email' => [
-                'required',
-                'email',
-                'unique:users',
-            ],
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'password' => [
-                'required',
-                'string',
-                'min:8',
-                'max:30',
-                'regex:/^(?=.*[0-9])(?=.*[A-Z])(?=.*[a-z])(?=.*[,.<>{}~!@#$%^&_])[0-9A-Za-z,.<>{}~!@#$%^&_]{8,30}$/'
-            ],
-        ], [
-            'password.required' => 'Password is required.',
-            'password.string' => 'Password must be a valid string.',
-            'password.min' => 'Password must be at least 8 characters.',
-            'password.max' => 'Password must not exceed 30 characters.',
-            'password.regex' => 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
-        ]);
-
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput();
-        }
-
-        $verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        $full_name = $request->first_name . ' ' . $request->last_name;
 
         try {
-            DB::beginTransaction();
+            $result = $this->registrationService->registerUser($request);
 
-            // Double-check if user already exists (race condition protection)
-            // This makes registration idempotent - multiple calls with same email are safe
-            $existingUser = User::where('email', $request->email)->lockForUpdate()->first();
-            if ($existingUser) {
-                DB::rollBack();
-                Log::info('Registration attempt for existing user (idempotent operation)', [
-                    'email' => $request->email,
-                    'existing_user_id' => $existingUser->id,
-                    'ip' => $request->ip()
-                ]);
-
-                // If user exists but not verified, allow them to proceed to verification
-                // This handles cases where registration was interrupted
-                if (!$existingUser->email_verified_at) {
-                    auth()->login($existingUser);
-                    session(['email' => $existingUser->email]);
-                    return redirect('/email/verify');
-                }
-
+            if (!$result['success']) {
                 return redirect()->back()
-                    ->withErrors(['email' => 'This email is already registered. Please login instead.'])
+                    ->withErrors([$result['error'] => $result['message']])
                     ->withInput();
             }
 
-            // Create user with both hashed password and plain text subscriber_password
-            try {
-                $user = User::create([
-                    'email' => $request->email,
-                    'name' => $full_name,
-                    'password' => $request->password, // This will be hashed by the mutator
-                    'subscriber_password' => $request->password, // Store plain text for API
-                    'verification_code' => $verification_code,
-                    'email_verified_at' => null,
-                    'status' => 0
-                ]);
-            } catch (\Illuminate\Database\QueryException $e) {
-                // Handle duplicate key exception (race condition)
-                // Database-level protection makes this operation idempotent
-                if ($e->getCode() == 23000 || str_contains($e->getMessage(), 'Duplicate entry')) {
-                    DB::rollBack();
-                    Log::info('Duplicate user creation prevented (idempotent operation)', [
-                        'email' => $request->email,
-                        'ip' => $request->ip(),
-                        'error' => $e->getMessage()
-                    ]);
-
-                    // If user was just created, allow them to proceed
-                    $existingUser = User::where('email', $request->email)->first();
-                    if ($existingUser && !$existingUser->email_verified_at) {
-                        auth()->login($existingUser);
-                        session(['email' => $existingUser->email]);
-                        return redirect('/email/verify');
-                    }
-
-                    return redirect()->back()
-                        ->withErrors(['email' => 'This email is already registered. Please login instead.'])
-                        ->withInput();
-                }
-                throw $e;
+            if (isset($result['action']) && $result['action'] === 'login_and_redirect') {
+                auth()->login($result['user']);
+                session(['email' => $result['user']->email]);
+                return redirect($result['route']);
             }
 
-            $user->assignRole('User');
+            auth()->login($result['user']);
+            session(['email' => $result['user']->email]);
 
-            Log::info('User created successfully with subscriber_password', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'has_subscriber_password' => !empty($user->subscriber_password)
-            ]);
-
-            DB::commit();
-
-            // Send verification email with proper error handling
-            $mailResult = MailService::send($user->email, new VerifyEmail($user));
-
-            if ($mailResult['success']) {
-                Log::info('Verification email sent successfully', [
-                    'user_id' => $user->id,
-                    'email' => $user->email
-                ]);
-            } else {
-                Log::warning('Failed to send verification email during registration', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $mailResult['error'] ?? 'Unknown error'
-                ]);
-
-                // Store the mail error and verification code in session
-                session(['mail_error' => $mailResult['message']]);
-                session(['verification_code' => $verification_code]);
-            }
-
-            auth()->login($user);
-            session(['email' => $user->email]);
-
-            // Preserve the intended URL for after verification
             if (session()->has('registration_intended_url')) {
                 session(['verification_intended_url' => session('registration_intended_url')]);
                 session()->forget('registration_intended_url');
@@ -394,8 +126,7 @@ class RegisterController extends Controller
             return redirect('/email/verify');
 
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('User registration failed and rolled back', [
+            Log::error('User registration failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);

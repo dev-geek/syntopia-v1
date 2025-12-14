@@ -1,39 +1,67 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\API\PaymentController;
-use App\Http\Controllers\API\TokenDecryptionController;
-use App\Http\Controllers\API\FreePlanController;
-use App\Http\Controllers\SubscriptionController;
 use Illuminate\Http\Request;
+use App\Http\Controllers\{
+    Dashboard\DashboardController,
+    ProfileController,
+    SubscriptionController,
+    OrderController,
+    SoftwareAccessController,
+    Payments\PaymentController,
+    API\LicenseController,
+    API\FreePlanController,
+};
 
 /*
 |--------------------------------------------------------------------------
-| API Routes
+| User Role Routes
 |--------------------------------------------------------------------------
+|
+| Here is where you can register user routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "web" middleware group.
+|
 */
 
-// Public webhook routes
-Route::prefix('webhooks')->name('webhooks.')->group(function () {
-    Route::post('/paddle', [PaymentController::class, 'handlePaddleWebhook'])->name('paddle');
-    Route::post('/fastspring', [PaymentController::class, 'handleFastSpringWebhook'])->name('fastspring');
-    Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal');
+/*
+|--------------------------------------------------------------------------
+| User Web Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'verified.custom', 'role:User'])->group(function () {
+    // Dashboard
+    Route::match(['get', 'post'], '/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
+
+    // Profile routes
+    Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');
+    Route::post('/profile/update', [ProfileController::class, 'updateProfile'])->name('profile.update');
+    Route::get('/update-password', [ProfileController::class, 'updatePassword'])->name('update-password');
+
+    // Subscription routes
+    Route::match(['get', 'post'], '/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
+    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgrade'])->name('subscription.upgrade');
+    Route::get('/subscription/downgrade', [SubscriptionController::class, 'downgrade'])->name('subscription.downgrade');
+
+    // Orders
+    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+
+    // Software access routes
+    Route::get('/software/access', [SoftwareAccessController::class, 'redirectToSoftware'])->name('software.access');
+    Route::post('/software/token', [SoftwareAccessController::class, 'generateAccessToken'])->name('software.token');
+
+    // Subscription cancellation
+    Route::post('/payments/cancel-subscription', [PaymentController::class, 'cancelSubscription'])
+        ->name('payments.cancel-subscription');
 });
 
-// PayProGlobal webhook (direct route for external calls)
-Route::post('/payproglobal', [PaymentController::class, 'handlePayProGlobalWebhook'])->name('payproglobal.webhook');
-
-// Test endpoint
-Route::post('/payproglobal/test', [PaymentController::class, 'testPayProGlobalWebhook'])->name('payproglobal.test');
-
-// Token decryption routes (for software auto-login)
-Route::prefix('token')->name('token.')->group(function () {
-    Route::match(['POST', 'OPTIONS'], '/decrypt', [TokenDecryptionController::class, 'decryptToken'])->name('decrypt');
-    Route::match(['POST', 'OPTIONS'], '/validate', [TokenDecryptionController::class, 'validateToken'])->name('validate');
-});
-
-// Authenticated API routes
-Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
+/*
+|--------------------------------------------------------------------------
+| User API Routes (Sanctum Authentication)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('api')->middleware(['auth:sanctum', 'throttle:60,1', 'role:User'])->group(function () {
+    // User info
     Route::get('/user', function (Request $request) {
         return $request->user()->load(['package', 'paymentGateway']);
     })->name('user.info');
@@ -86,10 +114,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // License management
     Route::prefix('licenses')->name('licenses.')->group(function () {
-        Route::get('/current', [\App\Http\Controllers\API\LicenseController::class, 'getCurrentLicense'])->name('current');
-        Route::get('/history', [\App\Http\Controllers\API\LicenseController::class, 'getLicenseHistory'])->name('history');
-        Route::post('/activate/{licenseId}', [\App\Http\Controllers\API\LicenseController::class, 'activateLicense'])->name('activate');
-        Route::get('/check-access/{packageName}', [\App\Http\Controllers\API\LicenseController::class, 'checkPackageAccess'])->name('check-access');
+        Route::get('/current', [LicenseController::class, 'getCurrentLicense'])->name('current');
+        Route::get('/history', [LicenseController::class, 'getLicenseHistory'])->name('history');
+        Route::post('/activate/{licenseId}', [LicenseController::class, 'activateLicense'])->name('activate');
+        Route::get('/check-access/{packageName}', [LicenseController::class, 'checkPackageAccess'])->name('check-access');
     });
 
     // Free Plan Management Routes

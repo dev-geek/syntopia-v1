@@ -87,4 +87,27 @@ class FreePlanAttempt extends Model
     {
         return $this->hasOne(User::class, 'email', 'email');
     }
+
+    public function getIsBlockedAttribute(): bool
+    {
+        return (bool) ($this->attributes['is_blocked'] ?? false);
+    }
+
+    public function getBlockedAtFormattedAttribute(): ?string
+    {
+        return $this->blocked_at?->format('Y-m-d H:i:s');
+    }
+
+    public function getCreatedAtFormattedAttribute(): string
+    {
+        return $this->created_at->format('Y-m-d H:i:s');
+    }
+
+    public function getDataArrayAttribute(): array
+    {
+        if (is_string($this->data)) {
+            return json_decode($this->data, true) ?? [];
+        }
+        return is_array($this->data) ? $this->data : [];
+    }
 }

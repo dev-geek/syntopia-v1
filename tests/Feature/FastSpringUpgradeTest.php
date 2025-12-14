@@ -7,9 +7,8 @@ use App\Models\User;
 use App\Models\Package;
 use App\Models\PaymentGateways;
 use App\Models\License;
-use App\Services\LicenseService;
-use App\Services\LicenseApiService;
-use App\Services\FastSpringClient;
+use App\Services\License\LicenseApiService;
+use App\Services\Payment\Gateways\FastSpringPaymentGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Mockery;
@@ -74,9 +73,9 @@ class FastSpringUpgradeTest extends TestCase
             ->once()
             ->andReturn(true);
 
-        // Mock the FastSpringClient
-        $fastspringClient = Mockery::mock(FastSpringClient::class);
-        $fastspringClient->shouldReceive('upgradeSubscription')
+        // Mock the FastSpringPaymentGateway
+        $fastspringGateway = Mockery::mock(FastSpringPaymentGateway::class);
+        $fastspringGateway->shouldReceive('upgradeSubscription')
             ->once()
             ->andReturn([
                 'subscriptions' => [
@@ -87,9 +86,16 @@ class FastSpringUpgradeTest extends TestCase
                 ]
             ]);
 
+        // Mock PaymentGatewayFactory to return the mocked gateway
+        $paymentGatewayFactory = Mockery::mock(\App\Factories\PaymentGatewayFactory::class);
+        $paymentGatewayFactory->shouldReceive('create')
+            ->with('FastSpring')
+            ->once()
+            ->andReturn($fastspringGateway);
+
         // Bind the mocked services
         $this->app->instance(LicenseApiService::class, $licenseApiService);
-        $this->app->instance(FastSpringClient::class, $fastspringClient);
+        $this->app->instance(\App\Factories\PaymentGatewayFactory::class, $paymentGatewayFactory);
 
         // Make the upgrade request
         $response = $this->actingAs($this->user)

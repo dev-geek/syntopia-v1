@@ -236,6 +236,7 @@ class DeviceFingerprintService
                 'device_fingerprint' => $fingerprint,
                 'fingerprint_id' => $request->cookie('fp_id', ''),
                 'email' => $email,
+                'is_blocked' => false,
             ]);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('recordAttempt failed', [

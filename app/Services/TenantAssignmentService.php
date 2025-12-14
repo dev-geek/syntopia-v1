@@ -16,6 +16,62 @@ class TenantAssignmentService
         $this->passwordBindingService = $passwordBindingService;
     }
 
+    public function assignTenantWithRetry(User $user, ?string $plainPassword = null, int $maxAttempts = 3): array
+    {
+        $attempt = 0;
+        $lastError = null;
+
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            Log::info('Tenant assignment attempt', [
+                'user_id' => $user->id,
+                'attempt' => $attempt,
+                'max_attempts' => $maxAttempts
+            ]);
+
+            $result = $this->assignTenant($user, $plainPassword);
+
+            if ($result['success'] && !empty($result['data']['tenantId'])) {
+                Log::info('Tenant assignment succeeded', [
+                    'user_id' => $user->id,
+                    'attempt' => $attempt,
+                    'tenant_id' => $result['data']['tenantId']
+                ]);
+                return $result;
+            }
+
+            $lastError = $result;
+
+            if (isset($result['swal']) && $result['swal'] === true) {
+                break;
+            }
+
+            if ($attempt < $maxAttempts) {
+                $delay = $attempt * 500;
+                Log::info('Waiting before tenant assignment retry', [
+                    'user_id' => $user->id,
+                    'attempt' => $attempt,
+                    'delay_ms' => $delay
+                ]);
+                usleep($delay * 1000);
+            }
+        }
+
+        Log::info('TenantAssignmentService final response', [
+            'user_id' => $user->id,
+            'attempts' => $attempt,
+            'success' => $lastError['success'] ?? false,
+            'apiResponse' => $lastError
+        ]);
+
+        return $lastError ?? [
+            'success' => false,
+            'data' => null,
+            'error_message' => 'Tenant assignment failed after all retry attempts.',
+            'swal' => false
+        ];
+    }
+
     public function assignTenant(User $user, ?string $plainPassword = null): array
     {
         if ($user->tenant_id) {
@@ -191,16 +247,12 @@ class TenantAssignmentService
 
             $user->refresh();
 
-            $passwordBindResult = $this->passwordBindingService->bindPassword($user, $plainPassword);
+            $passwordBindResult = $this->passwordBindingService->bindPasswordWithRetry($user, $plainPassword);
 
             if (!$passwordBindResult['success']) {
-                Log::warning('Password binding failed during tenant assignment, but tenant was created - will retry later', [
+                Log::warning('Password binding failed after all retries during tenant assignment, but tenant was created - will retry later', [
                     'user_id' => $user->id,
-                    'error' => $passwordBindResult['error_message']
-                ]);
-            } else {
-                Log::info('Password bound successfully during tenant assignment', [
-                    'user_id' => $user->id
+                    'error' => $passwordBindResult['error_message'] ?? 'Unknown error'
                 ]);
             }
 

@@ -4,17 +4,17 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\LicenseService;
+use App\Services\License\LicenseApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class LicenseController extends Controller
 {
-    private $licenseService;
+    private $licenseApiService;
 
-    public function __construct(LicenseService $licenseService)
+    public function __construct(LicenseApiService $licenseApiService)
     {
-        $this->licenseService = $licenseService;
+        $this->licenseApiService = $licenseApiService;
     }
 
     /**
@@ -23,7 +23,7 @@ class LicenseController extends Controller
     public function getCurrentLicense(Request $request)
     {
         $user = Auth::user();
-        $activeLicense = $this->licenseService->getActiveLicense($user);
+        $activeLicense = $this->licenseApiService->getActiveLicense($user);
 
         if (!$activeLicense) {
             return response()->json([
@@ -56,7 +56,7 @@ class LicenseController extends Controller
     public function getLicenseHistory(Request $request)
     {
         $user = Auth::user();
-        $licenses = $this->licenseService->getUserLicenses($user);
+        $licenses = $this->licenseApiService->getUserLicenses($user);
 
         return response()->json([
             'success' => true,
@@ -95,7 +95,7 @@ class LicenseController extends Controller
             ], 404);
         }
 
-        $success = $this->licenseService->activateLicense($license);
+        $success = $this->licenseApiService->activateLicense($license);
 
         if (!$success) {
             return response()->json([
@@ -125,7 +125,7 @@ class LicenseController extends Controller
     public function checkPackageAccess(Request $request, $packageName)
     {
         $user = Auth::user();
-        $hasAccess = $this->licenseService->hasActiveLicenseForPackage($user, $packageName);
+        $hasAccess = $this->licenseApiService->hasActiveLicenseForPackage($user, $packageName);
 
         return response()->json([
             'success' => true,

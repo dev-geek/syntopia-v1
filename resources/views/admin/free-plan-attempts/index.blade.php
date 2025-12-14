@@ -1,5 +1,5 @@
-@include('dashboard.includes/header')
-@include('dashboard.includes/sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -163,7 +163,7 @@
     </section>
 </div>
 
-@include('dashboard.includes/footer')
+@include('dashboard.includes.footer')
 
 <!-- AOS Animate On Scroll CSS/JS -->
 <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">

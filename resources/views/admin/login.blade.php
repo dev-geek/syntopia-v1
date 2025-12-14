@@ -1,26 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Log in</title>
+@extends('admin.layouts.auth')
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
-  <link rel="shortcut icon" type="image/png" href="{{ asset('favicon.png') }}">
+@section('title', 'Log in')
 
-  <!-- Google Font: Source Sans Pro -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="{{ asset('plugins/fontawesome-free/css/all.min.css') }}">
-  <!-- icheck bootstrap -->
-  <link rel="stylesheet" href="{{ asset('plugins/icheck-bootstrap/icheck-bootstrap.min.css') }}">
-  <!-- Theme style -->
-  <link rel="stylesheet" href="{{ asset('dist/css/adminlte.min.css') }}">
-  <!-- Password Toggle CSS -->
-  <link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
-</head>
-<body class="hold-transition login-page">
+@section('body-class', 'login-page')
+
+@push('password-toggle-css')
+<link rel="stylesheet" href="{{ asset('css/password-toggle.css') }}">
+@endpush
+
+@push('password-toggle-js')
+<script src="{{ asset('js/password-toggle.js') }}"></script>
+@endpush
+
+@section('content')
 <div class="login-box">
   <!-- /.login-logo -->
   <div class="card card-outline card-primary">
@@ -95,14 +87,4 @@
   <!-- /.card -->
 </div>
 <!-- /.login-box -->
-
-<!-- jQuery -->
-<script src="{{ asset('plugins/jquery/jquery.min.js') }}"></script>
-<!-- Bootstrap 4 -->
-<script src="{{ asset('plugins/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-<!-- AdminLTE App -->
-<script src="{{ asset('dist/js/adminlte.min.js') }}"></script>
-<!-- Password Toggle Script -->
-<script src="{{ asset('js/password-toggle.js') }}"></script>
-</body>
-</html>
+@endsection

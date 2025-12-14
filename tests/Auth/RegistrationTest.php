@@ -20,7 +20,7 @@ class RegistrationTest extends TestCase
     {
         parent::setUp();
         Log::spy();
-        
+
         Role::firstOrCreate(['name' => 'User', 'guard_name' => 'web']);
     }
 
@@ -36,7 +36,7 @@ class RegistrationTest extends TestCase
         $deviceFingerprintService->shouldReceive('isBlocked')->andReturn(false);
         $deviceFingerprintService->shouldReceive('hasRecentAttempts')->andReturn(false);
         $deviceFingerprintService->shouldReceive('recordAttempt')->andReturn(true);
-        
+
         $freePlanAbuseService = Mockery::mock(FreePlanAbuseService::class);
         $freePlanAbuseService->shouldReceive('checkAbusePatterns')->andReturn([
             'allowed' => true,
@@ -365,7 +365,7 @@ class RegistrationTest extends TestCase
         $deviceFingerprintService = Mockery::mock(DeviceFingerprintService::class);
         $deviceFingerprintService->shouldReceive('isBlocked')->andReturn(false);
         $deviceFingerprintService->shouldReceive('hasRecentAttempts')->andReturn(false);
-        
+
         $freePlanAbuseService = Mockery::mock(FreePlanAbuseService::class);
         $freePlanAbuseService->shouldReceive('checkAbusePatterns')->andReturn([
             'allowed' => false,
@@ -396,7 +396,7 @@ class RegistrationTest extends TestCase
         $deviceFingerprintService = Mockery::mock(DeviceFingerprintService::class);
         $deviceFingerprintService->shouldReceive('isBlocked')->andReturn(true);
         $deviceFingerprintService->shouldReceive('hasRecentAttempts')->andReturn(false);
-        
+
         $freePlanAbuseService = Mockery::mock(FreePlanAbuseService::class);
 
         $this->app->instance(DeviceFingerprintService::class, $deviceFingerprintService);

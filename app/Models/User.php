@@ -13,11 +13,12 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Laravel\Paddle\Billable;
 
 #[ObservedBy([\App\Observers\SubAdminObserver::class])]
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, Billable;
 
     /**
      * The attributes that are mass assignable.
@@ -332,6 +333,127 @@ class User extends Authenticatable implements MustVerifyEmail
         return $query->role('Sub Admin')->where('is_active', true);
     }
 
+    public function scopeVerified($query)
+    {
+        return $query->whereNotNull('email_verified_at')->where('status', 1);
+    }
+
+    public function scopeUnverified($query)
+    {
+        return $query->whereNull('email_verified_at')->orWhere('status', '!=', 1);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+
+    public function scopeSubscribed($query)
+    {
+        return $query->where('is_subscribed', true);
+    }
+
+    public function scopeNotSubscribed($query)
+    {
+        return $query->where('is_subscribed', false);
+    }
+
+    public function scopeWithPackage($query, $packageId = null)
+    {
+        $query = $query->whereNotNull('package_id');
+        if ($packageId) {
+            $query->where('package_id', $packageId);
+        }
+        return $query;
+    }
+
+    public function scopeWithoutPackage($query)
+    {
+        return $query->whereNull('package_id');
+    }
+
+    public function scopeByEmail($query, string $email)
+    {
+        return $query->where('email', $email);
+    }
+
+    public function scopeByPaymentGateway($query, int $gatewayId)
+    {
+        return $query->where('payment_gateway_id', $gatewayId);
+    }
+
+    public function scopeWithTenant($query)
+    {
+        return $query->whereNotNull('tenant_id');
+    }
+
+    public function scopeWithoutTenant($query)
+    {
+        return $query->whereNull('tenant_id');
+    }
+
+    public function scopeHasUsedFreePlan($query)
+    {
+        return $query->where('has_used_free_plan', true);
+    }
+
+    public function scopeHasNotUsedFreePlan($query)
+    {
+        return $query->where('has_used_free_plan', false);
+    }
+
+    public function scopeRecentLogin($query, int $days = 30)
+    {
+        return $query->where('last_login_at', '>=', now()->subDays($days));
+    }
+
+    public function scopeByGoogleId($query, string $googleId)
+    {
+        return $query->where('google_id', $googleId);
+    }
+
+    public function scopeByFacebookId($query, string $facebookId)
+    {
+        return $query->where('facebook_id', $facebookId);
+    }
+
+    public function scopeWithSocialAuth($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNotNull('google_id')->orWhereNotNull('facebook_id');
+        });
+    }
+
+    public function getFullNameAttribute(): string
+    {
+        return $this->name;
+    }
+
+    public function getIsVerifiedAttribute(): bool
+    {
+        return !is_null($this->email_verified_at) && $this->status == 1;
+    }
+
+    public function getHasPackageAttribute(): bool
+    {
+        return !is_null($this->package_id);
+    }
+
+    public function getHasTenantAttribute(): bool
+    {
+        return !is_null($this->tenant_id);
+    }
+
+    public function getHasSocialAuthAttribute(): bool
+    {
+        return !is_null($this->google_id) || !is_null($this->facebook_id);
+    }
+
     /**
      * Check if user has used the free plan
      *
@@ -414,5 +536,39 @@ class User extends Authenticatable implements MustVerifyEmail
         return \App\Models\FreePlanAttempt::byDeviceFingerprint($this->last_device_fingerprint)
             ->blocked()
             ->exists();
+    }
+
+    /**
+     * Create a Paddle checkout for a single charge
+     *
+     * @param string $priceId Paddle price ID (e.g., 'pri_product_id')
+     * @return \Laravel\Paddle\Checkout
+     */
+    public function createPaddleCheckout(string $priceId)
+    {
+        return $this->checkout($priceId);
+    }
+
+    /**
+     * Create a Paddle subscription
+     *
+     * @param string $priceId Paddle price ID (e.g., 'price_monthly')
+     * @param string $name Subscription name (e.g., 'main')
+     * @return \Laravel\Paddle\Subscription
+     */
+    public function createPaddleSubscription(string $priceId, string $name = 'main')
+    {
+        return $this->subscribe($priceId, $name);
+    }
+
+    /**
+     * Get the user's Paddle subscription by name
+     *
+     * @param string $name Subscription name (default: 'main')
+     * @return \Laravel\Paddle\Subscription|null
+     */
+    public function getPaddleSubscription(string $name = 'main')
+    {
+        return $this->subscription($name);
     }
 }

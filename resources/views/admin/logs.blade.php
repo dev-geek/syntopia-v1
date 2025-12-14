@@ -1,5 +1,5 @@
-@include('dashboard.includes/header')
-@include('dashboard.includes/sidebar')
+@include('dashboard.includes.header')
+@include('dashboard.includes.sidebar')
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -65,7 +65,7 @@
     <!-- /.content -->
 </div>
 <!-- /.content-wrapper -->
-@include('dashboard.includes/footer')
+@include('dashboard.includes.footer')
 
 <script>
 $(document).ready(function() {

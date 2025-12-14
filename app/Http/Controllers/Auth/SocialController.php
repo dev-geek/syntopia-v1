@@ -92,11 +92,11 @@ class SocialController extends Controller
                                 'tenant_id' => $apiResponse['data']['tenantId'],
                             ]);
                         } else {
-                            // User already has tenant_id, just bind password
-                            $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                            // User already has tenant_id, just bind password with retry
+                            $apiResponse = $passwordBindingService->bindPasswordWithRetry($existingUser, $compliantPassword);
 
                             if (!$apiResponse['success']) {
-                                Log::warning('Failed to bind password for existing user during Google link - will retry later', [
+                                Log::warning('Failed to bind password for existing user during Google link after retries - will retry later', [
                                     'user_id' => $existingUser->id,
                                     'error' => $apiResponse['error_message']
                                 ]);
@@ -211,10 +211,40 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        // Create tenant and bind password using TenantAssignmentService
-                        Log::info('[googleAuthentication] Calling TenantAssignmentService for new Google user', ['user_id' => $userData->id]);
-                        $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
-                        Log::info('[googleAuthentication] TenantAssignmentService response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+                        // Create tenant and bind password using TenantAssignmentService with retry logic
+                        Log::info('[googleAuthentication] Calling TenantAssignmentService for new Google user with retry logic', ['user_id' => $userData->id]);
+
+                        $apiResponse = null;
+                        $maxAttempts = 3;
+                        $attempt = 0;
+
+                        while ($attempt < $maxAttempts) {
+                            $attempt++;
+                            Log::info('[googleAuthentication] Tenant assignment attempt', [
+                                'user_id' => $userData->id,
+                                'attempt' => $attempt,
+                                'max_attempts' => $maxAttempts
+                            ]);
+
+                            $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
+
+                            if ($apiResponse['success'] && !empty($apiResponse['data']['tenantId'])) {
+                                Log::info('[googleAuthentication] Tenant assignment succeeded', [
+                                    'user_id' => $userData->id,
+                                    'attempt' => $attempt,
+                                    'tenant_id' => $apiResponse['data']['tenantId']
+                                ]);
+                                break;
+                            }
+
+                            // Wait before retrying (exponential backoff)
+                            if ($attempt < $maxAttempts) {
+                                $delay = $attempt * 500;
+                                usleep($delay * 1000);
+                            }
+                        }
+
+                        Log::info('[googleAuthentication] TenantAssignmentService final response', ['user_id' => $userData->id, 'attempts' => $attempt, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                             Log::error('[googleAuthentication] API returned swal error - will retry tenant assignment later', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
@@ -342,11 +372,11 @@ class SocialController extends Controller
                                 ]);
                             }
                         } else {
-                            // User already has tenant_id, just bind password
-                            $apiResponse = $passwordBindingService->bindPassword($existingUser, $compliantPassword);
+                            // User already has tenant_id, just bind password with retry
+                            $apiResponse = $passwordBindingService->bindPasswordWithRetry($existingUser, $compliantPassword);
 
                             if (!$apiResponse['success']) {
-                                Log::warning('Failed to bind password for existing user during Facebook link, proceeding with fallback', [
+                                Log::warning('Failed to bind password for existing user during Facebook link after retries, proceeding with fallback', [
                                     'user_id' => $existingUser->id,
                                     'error' => $apiResponse['error_message']
                                 ]);
@@ -473,10 +503,40 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        // Create tenant and bind password using TenantAssignmentService
-                        Log::info('[handleFacebookCallback] Calling TenantAssignmentService for new Facebook user', ['user_id' => $userData->id]);
-                        $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
-                        Log::info('[handleFacebookCallback] TenantAssignmentService response', ['user_id' => $userData->id, 'apiResponse' => $apiResponse]);
+                        // Create tenant and bind password using TenantAssignmentService with retry logic
+                        Log::info('[handleFacebookCallback] Calling TenantAssignmentService for new Facebook user with retry logic', ['user_id' => $userData->id]);
+
+                        $apiResponse = null;
+                        $maxAttempts = 3;
+                        $attempt = 0;
+
+                        while ($attempt < $maxAttempts) {
+                            $attempt++;
+                            Log::info('[handleFacebookCallback] Tenant assignment attempt', [
+                                'user_id' => $userData->id,
+                                'attempt' => $attempt,
+                                'max_attempts' => $maxAttempts
+                            ]);
+
+                            $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
+
+                            if ($apiResponse['success'] && !empty($apiResponse['data']['tenantId'])) {
+                                Log::info('[handleFacebookCallback] Tenant assignment succeeded', [
+                                    'user_id' => $userData->id,
+                                    'attempt' => $attempt,
+                                    'tenant_id' => $apiResponse['data']['tenantId']
+                                ]);
+                                break;
+                            }
+
+                            // Wait before retrying (exponential backoff)
+                            if ($attempt < $maxAttempts) {
+                                $delay = $attempt * 500;
+                                usleep($delay * 1000);
+                            }
+                        }
+
+                        Log::info('[handleFacebookCallback] TenantAssignmentService final response', ['user_id' => $userData->id, 'attempts' => $attempt, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                             Log::error('[handleFacebookCallback] API returned swal error - will retry tenant assignment later', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);

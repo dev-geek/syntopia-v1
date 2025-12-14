@@ -17,8 +17,32 @@ class PaymentGateways extends Model
         'is_active'
     ];
 
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+
+    public function scopeByName($query, string $name)
+    {
+        return $query->whereRaw('LOWER(name) = ?', [strtolower($name)]);
+    }
+
+    public function getIsActiveAttribute(): bool
+    {
+        return (bool) ($this->attributes['is_active'] ?? false);
     }
 }

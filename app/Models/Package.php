@@ -140,4 +140,131 @@ class Package extends Model
             ? json_encode($value)
             : $value;
     }
+
+    public function scopeFree($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('price', 0)->orWhereRaw('LOWER(name) = ?', ['free']);
+        });
+    }
+
+    public function scopePaid($query)
+    {
+        return $query->where('price', '>', 0);
+    }
+
+    public function scopeByName($query, string $name)
+    {
+        return $query->whereRaw('LOWER(name) = ?', [strtolower($name)]);
+    }
+
+    public function scopeByNames($query, array $names)
+    {
+        return $query->whereIn('name', $names);
+    }
+
+    public function scopeByPriceRange($query, float $minPrice = null, float $maxPrice = null)
+    {
+        if ($minPrice !== null) {
+            $query->where('price', '>=', $minPrice);
+        }
+        if ($maxPrice !== null) {
+            $query->where('price', '<=', $maxPrice);
+        }
+        return $query;
+    }
+
+    public function scopeMoreExpensiveThan($query, float $price)
+    {
+        return $query->where('price', '>', $price);
+    }
+
+    public function scopeLessExpensiveThan($query, float $price)
+    {
+        return $query->where('price', '<', $price);
+    }
+
+    public function scopeEnterprise($query)
+    {
+        return $query->whereRaw('LOWER(name) = ?', ['enterprise']);
+    }
+
+    public function scopeMonthly($query)
+    {
+        return $query->whereRaw('LOWER(name) = ?', ['monthly'])
+            ->orWhereRaw('LOWER(duration) LIKE ?', ['%month%']);
+    }
+
+    public function getFormattedPriceAttribute(): string
+    {
+        return '$' . number_format($this->price, 2);
+    }
+
+    public function getIsFreeAttribute(): bool
+    {
+        return $this->isFree();
+    }
+
+    public function getIsPaidAttribute(): bool
+    {
+        return $this->price > 0;
+    }
+
+    public function getIsEnterpriseAttribute(): bool
+    {
+        return $this->isEnterprise();
+    }
+
+    public function getFormattedDurationAttribute(): string
+    {
+        if (!$this->duration) {
+            return 'N/A';
+        }
+        return ucfirst($this->duration);
+    }
+
+    public function getFeaturesArrayAttribute(): array
+    {
+        if (is_string($this->features)) {
+            return json_decode($this->features, true) ?? [];
+        }
+        return is_array($this->features) ? $this->features : [];
+    }
+
+    /**
+     * Get the gateway product/price ID for a specific payment gateway
+     *
+     * @param string $gatewayName The gateway name (Paddle, FastSpring, PayProGlobal)
+     * @return string|null
+     */
+    public function getGatewayProductId(string $gatewayName): ?string
+    {
+        $packageKey = strtolower(str_replace([' ', '-'], '', $this->name));
+
+        $gatewayConfig = config("payment.gateways.{$gatewayName}.product_ids", []);
+
+        return $gatewayConfig[$packageKey] ?? null;
+    }
+
+    /**
+     * Get Paddle price ID for this package
+     * This method fetches the price ID from Paddle API by matching package name
+     *
+     * @param \App\Services\Payment\PaddlePaymentGateway|null $paddleGateway
+     * @return string|null
+     */
+    public function getPaddlePriceId($paddleGateway = null): ?string
+    {
+        if (!$paddleGateway) {
+            $paddleGateway = app(\App\Services\Payment\PaddlePaymentGateway::class);
+        }
+
+        $product = $paddleGateway->findProductByName($this->name);
+        if (!$product) {
+            return null;
+        }
+
+        $price = $paddleGateway->findActivePriceForProduct($product['id']);
+        return $price['id'] ?? null;
+    }
 }

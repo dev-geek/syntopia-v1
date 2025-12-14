@@ -4,145 +4,66 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ResetPasswordRequest;
-use App\Services\PasswordBindingService;
+use App\Services\Auth\PasswordResetService;
 use Illuminate\Foundation\Auth\ResetsPasswords;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use App\Models\User;
-use Exception;
 
 class ResetPasswordController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Password Reset Controller
-    |--------------------------------------------------------------------------
-    |
-    | This controller is responsible for handling password reset requests
-    | and uses a simple trait to include this behavior. You're free to
-    | explore this trait and override any methods you wish to tweak.
-    |
-    */
-
     use ResetsPasswords;
 
-    /**
-     * Where to redirect users after resetting their password.
-     *
-     * @var string
-     */
-    protected $redirectTo = '/dashboard';
+    public function __construct(
+        private PasswordResetService $passwordResetService
+    ) {}
 
-    /**
-     * Display the password reset view for the given token.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  string|null  $token
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\View\View
-     */
-    public function showResetForm(Request $request, $token = null)
+    protected function redirectTo()
     {
-        return view('auth.passwords.reset')->with(
-            ['token' => $token, 'email' => $request->email]
-        );
+        $user = Auth::user();
+
+        if ($user && $user->hasAnyRole(['Super Admin', 'Sub Admin'])) {
+            return route('admin.dashboard');
+        }
+
+        return '/dashboard';
     }
 
-    /**
-     * Reset the given user's password.
-     *
-     * @param  \App\Http\Requests\ResetPasswordRequest  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function reset(ResetPasswordRequest $request, PasswordBindingService $passwordBindingService)
+    public function showResetForm(Request $request, $token = null)
+    {
+        $email = $request->email;
+        $isAdmin = false;
+
+        if ($email) {
+            $user = \App\Models\User::where('email', $email)->first();
+            $isAdmin = $user && $user->hasAnyRole(['Super Admin', 'Sub Admin']);
+        }
+
+        $view = $isAdmin ? 'auth.passwords.admin-reset' : 'auth.passwords.reset';
+
+        return view($view)->with([
+            'token' => $token,
+            'email' => $email
+        ]);
+    }
+
+    public function reset(ResetPasswordRequest $request)
     {
         try {
+            $result = $this->passwordResetService->resetPassword($request, $request->validated());
 
-            // Get validated data
-            $validated = $request->validated();
-
-            // Find the user by email
-            $user = User::where('email', $validated['email'])->first();
-            if (!$user) {
-                Log::warning('Password reset attempted for non-existent email', [
-                    'email' => $validated['email'],
-                    'ip' => $request->ip()
-                ]);
-                return back()->withErrors(['email' => 'No account found with this email address.'])->withInput();
+            if (!$result['success']) {
+                return back()->withErrors([$result['error'] => $result['message']])->withInput();
             }
 
-            // Verify the password reset token
-            $tokenData = DB::table('password_reset_tokens')
-                ->where('email', $validated['email'])
-                ->first();
+            auth()->login($result['user']);
 
-            if (!$tokenData || !Hash::check($validated['token'], $tokenData->token)) {
-                Log::warning('Invalid password reset token used', [
-                    'email' => $validated['email'],
-                    'ip' => $request->ip()
-                ]);
-                return back()->withErrors(['email' => 'Invalid or expired reset token. Please request a new password reset.'])->withInput();
-            }
+            $redirectTo = $this->redirectTo();
+            $messageKey = $result['is_admin'] ? 'status' : 'success';
 
-            // Check if token is expired (24 hours)
-            if (now()->diffInHours($tokenData->created_at) > 24) {
-                Log::warning('Expired password reset token used', [
-                    'email' => $validated['email'],
-                    'ip' => $request->ip()
-                ]);
-                return back()->withErrors(['email' => 'Reset token has expired. Please request a new password reset.'])->withInput();
-            }
+            return redirect($redirectTo)->with($messageKey, $result['message']);
 
-            // Call password binding API before updating the database
-            $apiResponse = $passwordBindingService->bindPassword($user, $validated['password']);
-
-            if (!$apiResponse['success']) {
-                Log::warning('Password binding API failed during reset - will retry later', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $apiResponse['error_message']
-                ]);
-                // Continue with password update even if binding failed - will retry later
-            }
-
-            // Update password in database even if binding failed - will retry later
-            try {
-                $user->password = $validated['password'];
-                $user->subscriber_password = $validated['password'];
-                $user->save();
-
-                // Delete the used reset token
-                DB::table('password_reset_tokens')
-                    ->where('email', $validated['email'])
-                    ->delete();
-
-                Log::info('Password reset successful', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'ip' => $request->ip(),
-                    'password_binding_success' => $apiResponse['success'] ?? false
-                ]);
-
-                // Log the user in after successful password reset
-                auth()->login($user);
-
-                $message = $apiResponse['success']
-                    ? 'Password successfully updated and synchronized with external services.'
-                    : 'Password updated successfully. Password binding will be retried automatically.';
-
-                return redirect($this->redirectTo)->with('success', $message);
-
-            } catch (Exception $e) {
-                Log::error('Database error during password reset', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'error' => $e->getMessage()
-                ]);
-                return back()->withErrors(['password' => 'Unable to save password. Please try again.'])->withInput();
-            }
-
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             Log::error('Unexpected error during password reset', [
                 'email' => $request->email ?? 'unknown',
                 'error' => $e->getMessage(),

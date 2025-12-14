@@ -3,86 +3,89 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Foundation\Auth\SendsPasswordResetEmails;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Password;
-use App\Models\User;
-use App\Services\MailService;
+use App\Services\Auth\PasswordResetService;
 
 class ForgotPasswordController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Password Reset Controller
-    |--------------------------------------------------------------------------
-    |
-    | This controller is responsible for handling password reset emails and
-    | includes a trait which assists in sending these notifications from
-    | your application to your users. Feel free to explore this trait.
-    |
-    */
-
     use SendsPasswordResetEmails;
 
-    /**
-     * Send a reset link to the given user.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function sendResetLinkEmail(Request $request)
+    public function __construct(
+        private PasswordResetService $passwordResetService
+    ) {}
+
+    public function showLinkRequestForm(Request $request)
     {
+        $isAdminRoute = $request->is('admin/forgotpassword') || $request->is('admin/*');
+
+        if ($isAdminRoute) {
+            return view('auth.passwords.admin-email');
+        }
+
+        return view('auth.passwords.email');
+    }
+
+    public function checkEmail(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
+
         try {
-            // Validate the request
-            $validator = Validator::make($request->all(), [
-                'email' => 'required|email',
-            ], [
-                'email.required' => 'Email address is required.',
-                'email.email' => 'Please enter a valid email address.',
+            $result = $this->passwordResetService->checkEmail($request->email);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'error' => $result['error']
+                ], 404);
+            }
+
+            return response()->json([
+                'requires_security_questions' => $result['requires_security_questions'],
+                'redirect_url' => $result['redirect_url']
             ]);
 
-            if ($validator->fails()) {
-                return back()->withErrors($validator)->withInput();
+        } catch (\Exception $e) {
+            Log::error('ForgotPasswordController@checkEmail - Error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'error' => 'An unexpected error occurred. Please try again.',
+                'debug' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
+        }
+    }
+
+    public function sendResetLinkEmail(Request $request)
+    {
+        $isAdminRoute = $request->is('admin/password/email') || $request->is('admin/*');
+
+        if ($isAdminRoute) {
+            return $this->sendAdminResetLink($request);
+        }
+
+        return $this->sendUserResetLink($request);
+    }
+
+    private function sendUserResetLink(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        try {
+            $result = $this->passwordResetService->sendResetLink($request);
+
+            if ($result['success']) {
+                return back()->with('status', $result['message']);
             }
 
-            // Check if user exists
-            $user = User::where('email', $request->email)->first();
-            if (!$user) {
-                Log::info('Password reset requested for non-existent email', [
-                    'email' => $request->email,
-                    'ip' => $request->ip()
-                ]);
-                // Don't reveal if email exists or not for security
-                return back()->with('status', 'If your email address exists in our database, you will receive a password recovery link at your email address in a few minutes.');
-            }
-
-            // Send the reset link
-            $response = $this->broker()->sendResetLink(
-                $request->only('email')
-            );
-
-            if ($response === Password::RESET_LINK_SENT) {
-                Log::info('Password reset link sent successfully', [
-                    'email' => $request->email,
-                    'ip' => $request->ip()
-                ]);
-                return back()->with('status', 'If your email address exists in our database, you will receive a password recovery link at your email address in a few minutes.');
-            } else {
-                Log::warning('Failed to send password reset link', [
-                    'email' => $request->email,
-                    'ip' => $request->ip(),
-                    'response' => $response
-                ]);
-
-                // Check if it's a mail service error
-                if (str_contains($response, 'mail') || str_contains($response, 'connection')) {
-                    return back()->withErrors(['email' => 'Email service is temporarily unavailable. Please try again later or contact support.'])->withInput();
-                }
-
-                return back()->withErrors(['email' => 'Unable to send password reset link. Please try again later.'])->withInput();
-            }
+            return back()->withErrors([$result['error'] => $result['message']])->withInput();
 
         } catch (\Exception $e) {
             Log::error('Error sending password reset link', [
@@ -92,5 +95,43 @@ class ForgotPasswordController extends Controller
             ]);
             return back()->withErrors(['email' => 'An unexpected error occurred. Please try again later.'])->withInput();
         }
+    }
+
+    private function sendAdminResetLink(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+            'city' => 'nullable|string|max:255',
+            'pet' => 'nullable|string|max:255',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors(['email' => 'No account found with this email address.']);
+        }
+
+        $securityResult = $this->passwordResetService->validateSecurityQuestions($user, $request);
+
+        if (!$securityResult['success']) {
+            return back()
+                ->withInput($request->only('email', 'city', 'pet'))
+                ->withErrors([$securityResult['error'] => $securityResult['message']]);
+        }
+
+        $result = $this->passwordResetService->sendAdminResetLink($user);
+
+        if (!$result['success']) {
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors([$result['error'] => $result['message']]);
+        }
+
+        return back()->with('status', [
+            'type' => 'success',
+            'message' => $result['message']
+        ]);
     }
 }

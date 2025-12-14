@@ -1,0 +1,328 @@
+/* Common Auth Page Styles */
+
+body {
+    background: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') no-repeat center center fixed;
+    background-size: cover;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+
+/* Container Box Styles */
+.auth-container-box {
+    width: 100%;
+    max-width: 520px;
+    padding: 30px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.auth-container-box.small {
+    max-width: 400px;
+}
+
+.auth-container-box.medium {
+    max-width: 450px;
+}
+
+.auth-container-box.large {
+    max-width: 600px;
+}
+
+/* Logo Container */
+.auth-logo-container {
+    text-align: center;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.auth-logo-container img {
+    width: 160px;
+}
+
+/* Heading Styles */
+.auth-heading-text {
+    font-size: 24px;
+    padding-bottom: 20px;
+    font-weight: 500;
+    color: #000;
+    margin-bottom: 0;
+}
+
+.auth-heading-text.large {
+    font-size: 50px;
+    font-weight: 700;
+    color: #5b0dd5;
+    width: 50%;
+}
+
+.auth-heading-text.large span {
+    color: black;
+}
+
+/* Email/Text Styles */
+.auth-email-text {
+    font-size: 13px;
+    margin-bottom: 20px;
+}
+
+/* Form Styles */
+.auth-form-control {
+    background: #E7E7E9;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin: 10px 0 20px;
+    border-radius: 5px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.auth-form-control:focus {
+    outline: none;
+    border-color: #5B0DD5;
+    background: white;
+}
+
+.auth-form-control[readonly] {
+    background-color: #f8f9fa;
+    cursor: not-allowed;
+}
+
+/* Label Styles */
+.auth-label {
+    display: block;
+    text-align: left;
+    margin-bottom: 5px;
+    font-weight: 500;
+    font-size: 13px;
+    color: #333;
+}
+
+/* Primary Button Styles */
+.auth-primary-button {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    background: rgb(62, 87, 218);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.auth-primary-button:hover {
+    background: rgb(50, 70, 180);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(62, 87, 218, 0.2);
+}
+
+.auth-primary-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.auth-primary-button.purple {
+    background: #5B0DD5;
+}
+
+.auth-primary-button.purple:hover {
+    background: #4C0BB8;
+}
+
+.auth-primary-button.black {
+    background: #000;
+    font-weight: bold;
+}
+
+.auth-primary-button.black:hover {
+    background: #333;
+}
+
+/* Footer Text */
+.auth-footer-text {
+    text-align: center;
+    font-size: 11px;
+    color: #777;
+    margin-top: 20px;
+}
+
+.auth-footer-text a {
+    color: #777;
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.auth-footer-text a:hover {
+    text-decoration: underline;
+}
+
+/* Alert Styles */
+.auth-alert {
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    text-align: left;
+}
+
+.auth-alert-success {
+    background: #f0fdf4;
+    color: #16a34a;
+    border-left: 4px solid #16a34a;
+}
+
+.auth-alert-danger {
+    background: #fef2f2;
+    color: #dc2626;
+    border-left: 4px solid #dc2626;
+}
+
+.auth-alert-info {
+    background: #eff6ff;
+    color: #2563eb;
+    border-left: 4px solid #2563eb;
+}
+
+.auth-alert-warning {
+    background: #fff3cd;
+    color: #856404;
+    border-left: 4px solid #ffeaa7;
+}
+
+/* Validation Styles */
+.auth-invalid-feedback {
+    display: block !important;
+    color: #dc3545;
+    font-size: 12px;
+    margin-top: -15px;
+    margin-bottom: 10px;
+    text-align: left;
+}
+
+.auth-is-invalid {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+}
+
+/* Flex Container */
+.auth-flex-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    body {
+        padding: 16px;
+    }
+
+    .auth-container-box {
+        padding: 24px 20px;
+    }
+
+    .auth-heading-text.large {
+        font-size: 40px;
+        width: 100%;
+    }
+
+    .auth-logo-container img {
+        width: 140px;
+    }
+
+    .auth-flex-container {
+        min-height: 75vh;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-container-box {
+        padding: 20px 15px;
+    }
+
+    .auth-heading-text {
+        font-size: 20px;
+    }
+}
+
+/* Form Group Styles */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+/* Enhanced Form Control Styles for form-group context */
+.form-group .auth-form-control {
+    border-radius: 5px;
+    padding: 12px 15px;
+    font-size: 16px;
+}
+
+/* Error Message Styles */
+.error-message {
+    color: #dc3545;
+    margin-top: 5px;
+    font-size: 0.875em;
+}
+
+/* Loading Spinner Styles */
+.spinner-container {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Button Content and Spinner Styles */
+.button-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.button-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #fff;
+    border-top: 2px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+

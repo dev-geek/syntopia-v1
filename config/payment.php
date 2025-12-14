@@ -50,7 +50,7 @@ return [
             'api_key' => env('PADDLE_API_KEY', ''),
             'public_key' => env('PADDLE_PUBLIC_KEY', ''),
             'api_url' => env('PADDLE_API_URL', 'https://api.paddle.com/'),
-            'environment' => env('PADDLE_ENVIRONMENT', 'sandbox'), // sandbox or production
+            'environment' => env('PADDLE_SANDBOX', true) ? 'sandbox' : 'production',
             'product_ids' => [
                 'free' => (int)env('PADDLE_PRODUCT_FREE', 0),
                 'starter' => (int)env('PADDLE_PRODUCT_STARTER', 1),
@@ -58,10 +58,10 @@ return [
                 'business' => (int)env('PADDLE_PRODUCT_BUSINESS', 3),
             ],
             'checkout_url' => 'https://sandbox-checkout.paddle.com',
-            'client_side_token' => env('CLIENT_SIDE_TOKEN', 'test_dab715bb779c31552d5b22561f0'),
+            'client_side_token' => env('PADDLE_CLIENT_SIDE_TOKEN', 'test_dab715bb779c31552d5b22561f0'),
             'pro_plan_price_id' => 'pri_01jvyvt5hs48d5gd85m54nv0a6',
             'vendor_id' => env('PADDLE_VENDOR_ID', ''),
-            'webhook_secret' => env('WEBHOOK_SECRET', '')
+            'webhook_secret' => env('PADDLE_WEBHOOK_SECRET', '')
         ],
 
         'PayProGlobal' => [

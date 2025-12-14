@@ -132,6 +132,57 @@ class PasswordBindingService
         }
     }
 
+    public function bindPasswordWithRetry(User $user, string $plainPassword, int $maxAttempts = 3): array
+    {
+        $attempt = 0;
+        $lastError = null;
+
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            Log::info('Password binding attempt', [
+                'user_id' => $user->id,
+                'attempt' => $attempt,
+                'max_attempts' => $maxAttempts
+            ]);
+
+            $result = $this->bindPassword($user, $plainPassword);
+
+            if ($result['success']) {
+                Log::info('Password bound successfully', [
+                    'user_id' => $user->id,
+                    'attempt' => $attempt
+                ]);
+                return $result;
+            }
+
+            $lastError = $result;
+
+            // Wait before retrying (exponential backoff)
+            if ($attempt < $maxAttempts) {
+                $delay = $attempt * 500; // 500ms, 1000ms, 1500ms
+                Log::info('Waiting before password binding retry', [
+                    'user_id' => $user->id,
+                    'attempt' => $attempt,
+                    'delay_ms' => $delay
+                ]);
+                usleep($delay * 1000);
+            }
+        }
+
+        Log::warning('Password binding failed after all retries', [
+            'user_id' => $user->id,
+            'attempts' => $attempt,
+            'error' => $lastError['error_message'] ?? 'Unknown error'
+        ]);
+
+        return $lastError ?? [
+            'success' => false,
+            'data' => null,
+            'error_message' => 'Password binding failed after all retry attempts.',
+            'swal' => false
+        ];
+    }
+
     private function handleFailedPasswordBind(\Illuminate\Http\Client\Response $response, User $user): array
     {
         $status = $response->status();

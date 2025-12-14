@@ -24,9 +24,22 @@
                 $isDisabled = $isCurrentPackage || !$isAvailable;
 
                 $buttonClass = $isCurrentPackage ? 'active' : ($isDisabled ? 'disabled' : 'dark');
-                $buttonAction = $isCurrentPackage ? 'current' :
-                    (isset($isUpgrade) && $isUpgrade ? 'upgrade' :
-                    (isset($pageType) && $pageType === 'downgrade' ? 'downgrade' : 'new'));
+
+                // Determine button action based on page type
+                // Check all possible variables that might indicate downgrade page
+                $isDowngradePage = (isset($pageType) && $pageType === 'downgrade') ||
+                                   (isset($type) && $type === 'downgrade') ||
+                                   (request()->query('type') === 'downgrade');
+
+                if ($isCurrentPackage) {
+                    $buttonAction = 'current';
+                } elseif (isset($isUpgrade) && $isUpgrade) {
+                    $buttonAction = 'upgrade';
+                } elseif ($isDowngradePage && !$isCurrentPackage && $isAvailable) {
+                    $buttonAction = 'downgrade';
+                } else {
+                    $buttonAction = 'new';
+                }
             @endphp
 
             <button class="btn {{ $buttonClass }} checkout-button"

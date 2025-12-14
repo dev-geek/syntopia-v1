@@ -8,7 +8,7 @@ use App\Models\Package;
 use App\Models\Order;
 use App\Models\UserLicence;
 use App\Models\PaymentGateways;
-use App\Services\FastSpringClient;
+use App\Services\Payment\Gateways\FastSpringPaymentGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Mockery;
@@ -68,9 +68,9 @@ class FastSpringCancellationTest extends TestCase
 
     public function test_fastspring_cancellation_schedules_end_of_billing_period()
     {
-        // Mock the FastSpringClient
-        $fastspringClient = Mockery::mock(FastSpringClient::class);
-        $fastspringClient->shouldReceive('cancelSubscription')
+        // Mock the FastSpringPaymentGateway
+        $fastspringGateway = Mockery::mock(FastSpringPaymentGateway::class);
+        $fastspringGateway->shouldReceive('cancelFastSpringSubscription')
             ->with('test-subscription-123', 1)
             ->once()
             ->andReturn(response()->json(['subscriptions' => [
@@ -81,7 +81,7 @@ class FastSpringCancellationTest extends TestCase
                 ]
             ]], 200));
 
-        $this->app->instance(FastSpringClient::class, $fastspringClient);
+        $this->app->instance(FastSpringPaymentGateway::class, $fastspringGateway);
 
         // Act as the user
         $this->actingAs($this->user);
@@ -112,9 +112,9 @@ class FastSpringCancellationTest extends TestCase
 
     public function test_fastspring_cancellation_handles_api_failure()
     {
-        // Mock the FastSpringClient to return an error
-        $fastspringClient = Mockery::mock(FastSpringClient::class);
-        $fastspringClient->shouldReceive('cancelSubscription')
+        // Mock the FastSpringPaymentGateway to return an error
+        $fastspringGateway = Mockery::mock(FastSpringPaymentGateway::class);
+        $fastspringGateway->shouldReceive('cancelFastSpringSubscription')
             ->with('test-subscription-123', 1)
             ->once()
             ->andReturn(response()->json(['error' => 'Subscription not found'], 404));

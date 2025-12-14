@@ -8,7 +8,7 @@ use App\Models\Package;
 use App\Models\Order;
 use App\Models\PaymentGateways;
 use App\Services\PaymentService;
-use App\Services\LicenseApiService;
+use App\Services\License\LicenseApiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;

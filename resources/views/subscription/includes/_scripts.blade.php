@@ -267,6 +267,13 @@
 
         document.querySelectorAll('.checkout-button').forEach(button => {
             button.addEventListener('click', function() {
+                console.log('=== BUTTON CLICKED ===', {
+                    package: this.getAttribute('data-package'),
+                    action: this.getAttribute('data-action'),
+                    disabled: this.disabled,
+                    hasActiveClass: this.classList.contains('active'),
+                    hasDisabledClass: this.classList.contains('disabled')
+                });
                 const packageName = this.getAttribute('data-package');
                 const action = this.getAttribute('data-action');
 
@@ -348,6 +355,11 @@
         }
 
         function showConfirmation(packageName, action, gateway) {
+            console.log('=== SHOW CONFIRMATION DIALOG ===', {
+                packageName,
+                action,
+                gateway
+            });
             const title = action === 'upgrade' ? 'Confirm Upgrade' : 'Confirm Downgrade';
             const text = action === 'upgrade' ?
                 `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be active only when current subscription expires.` :
@@ -361,10 +373,18 @@
                 cancelButtonText: 'Cancel',
                 confirmButtonColor: '#5b0dd5'
             }).then(result => {
+                console.log('=== CONFIRMATION RESULT ===', {
+                    isConfirmed: result.isConfirmed,
+                    isDismissed: result.isDismissed,
+                    dismiss: result.dismiss
+                });
                 if (result.isConfirmed) {
+                    console.log('=== USER CONFIRMED, CALLING executeCheckout ===');
                     // Show spinner when user confirms
                     showSpinner('Processing...', `Setting up ${packageName} plan checkout`);
                     executeCheckout(packageName, action);
+                } else {
+                    console.log('=== USER CANCELLED OR DISMISSED ===');
                 }
             });
         }
@@ -389,12 +409,23 @@
             } else if (action === 'downgrade') {
                 // Use the downgrade endpoint for all gateways
                 apiUrl = `/api/payments/downgrade`;
+                console.log('=== DOWNGRADE API CALL ===', {
+                    url: apiUrl,
+                    package: packageName,
+                    gateway: selectedGateway
+                });
             } else {
                 apiUrl =
                     `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
             }
 
             const requestBody = createRequestBody(packageName, action);
+            console.log('=== FETCH REQUEST ===', {
+                url: apiUrl,
+                method: 'POST',
+                body: requestBody,
+                headers: getRequestHeaders(action === 'upgrade', action === 'downgrade')
+            });
 
             fetch(apiUrl, {
                     method: 'POST',
@@ -402,7 +433,19 @@
                     credentials: 'same-origin',
                     body: JSON.stringify(requestBody)
                 })
-                .then(handleFetchResponse)
+                .then(response => {
+                    console.log('=== FETCH RESPONSE ===', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        url: response.url,
+                        ok: response.ok
+                    });
+                    return handleFetchResponse(response);
+                })
+                .catch(error => {
+                    console.error('=== FETCH ERROR ===', error);
+                    throw error;
+                })
                 .then(data => {
                     if (!data.success) {
                         throw new Error(data.error || 'Request failed');
@@ -427,10 +470,20 @@
                                 // Fallback to the old processPaddle method if no transaction_id
                                 processPaddle(packageName, action);
                             }
-                        } else if (selectedGateway === 'FastSpring' && data.requires_popup) {
-                            // Handle FastSpring downgrade with popup
-                            console.log('Processing FastSpring downgrade with popup');
-                            processFastSpring(packageName, action);
+                        } else if (selectedGateway === 'FastSpring') {
+                            // For FastSpring downgrades, the backend returns a redirect URL (not a popup)
+                            console.log('FastSpring downgrade API response:', data);
+                            if (data.checkout_url) {
+                                console.log('FastSpring downgrade successful, redirecting to:', data.checkout_url);
+                                hideSpinner();
+                                showSuccess(data.message || 'Downgrade Scheduled', 'Your downgrade has been scheduled successfully. It will take effect at the end of your current billing cycle.').then(() => {
+                                    window.location.href = data.checkout_url;
+                                });
+                                return; // Exit after handling downgrade
+                            } else {
+                                console.error('FastSpring downgrade successful, but no checkout_url in response:', data);
+                                throw new Error(data.error || 'FastSpring downgrade successful, but no redirect URL received.');
+                            }
                         } else if (selectedGateway === 'Pay Pro Global') {
                             // For PayProGlobal downgrades, the backend directly returns a redirect_url
                             console.log('PayProGlobal downgrade API response:', data);
@@ -446,7 +499,7 @@
                                 throw new Error(data.error || 'PayProGlobal downgrade successful, but no redirect URL received.');
                             }
                         } else if (data.checkout_url) {
-                            // For other gateways with a checkout URL, open in popup
+                            // For other gateways with a checkout URL, open in popup (only if not FastSpring)
                             console.log('Opening downgrade checkout URL:', data.checkout_url);
                             const downgradePopup = window.open(data.checkout_url, 'downgrade_checkout', 'width=1200,height=800,scrollbars=yes,resizable=yes');
 
@@ -455,8 +508,12 @@
                                 return;
                             }
 
-                            // Monitor the downgrade popup
-                            monitorDowngradePopup(downgradePopup);
+                            // Monitor the downgrade popup (only if function exists)
+                            if (typeof monitorDowngradePopup === 'function') {
+                                monitorDowngradePopup(downgradePopup);
+                            } else {
+                                console.warn('monitorDowngradePopup function not defined, skipping popup monitoring');
+                            }
                         } else {
                             throw new Error('No valid checkout method provided');
                         }
