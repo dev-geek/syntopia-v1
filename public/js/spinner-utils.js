@@ -3,14 +3,16 @@
  * Provides easy-to-use functions for showing/hiding loading spinners across the application
  */
 
-(function() {
+ (function() {
     'use strict';
 
     // Get spinner elements
     let spinnerOverlay = null;
     let spinnerText = null;
 
-    // Initialize spinner elements
+    // Track concurrent async operations so the spinner only hides when all are done
+    let activeRequestCount = 0;
+
     function initSpinner() {
         if (!spinnerOverlay) {
             spinnerOverlay = document.getElementById('spinnerOverlay');
@@ -19,10 +21,6 @@
         return spinnerOverlay !== null;
     }
 
-    /**
-     * Show the spinner overlay with optional message
-     * @param {string} message - Message to display (default: 'Processing...')
-     */
     function showSpinner(message = 'Processing...') {
         if (!initSpinner()) {
             console.warn('Spinner overlay not found. Make sure to include the spinner-overlay component.');
@@ -39,9 +37,6 @@
         }
     }
 
-    /**
-     * Hide the spinner overlay
-     */
     function hideSpinner() {
         if (!initSpinner()) {
             return;
@@ -50,6 +45,20 @@
         if (spinnerOverlay) {
             spinnerOverlay.classList.remove('active');
             document.body.style.overflow = '';
+        }
+    }
+
+    function incrementRequests(message) {
+        activeRequestCount += 1;
+        if (activeRequestCount === 1) {
+            showSpinner(message);
+        }
+    }
+
+    function decrementRequests() {
+        activeRequestCount = Math.max(0, activeRequestCount - 1);
+        if (activeRequestCount === 0) {
+            hideSpinner();
         }
     }
 
@@ -163,39 +172,73 @@
         });
     }
 
-    /**
-     * Auto-attach spinner to all forms on page load
-     */
     function attachAllFormSpinners() {
-        document.querySelectorAll('form[data-spinner]').forEach(form => {
-            const message = form.dataset.spinnerMessage || null;
+        document.querySelectorAll('form').forEach(form => {
+            if (form.hasAttribute('data-no-spinner')) {
+                return;
+            }
+            const message = form.dataset.spinnerMessage || 'Processing your request...';
             const buttonSelector = form.dataset.spinnerButton || null;
             attachFormSpinner(form, message, buttonSelector);
         });
     }
 
-    // Auto-hide spinner on page load (in case of validation errors or redirects)
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            hideSpinner();
-            attachAllFormSpinners();
-        });
-    } else {
-        hideSpinner();
-        attachAllFormSpinners();
+    function attachGlobalNetworkHooks() {
+        // Hook fetch
+        if (window.fetch && !window._spinnerFetchPatched) {
+            const originalFetch = window.fetch;
+            window.fetch = function() {
+                incrementRequests();
+                return originalFetch.apply(this, arguments).finally(decrementRequests);
+            };
+            window._spinnerFetchPatched = true;
+        }
+
+        // Hook jQuery AJAX if available
+        if (window.jQuery && !window._spinnerJqueryPatched) {
+            $(document).ajaxStart(function() {
+                incrementRequests();
+            });
+            $(document).ajaxStop(function() {
+                decrementRequests();
+            });
+            window._spinnerJqueryPatched = true;
+        }
+
+        // Show on internal navigation clicks
+        document.addEventListener('click', function(e) {
+            const link = e.target.closest('a');
+            if (!link) return;
+            const href = link.getAttribute('href');
+            const target = link.getAttribute('target');
+            const noSpinner = link.hasAttribute('data-no-spinner');
+
+            if (!noSpinner && href && href.startsWith('/') && (!target || target === '_self')) {
+                showSpinner();
+            }
+        }, true);
     }
 
-    // Hide spinner on page unload
+    function init() {
+        hideSpinner();
+        attachAllFormSpinners();
+        attachGlobalNetworkHooks();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
     window.addEventListener('beforeunload', hideSpinner);
 
-    // Hide spinner on visibility change (user switches tabs)
     document.addEventListener('visibilitychange', function() {
         if (document.hidden) {
             hideSpinner();
         }
     });
 
-    // Export to global scope
     window.SpinnerUtils = {
         show: showSpinner,
         hide: hideSpinner,
@@ -205,5 +248,5 @@
         attachAll: attachAllFormSpinners
     };
 
-})();
+ })();
 

@@ -158,8 +158,10 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
         }
 
     </style>
-</head>
-<body>
+ </head>
+ <body>
+
+    @include('components.spinner-overlay')
 
     <!-- Logo at the top -->
     <div class="logo-container">
@@ -255,6 +257,9 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <!-- Global Spinner Utilities -->
+    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
     <!-- SWAL Error Handling -->
     <script>

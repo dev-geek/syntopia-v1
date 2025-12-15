@@ -11,10 +11,10 @@
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
+
     <!-- Font Awesome -->
     @stack('fontawesome')
-    
+
     <!-- Password Toggle CSS -->
     @stack('password-toggle-css')
 
@@ -30,15 +30,20 @@
     <!-- Custom Styles -->
     <link rel="stylesheet" href="{{ asset('css/auth.css') }}">
     @stack('styles')
-</head>
-<body>
+ </head>
+ <body>
+    @include('components.spinner-overlay')
+
     @yield('content')
 
     <!-- Bootstrap JS -->
     @stack('bootstrap-js')
-    
+
     <!-- Password Toggle Script -->
     @stack('password-toggle-js')
+
+    <!-- Global Spinner Utilities -->
+    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
     <!-- SWAL Error Handling -->
     <script>

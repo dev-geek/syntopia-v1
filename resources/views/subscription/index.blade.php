@@ -78,6 +78,9 @@
         <a href="mailto:support@syntopia.ai">support@syntopia.ai</a>
     </footer>
     @include('subscription.includes._scripts')
+
+    <!-- Global Spinner Utilities -->
+    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 </body>
 
 </html>

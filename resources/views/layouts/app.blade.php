@@ -43,11 +43,12 @@
 
     <x-tiktok-pixel />
 
-</head>
-<body>
+ </head>
+ <body>
+    @include('components.spinner-overlay')
+
     <div id="app">
         @include('components.alert-messages')
-
 
         <main class="py-4">
             @yield('content')
@@ -59,6 +60,9 @@
 
     <!-- Password Toggle Script -->
     <script src="{{ asset('js/password-toggle.js') }}"></script>
+
+    <!-- Global Spinner Utilities -->
+    <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
     <!-- PaddleJS -->
     @paddleJS

@@ -49,13 +49,12 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
     <x-facebook-pixel />
     <x-tiktok-pixel />
 
-</head>
+ </head>
 
-<body class="hold-transition sidebar-mini layout-fixed layout-navbar-fixed">
+ <body class="hold-transition sidebar-mini layout-fixed layout-navbar-fixed">
+    @include('components.spinner-overlay')
+
     <div class="wrapper">
-        <div id="globalSpinner" class="global-spinner-overlay">
-            <div class="global-spinner"></div>
-        </div>
         <!-- Navbar -->
         <nav class="main-header navbar navbar-expand navbar-white navbar-light">
             <!-- Left navbar links -->
