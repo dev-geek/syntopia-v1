@@ -615,21 +615,66 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
         ]);
 
         return DB::transaction(function () use ($user, $package, $subscriptionId) {
-            // Get current subscription details to find next rebill date
-            $subscription = $this->getSubscription($subscriptionId);
-            if (!$subscription || isset($subscription['error'])) {
-                throw new \Exception('Failed to retrieve subscription details: ' . ($subscription['error'] ?? 'Unknown error'));
-            }
+            $credentials = $this->getFastSpringCredentials();
+            $hasCredentials = !empty($credentials['username']) && !empty($credentials['password']);
 
-            $nextChargeDate = $subscription['nextChargeDate'] ?? null;
-            if (!$nextChargeDate) {
-                throw new \Exception('Unable to determine next billing date for subscription');
+            $activeLicense = $user->userLicence;
+            $fallbackNextChargeDate = $activeLicense && $activeLicense->expires_at
+                ? $activeLicense->expires_at->toDateTimeString()
+                : null;
+
+            // Get current subscription details to find next rebill date
+            $subscription = $hasCredentials ? $this->getSubscription($subscriptionId) : null;
+            if ($hasCredentials) {
+                if (!$subscription || isset($subscription['error'])) {
+                    if (app()->environment('production')) {
+                        throw new \Exception('Failed to retrieve subscription details: ' . ($subscription['error'] ?? 'Unknown error'));
+                    }
+
+                    // In non-production, fall back to an approximate date so local testing still works.
+                    Log::warning('FastSpring downgrade: failed to retrieve subscription details, using fallback schedule date', [
+                        'subscription_id' => $subscriptionId,
+                        'user_id' => $user->id,
+                        'subscription_raw' => $subscription,
+                    ]);
+                    if (!$fallbackNextChargeDate) {
+                        throw new \Exception('Unable to determine next billing date for subscription (no FastSpring data and no license expiry)');
+                    }
+                    $nextChargeDate = $fallbackNextChargeDate;
+                } else {
+                    $nextChargeDate = $subscription['nextChargeDate'] ?? null;
+                    if (!$nextChargeDate) {
+                        if (app()->environment('production')) {
+                            throw new \Exception('Unable to determine next billing date for subscription');
+                        }
+
+                        if (!$fallbackNextChargeDate) {
+                            throw new \Exception('Unable to determine next billing date for subscription (missing nextChargeDate and no license expiry)');
+                        }
+
+                        Log::warning('FastSpring downgrade: subscription missing nextChargeDate, using fallback schedule date', [
+                            'subscription_id' => $subscriptionId,
+                            'user_id' => $user->id,
+                            'subscription_raw' => $subscription,
+                        ]);
+                        $nextChargeDate = $fallbackNextChargeDate;
+                    }
+                }
+            } else {
+                if (!$fallbackNextChargeDate) {
+                    throw new \Exception('Unable to determine next billing date for subscription (no credentials and no license expiry)');
+                }
+
+                Log::warning('FastSpring downgrade: credentials missing, using local fallback schedule date', [
+                    'subscription_id' => $subscriptionId,
+                    'user_id' => $user->id,
+                ]);
+                $nextChargeDate = $fallbackNextChargeDate;
             }
 
             // Get FastSpring product path for the new package
             $newProductPath = $this->getFastSpringProductPath($package->name);
 
-            $activeLicense = $user->userLicence;
             $scheduledActivationDate = $activeLicense && $activeLicense->expires_at
                 ? $activeLicense->expires_at
                 : Carbon::parse($nextChargeDate);
@@ -642,28 +687,45 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
             // Update FastSpring subscription to schedule the downgrade (without proration)
             // This schedules the change for the next billing cycle without immediate effect
-            $credentials = $this->getFastSpringCredentials();
-            $response = Http::withBasicAuth($credentials['username'], $credentials['password'])
-                ->put("https://api.fastspring.com/subscriptions/{$subscriptionId}", [
-                    'product' => $newProductPath,
-                    // Do NOT include 'prorate' => true - this ensures scheduled downgrade
-                    // FastSpring will schedule this change for the next billing cycle
-                ]);
+            if ($hasCredentials) {
+                $response = Http::withBasicAuth($credentials['username'], $credentials['password'])
+                    ->put("https://api.fastspring.com/subscriptions/{$subscriptionId}", [
+                        'product' => $newProductPath,
+                        // Do NOT include 'prorate' => true - this ensures scheduled downgrade
+                        // FastSpring will schedule this change for the next billing cycle
+                    ]);
 
-            if (!$response->successful()) {
-                Log::error('FastSpring downgrade API call failed', [
+                if (!$response->successful()) {
+                    Log::error('FastSpring downgrade API call failed', [
+                        'subscription_id' => $subscriptionId,
+                        'response' => $response->body(),
+                        'status' => $response->status()
+                    ]);
+
+                    // In non-production environments, allow downgrade scheduling to proceed
+                    // even if the FastSpring API call fails (e.g. invalid credentials or
+                    // sandbox misconfiguration) so local testing still works.
+                    if (app()->environment('production')) {
+                        throw new \Exception('Failed to schedule downgrade with FastSpring: ' . $response->body());
+                    }
+
+                    Log::warning('FastSpring downgrade API failed but continuing in non-production environment', [
+                        'subscription_id' => $subscriptionId,
+                        'status' => $response->status(),
+                    ]);
+                } else {
+                    Log::info('FastSpring subscription updated via API for scheduled downgrade', [
+                        'subscription_id' => $subscriptionId,
+                        'new_product' => $newProductPath,
+                        'scheduled_for' => $scheduledActivationDate->toDateTimeString()
+                    ]);
+                }
+            } else {
+                Log::info('FastSpring downgrade: skipping remote API call because credentials are not configured', [
                     'subscription_id' => $subscriptionId,
-                    'response' => $response->body(),
-                    'status' => $response->status()
+                    'scheduled_for' => $scheduledActivationDate->toDateTimeString()
                 ]);
-                throw new \Exception('Failed to schedule downgrade with FastSpring: ' . $response->body());
             }
-
-            Log::info('FastSpring subscription updated via API for scheduled downgrade', [
-                'subscription_id' => $subscriptionId,
-                'new_product' => $newProductPath,
-                'scheduled_for' => $scheduledActivationDate->toDateTimeString()
-            ]);
 
             // Create order to track the scheduled downgrade
             $order = Order::create([
