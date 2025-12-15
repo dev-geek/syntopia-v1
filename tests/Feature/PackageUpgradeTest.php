@@ -577,5 +577,52 @@ class PackageUpgradeTest extends TestCase
 
         $response->assertStatus(401);
     }
+
+    /**
+     * Test upgrade is blocked when a downgrade or cancellation is already scheduled (FastSpring)
+     */
+    public function test_fastspring_upgrade_blocked_when_change_already_scheduled()
+    {
+        $user = User::create([
+            'name' => 'Scheduled Change User',
+            'email' => 'scheduled@example.com',
+            'password' => bcrypt('password'),
+            'package_id' => $this->starterPackage->id,
+            'is_subscribed' => true,
+            'subscription_id' => 'FS-sub_123456',
+            'payment_gateway_id' => $this->fastspringGateway->id
+        ]);
+
+        $license = UserLicence::create([
+            'user_id' => $user->id,
+            'license_key' => 'TEST-LICENSE',
+            'package_id' => $this->starterPackage->id,
+            'subscription_id' => 'FS-sub_123456',
+            'payment_gateway_id' => $this->fastspringGateway->id,
+            'activated_at' => now(),
+            'is_active' => true
+        ]);
+
+        $user->update(['user_license_id' => $license->id]);
+
+        Order::create([
+            'user_id' => $user->id,
+            'package_id' => $this->proPackage->id,
+            'amount' => $this->proPackage->price,
+            'currency' => 'USD',
+            'payment_gateway_id' => $this->fastspringGateway->id,
+            'order_type' => 'downgrade',
+            'status' => 'scheduled_downgrade',
+            'transaction_id' => 'FS-DOWNGRADE-SCHEDULED-123',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->postJson('/api/payments/upgrade/Pro');
+
+        $response->assertStatus(403)
+            ->assertJson([
+                'error' => 'Plan Change Restricted',
+            ]);
+    }
 }
 

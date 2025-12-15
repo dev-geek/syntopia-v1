@@ -171,6 +171,30 @@ class FastSpringCancellationTest extends TestCase
         $response->assertSessionHas('error', 'No subscription ID found. Please contact support.');
     }
 
+    public function test_fastspring_cancellation_blocked_when_change_already_scheduled()
+    {
+        $this->actingAs($this->user);
+
+        Order::create([
+            'user_id' => $this->user->id,
+            'package_id' => $this->package->id,
+            'amount' => $this->package->price,
+            'currency' => 'USD',
+            'payment_gateway_id' => $this->fastspringGateway->id,
+            'order_type' => 'downgrade',
+            'status' => 'scheduled_downgrade',
+            'transaction_id' => 'FS-DOWNGRADE-SCHEDULED-123',
+        ]);
+
+        $response = $this->post('/payments/cancel-subscription');
+
+        $response->assertStatus(500)
+            ->assertJson([
+                'success' => false,
+                'error' => 'Plan Change Restricted',
+            ]);
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();

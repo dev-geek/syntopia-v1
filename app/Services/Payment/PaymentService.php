@@ -2198,6 +2198,14 @@ class PaymentService
             throw new \Exception('No active subscription found');
         }
 
+        $hasScheduledChange = Order::where('user_id', $user->id)
+            ->whereIn('status', ['scheduled_downgrade', 'cancellation_scheduled'])
+            ->exists();
+
+        if ($hasScheduledChange) {
+            throw new \Exception('Plan change restricted: Scheduled change already exists');
+        }
+
         $userLicense = $user->userLicence;
         if (!$userLicense || !$userLicense->subscription_id) {
             return $this->cancelSubscriptionWithoutExternalId($user);
@@ -2218,6 +2226,14 @@ class PaymentService
     {
         if (!$user->is_subscribed) {
             throw new \Exception('Subscription required');
+        }
+
+        $hasScheduledChange = Order::where('user_id', $user->id)
+            ->whereIn('status', ['scheduled_downgrade', 'cancellation_scheduled'])
+            ->exists();
+
+        if ($hasScheduledChange) {
+            throw new \Exception('Plan change restricted: Scheduled change already exists');
         }
 
         $currentLicense = $user->userLicence;
@@ -2258,11 +2274,17 @@ class PaymentService
             throw new \Exception('Subscription required');
         }
 
-        // For downgrades, cancel any existing scheduled downgrades first
-        // This allows users to change their downgrade selection
+        $hasScheduledChange = Order::where('user_id', $user->id)
+            ->whereIn('status', ['scheduled_downgrade', 'cancellation_scheduled'])
+            ->exists();
+
+        if ($hasScheduledChange) {
+            throw new \Exception('Plan change restricted: Scheduled change already exists');
+        }
+
         Order::where('user_id', $user->id)
             ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
+            ->whereIn('status', ['pending', 'pending_downgrade'])
             ->update(['status' => 'cancelled']);
 
         // Check if user can change plan (excluding pending downgrades since we just cancelled them)

@@ -101,7 +101,7 @@
                         <div class="card-header">
 
                             <div class="float-right">
-                                @if ($hasActiveSubscription && !$hasPendingDowngrade)
+                                @if ($hasActiveSubscription && !$hasPendingDowngrade && !$hasScheduledCancellation)
                                     @php
                                         $isFreePlan = $currentPackage && strtolower($currentPackage) === 'free';
                                         $isBusinessPlan = $currentPackage && strtolower($currentPackage) === 'business';
