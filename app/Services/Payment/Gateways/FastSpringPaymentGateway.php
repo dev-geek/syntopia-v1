@@ -3,12 +3,17 @@
 namespace App\Services\Payment\Gateways;
 
 use App\Contracts\Payment\PaymentGatewayInterface;
-use App\Models\User;
-use App\Models\Package;
-use App\Models\Order;
-use App\Models\PaymentGateways;
-use App\Services\License\LicenseApiService;
-use App\Services\FirstPromoterService;
+use App\Models\{
+    User,
+    Package,
+    Order,
+    PaymentGateways,
+    UserLicence
+};
+use App\Services\{
+    License\LicenseApiService,
+    FirstPromoterService
+};
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +26,21 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
         protected LicenseApiService $licenseApiService,
         protected FirstPromoterService $firstPromoterService
     ) {}
+
+    protected function getFastSpringCredentials(): array
+    {
+        return [
+            'username' => config('payment.gateways.FastSpring.username'),
+            'password' => config('payment.gateways.FastSpring.password')
+        ];
+    }
+
+    protected function fastspringClient()
+    {
+        $credentials = $this->getFastSpringCredentials();
+
+        return Http::withBasicAuth($credentials['username'], $credentials['password']);
+    }
 
     public function getName(): string
     {
@@ -92,6 +112,113 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             'success' => true,
             'checkout_url' => $checkoutUrl
         ];
+    }
+
+    public function upgradeSubscription(string $subscriptionId, string $newProductId, ?string $prorationBillingMode = null)
+    {
+        $response = $this->fastspringClient()
+            ->post('https://api.fastspring.com/subscriptions', [
+                'subscriptions' => [
+                    [
+                        'subscription' => $subscriptionId,
+                        'product' => $newProductId,
+                        'prorate' => true,
+                        'preview' => false
+                    ]
+                ]
+            ]);
+
+        return $response->json();
+    }
+
+    public function downgradeSubscription(string $subscriptionId, string $newProductId, ?string $prorationBillingMode = null)
+    {
+        throw new \Exception('FastSpring downgradeSubscription requires a User object. Use downgradeSubscriptionForUser instead.');
+    }
+
+    public function downgradeSubscriptionForUser(User $user, string $subscriptionId, string $newProductId)
+    {
+        try {
+            // Find package by FastSpring product ID or name
+            $package = Package::where('name', $newProductId)->first();
+            if (!$package) {
+                // Find by matching product path
+                $packageName = ucfirst(str_replace(['-plan', '-'], ['', ' '], $newProductId));
+                $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
+            }
+
+            if (!$package) {
+                throw new \Exception("Package not found for product: {$newProductId}");
+            }
+
+            $result = $this->createDowngradeCheckout($user, $package, $subscriptionId, $newProductId);
+
+            // Get the scheduled order to return details
+            $order = Order::where('user_id', $user->id)
+                ->where('subscription_id', $subscriptionId)
+                ->where('order_type', 'downgrade')
+                ->where('status', 'scheduled_downgrade')
+                ->latest()
+                ->first();
+
+            if ($order) {
+                $metadata = is_array($order->metadata) ? $order->metadata : [];
+                $scheduledDate = isset($metadata['scheduled_activation_date'])
+                    ? \Carbon\Carbon::parse($metadata['scheduled_activation_date'])
+                    : null;
+
+                return [
+                    'success' => true,
+                    'scheduled_change' => true,
+                    'scheduled_date' => $scheduledDate?->toDateTimeString(),
+                    'message' => "Downgrade to {$package->name} scheduled successfully. It will activate on " . ($scheduledDate?->format('M d, Y') ?? 'your next billing date') . '.'
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Failed to schedule downgrade'
+            ];
+
+        } catch (\Throwable $e) {
+            Log::error('Failed to prepare FastSpring downgrade', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+                'new_product' => $newProductId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to prepare downgrade: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    public function cancelSubscription(User $user, string $subscriptionId, ?int $cancellationReasonId = null, ?string $reasonText = null): array
+    {
+        $response = $this->cancelFastSpringSubscription($subscriptionId, 1);
+        $responseData = $response->json();
+
+        $isSuccess = false;
+        if (isset($responseData['subscriptions']) && is_array($responseData['subscriptions'])) {
+            foreach ($responseData['subscriptions'] as $subscription) {
+                if (isset($subscription['result']) && $subscription['result'] === 'success') {
+                    $isSuccess = true;
+                    break;
+                }
+            }
+        }
+
+        if ($isSuccess) {
+            $order = Order::where('user_id', $user->id)->latest('created_at')->first();
+            if ($order) {
+                $order->update(['status' => 'cancellation_scheduled']);
+            }
+        }
+
+        return ['success' => $isSuccess, 'message' => $isSuccess ? 'Cancellation scheduled' : 'Cancellation failed'];
     }
 
     public function processPayment(array $paymentData, bool $returnRedirect = true)
@@ -167,7 +294,7 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
             $license = null;
             if ($subscriptionId) {
-                $existingLicense = \App\Models\UserLicence::where('user_id', $user->id)
+                $existingLicense = UserLicence::where('user_id', $user->id)
                     ->where('subscription_id', $subscriptionId)
                     ->where('is_active', true)
                     ->first();
@@ -320,7 +447,7 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             ? Carbon::parse($metadata['scheduled_activation_date'])
             : null;
 
-        // Only apply if the license has expired (expires_at is in the past)
+        // Only apply if the license has expired
         $shouldApply = false;
         if ($activeLicense && $activeLicense->expires_at) {
             // License has expired - apply downgrade
@@ -420,7 +547,7 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             return ['status' => 'ignored'];
         }
 
-        $userLicense = \App\Models\UserLicence::where('subscription_id', $subscriptionId)->first();
+        $userLicense = UserLicence::where('subscription_id', $subscriptionId)->first();
         if ($userLicense) {
             $user = $userLicense->user;
             DB::transaction(function () use ($user, $userLicense, $subscriptionId) {
@@ -461,10 +588,8 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             return ['success' => true, 'already_completed' => true];
         }
 
-        $response = Http::withBasicAuth(
-            config('payment.gateways.FastSpring.username'),
-            config('payment.gateways.FastSpring.password')
-        )->get("https://api.fastspring.com/orders/{$orderId}");
+        $response = $this->fastspringClient()
+            ->get("https://api.fastspring.com/orders/{$orderId}");
 
         if (!$response->successful()) {
             return ['success' => false, 'error' => 'Order verification failed'];
@@ -534,10 +659,8 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
     protected function getSubscriptionId(string $orderId)
     {
-        $response = Http::withBasicAuth(
-            config('payment.gateways.FastSpring.username'),
-            config('payment.gateways.FastSpring.password')
-        )->get("https://api.fastspring.com/orders/{$orderId}");
+        $response = $this->fastspringClient()
+            ->get("https://api.fastspring.com/orders/{$orderId}");
 
         if ($response->failed()) {
             return ['error' => 'Order verification failed.'];
@@ -550,22 +673,12 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             return ['error' => 'No subscription found for this order.'];
         }
 
-        $subscriptionResponse = Http::withBasicAuth(
-            config('payment.gateways.FastSpring.username'),
-            config('payment.gateways.FastSpring.password')
-        )->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
-
-        if ($subscriptionResponse->failed()) {
-            return ['error' => 'Subscription verification failed.'];
-        }
-
-        return $subscriptionResponse->json();
+        return $this->getSubscription($subscriptionId);
     }
 
     protected function getSubscription(string $subscriptionId): array
     {
-        $credentials = $this->getFastSpringCredentials();
-        $response = Http::withBasicAuth($credentials['username'], $credentials['password'])
+        $response = $this->fastspringClient()
             ->get("https://api.fastspring.com/subscriptions/{$subscriptionId}");
 
         if ($response->failed()) {
@@ -577,7 +690,14 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             return ['error' => 'Failed to retrieve subscription details'];
         }
 
-        return $response->json();
+        $data = $response->json();
+
+        // FastSpring returns a "subscriptions" array – normalize to a single subscription record
+        if (isset($data['subscriptions']) && is_array($data['subscriptions']) && count($data['subscriptions']) > 0) {
+            return $data['subscriptions'][0];
+        }
+
+        return $data;
     }
 
     public function createUpgradeCheckout(User $user, Package $package, string $subscriptionId): string
@@ -606,7 +726,7 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
         return "{$baseUrl}/{$storefront}?product={$package->name}&subscription={$subscriptionId}&order_id={$order->id}";
     }
 
-    public function createDowngradeCheckout(User $user, Package $package, string $subscriptionId): string
+    public function createDowngradeCheckout(User $user, Package $package, string $subscriptionId, ?string $productId = null): string
     {
         Log::info('FastSpring createDowngradeCheckout called', [
             'user_id' => $user->id,
@@ -615,274 +735,37 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
         ]);
 
         return DB::transaction(function () use ($user, $package, $subscriptionId) {
-            $credentials = $this->getFastSpringCredentials();
-            $hasCredentials = !empty($credentials['username']) && !empty($credentials['password']);
-
-            $activeLicense = $user->userLicence;
-            $fallbackNextChargeDate = $activeLicense && $activeLicense->expires_at
-                ? $activeLicense->expires_at->toDateTimeString()
-                : null;
-
-            // Get current subscription details to find next rebill date
-            $subscription = $hasCredentials ? $this->getSubscription($subscriptionId) : null;
-            if ($hasCredentials) {
-                if (!$subscription || isset($subscription['error'])) {
-                    if (app()->environment('production')) {
-                        throw new \Exception('Failed to retrieve subscription details: ' . ($subscription['error'] ?? 'Unknown error'));
-                    }
-
-                    // In non-production, fall back to an approximate date so local testing still works.
-                    Log::warning('FastSpring downgrade: failed to retrieve subscription details, using fallback schedule date', [
-                        'subscription_id' => $subscriptionId,
-                        'user_id' => $user->id,
-                        'subscription_raw' => $subscription,
-                    ]);
-                    if (!$fallbackNextChargeDate) {
-                        throw new \Exception('Unable to determine next billing date for subscription (no FastSpring data and no license expiry)');
-                    }
-                    $nextChargeDate = $fallbackNextChargeDate;
-                } else {
-                    $nextChargeDate = $subscription['nextChargeDate'] ?? null;
-                    if (!$nextChargeDate) {
-                        if (app()->environment('production')) {
-                            throw new \Exception('Unable to determine next billing date for subscription');
-                        }
-
-                        if (!$fallbackNextChargeDate) {
-                            throw new \Exception('Unable to determine next billing date for subscription (missing nextChargeDate and no license expiry)');
-                        }
-
-                        Log::warning('FastSpring downgrade: subscription missing nextChargeDate, using fallback schedule date', [
-                            'subscription_id' => $subscriptionId,
-                            'user_id' => $user->id,
-                            'subscription_raw' => $subscription,
-                        ]);
-                        $nextChargeDate = $fallbackNextChargeDate;
-                    }
-                }
-            } else {
-                if (!$fallbackNextChargeDate) {
-                    throw new \Exception('Unable to determine next billing date for subscription (no credentials and no license expiry)');
-                }
-
-                Log::warning('FastSpring downgrade: credentials missing, using local fallback schedule date', [
-                    'subscription_id' => $subscriptionId,
-                    'user_id' => $user->id,
-                ]);
-                $nextChargeDate = $fallbackNextChargeDate;
-            }
-
-            // Get FastSpring product path for the new package
-            $newProductPath = $this->getFastSpringProductPath($package->name);
-
-            $scheduledActivationDate = $activeLicense && $activeLicense->expires_at
-                ? $activeLicense->expires_at
-                : Carbon::parse($nextChargeDate);
-
             // Cancel any existing scheduled downgrades
             Order::where('user_id', $user->id)
                 ->where('order_type', 'downgrade')
-                ->where('status', 'scheduled_downgrade')
+                ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
                 ->update(['status' => 'cancelled']);
 
-            // Update FastSpring subscription to schedule the downgrade (without proration)
-            // This schedules the change for the next billing cycle without immediate effect
-            if ($hasCredentials) {
-                $response = Http::withBasicAuth($credentials['username'], $credentials['password'])
-                    ->put("https://api.fastspring.com/subscriptions/{$subscriptionId}", [
-                        'product' => $newProductPath,
-                        // Do NOT include 'prorate' => true - this ensures scheduled downgrade
-                        // FastSpring will schedule this change for the next billing cycle
-                    ]);
-
-                if (!$response->successful()) {
-                    Log::error('FastSpring downgrade API call failed', [
-                        'subscription_id' => $subscriptionId,
-                        'response' => $response->body(),
-                        'status' => $response->status()
-                    ]);
-
-                    // In non-production environments, allow downgrade scheduling to proceed
-                    // even if the FastSpring API call fails (e.g. invalid credentials or
-                    // sandbox misconfiguration) so local testing still works.
-                    if (app()->environment('production')) {
-                        throw new \Exception('Failed to schedule downgrade with FastSpring: ' . $response->body());
-                    }
-
-                    Log::warning('FastSpring downgrade API failed but continuing in non-production environment', [
-                        'subscription_id' => $subscriptionId,
-                        'status' => $response->status(),
-                    ]);
-                } else {
-                    Log::info('FastSpring subscription updated via API for scheduled downgrade', [
-                        'subscription_id' => $subscriptionId,
-                        'new_product' => $newProductPath,
-                        'scheduled_for' => $scheduledActivationDate->toDateTimeString()
-                    ]);
-                }
-            } else {
-                Log::info('FastSpring downgrade: skipping remote API call because credentials are not configured', [
-                    'subscription_id' => $subscriptionId,
-                    'scheduled_for' => $scheduledActivationDate->toDateTimeString()
-                ]);
-            }
-
-            // Create order to track the scheduled downgrade
             $order = Order::create([
                 'user_id' => $user->id,
                 'package_id' => $package->id,
                 'amount' => $package->price,
                 'currency' => 'USD',
-                'status' => 'scheduled_downgrade',
+                'status' => 'pending',
                 'payment_gateway_id' => $this->getPaymentGatewayId(),
                 'order_type' => 'downgrade',
                 'subscription_id' => $subscriptionId,
-                'transaction_id' => 'FS-DOWNGRADE-' . $subscriptionId . '-' . time(),
+                'transaction_id' => 'FS-DOWNGRADE-' . Str::random(10),
                 'metadata' => [
-                    'original_package_id' => $user->package_id,
-                    'original_package_name' => $user->package->name ?? 'Unknown',
+                    'original_package' => $user->package->name ?? 'Unknown',
                     'downgrade_to' => $package->name,
                     'downgrade_type' => 'subscription_downgrade',
-                    'scheduled_activation_date' => $scheduledActivationDate->toDateTimeString(),
-                    'next_charge_date' => $nextChargeDate,
-                    'downgrade_processed' => false,
-                    'fastspring_subscription_id' => $subscriptionId,
-                    'fastspring_product_path' => $newProductPath,
-                    'current_product_path' => $this->getFastSpringProductPath($user->package->name ?? 'Starter')
                 ]
             ]);
 
-            Log::info('FastSpring downgrade scheduled locally (will apply when current plan expires)', [
-                'user_id' => $user->id,
-                'subscription_id' => $subscriptionId,
-                'from_package' => $user->package->name ?? 'Unknown',
-                'to_package' => $package->name,
-                'scheduled_date' => $scheduledActivationDate->toDateTimeString(),
-                'order_id' => $order->id
-            ]);
+            $baseUrl = config('payment.gateways.FastSpring.base_url', 'https://sbl.onfastspring.com');
+            $storefront = config('payment.gateways.FastSpring.storefront', 'livebuzzstudio.test.onfastspring.com/popup-check-paymet');
 
-            // Return route URL to subscription details with success message
-            // The downgrade is scheduled locally and will be applied when current plan expires
-            return route('user.subscription.details') . '?downgrade_scheduled=1&package=' . urlencode($package->name) . '&date=' . urlencode($scheduledActivationDate->format('Y-m-d'));
+            // Open FastSpring checkout popup
+            return "{$baseUrl}/{$storefront}?product={$package->name}&subscription={$subscriptionId}&order_id={$order->id}&downgrade=true";
         });
     }
 
-    public function cancelSubscription(User $user, string $subscriptionId, ?int $cancellationReasonId = null, ?string $reasonText = null): array
-    {
-        $response = $this->cancelFastSpringSubscription($subscriptionId, 1);
-        $responseData = $response->json();
-
-        $isSuccess = false;
-        if (isset($responseData['subscriptions']) && is_array($responseData['subscriptions'])) {
-            foreach ($responseData['subscriptions'] as $subscription) {
-                if (isset($subscription['result']) && $subscription['result'] === 'success') {
-                    $isSuccess = true;
-                    break;
-                }
-            }
-        }
-
-        if ($isSuccess) {
-            $order = Order::where('user_id', $user->id)->latest('created_at')->first();
-            if ($order) {
-                $order->update(['status' => 'cancellation_scheduled']);
-            }
-        }
-
-        return ['success' => $isSuccess, 'message' => $isSuccess ? 'Cancellation scheduled' : 'Cancellation failed'];
-    }
-
-    protected function getFastSpringCredentials(): array
-    {
-        return [
-            'username' => config('payment.gateways.FastSpring.username'),
-            'password' => config('payment.gateways.FastSpring.password')
-        ];
-    }
-
-    public function upgradeSubscription(string $subscriptionId, string $newProductId, ?string $prorationBillingMode = null)
-    {
-        $credentials = $this->getFastSpringCredentials();
-        $response = Http::withBasicAuth($credentials['username'], $credentials['password'])
-            ->post('https://api.fastspring.com/subscriptions', [
-                'subscriptions' => [
-                    [
-                        'subscription' => $subscriptionId,
-                        'product' => $newProductId,
-                        'prorate' => true,
-                        'preview' => false
-                    ]
-                ]
-            ]);
-
-        return $response->json();
-    }
-
-    public function downgradeSubscription(string $subscriptionId, string $newProductId, ?string $prorationBillingMode = null)
-    {
-        throw new \Exception('FastSpring downgradeSubscription requires a User object. Use downgradeSubscriptionForUser instead.');
-    }
-
-    public function downgradeSubscriptionForUser(User $user, string $subscriptionId, string $newProductId)
-    {
-        try {
-            // Find package by FastSpring product ID or name
-            $package = Package::where('name', $newProductId)->first();
-            if (!$package) {
-                // Try to find by matching product path
-                $packageName = ucfirst(str_replace(['-plan', '-'], ['', ' '], $newProductId));
-                $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
-            }
-
-            if (!$package) {
-                throw new \Exception("Package not found for product: {$newProductId}");
-            }
-
-            // Use the same API-based scheduling as createDowngradeCheckout
-            $result = $this->createDowngradeCheckout($user, $package, $subscriptionId);
-
-            // Get the scheduled order to return details
-            $order = Order::where('user_id', $user->id)
-                ->where('subscription_id', $subscriptionId)
-                ->where('order_type', 'downgrade')
-                ->where('status', 'scheduled_downgrade')
-                ->latest()
-                ->first();
-
-            if ($order) {
-                $metadata = is_array($order->metadata) ? $order->metadata : [];
-                $scheduledDate = isset($metadata['scheduled_activation_date'])
-                    ? \Carbon\Carbon::parse($metadata['scheduled_activation_date'])
-                    : null;
-
-                return [
-                    'success' => true,
-                    'scheduled_change' => true,
-                    'scheduled_date' => $scheduledDate?->toDateTimeString(),
-                    'message' => "Downgrade to {$package->name} scheduled successfully. It will activate on " . ($scheduledDate?->format('M d, Y') ?? 'your next billing date') . '.'
-                ];
-            }
-
-            return [
-                'success' => false,
-                'message' => 'Failed to schedule downgrade'
-            ];
-
-        } catch (\Throwable $e) {
-            Log::error('Failed to prepare FastSpring downgrade', [
-                'user_id' => $user->id,
-                'subscription_id' => $subscriptionId,
-                'new_product' => $newProductId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'Failed to prepare downgrade: ' . $e->getMessage()
-            ];
-        }
-    }
 
     protected function cancelFastSpringSubscription(string $subscriptionId, int $billingPeriod = 1)
     {
@@ -890,17 +773,14 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             throw new \InvalidArgumentException('Billing period must be 0 (immediate) or 1 (end of period)');
         }
 
-        $credentials = $this->getFastSpringCredentials();
-        return Http::withBasicAuth($credentials['username'], $credentials['password'])
+        return $this->fastspringClient()
             ->delete("https://api.fastspring.com/subscriptions/{$subscriptionId}?billingPeriod={$billingPeriod}");
     }
 
     public function verifyTransaction(string $transactionId): ?array
     {
-        $response = Http::withBasicAuth(
-            config('payment.gateways.FastSpring.username'),
-            config('payment.gateways.FastSpring.password')
-        )->get("https://api.fastspring.com/orders/{$transactionId}");
+        $response = $this->fastspringClient()
+            ->get("https://api.fastspring.com/orders/{$transactionId}");
 
         if (!$response->successful()) {
             return null;
@@ -911,10 +791,8 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
     public function processAddonOrder(User $user, string $orderId, string $addon): array
     {
-        $response = Http::withBasicAuth(
-            config('payment.gateways.FastSpring.username'),
-            config('payment.gateways.FastSpring.password')
-        )->get("https://api.fastspring.com/orders/{$orderId}");
+        $response = $this->fastspringClient()
+            ->get("https://api.fastspring.com/orders/{$orderId}");
 
         if (!$response->successful()) {
             throw new \Exception('FastSpring order verification failed');
@@ -1007,6 +885,54 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             'Enterprise' => 'enterprise-plan',
         ];
         return $mapping[$package] ?? 'starter-plan';
+    }
+
+    /**
+     * Determine when the current paid plan should end, for scheduling
+     * downgrades or cancellations.
+     */
+    protected function resolvePlanEndDate(User $user, ?string $gatewayNextChargeDate = null): Carbon
+    {
+        $activeLicense = $user->userLicence;
+
+        if ($activeLicense && $activeLicense->expires_at) {
+            return $activeLicense->expires_at;
+        }
+
+        if ($gatewayNextChargeDate) {
+            try {
+                return Carbon::parse($gatewayNextChargeDate);
+            } catch (\Throwable $e) {
+            }
+        }
+
+        return now()->addDays(30);
+    }
+
+    /**
+     * Build a FastSpring product identifier for the target package
+     * based on the current subscription product string.
+     *
+     *
+     */
+    protected function buildFastSpringProductPathForPackage(string $currentProduct, string $targetPackageName): string
+    {
+        $targetSlug = strtolower($targetPackageName);
+        $currentProduct = trim($currentProduct);
+
+        if ($currentProduct === '') {
+            return $this->getFastSpringProductPath($targetPackageName);
+        }
+
+        // Replace the leading segment (before first '-') with the target slug, preserving the suffix
+        $newProduct = preg_replace('/^[^-\s]+/', $targetSlug, $currentProduct, 1);
+
+        if (is_string($newProduct) && $newProduct !== '') {
+            return $newProduct;
+        }
+
+        // Fallback to static mapping if regex replacement fails
+        return $this->getFastSpringProductPath($targetPackageName);
     }
 
     public function createSession(Order $order): array

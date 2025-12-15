@@ -6,17 +6,14 @@ use App\Http\Controllers\Payments\PaymentController;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Package;
-use App\Models\PaymentGateways;
 use App\Services\SubscriptionService;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class SubscriptionController extends Controller
 {
-    private $subscriptionService;
-    private $paymentController;
+    private SubscriptionService $subscriptionService;
+    private PaymentController $paymentController;
 
     public function __construct(SubscriptionService $subscriptionService, PaymentController $paymentController)
     {
@@ -24,191 +21,10 @@ class SubscriptionController extends Controller
         $this->paymentController = $paymentController;
     }
 
-    private function hasActiveSubscription($user)
-    {
-        if (!$user->is_subscribed || !$user->package) {
-            return false;
-        }
-
-        if (strtolower($user->package->name) === 'free') {
-            return true;
-        }
-
-        // Check if user has an active license
-        $activeLicense = $user->userLicence;
-        if (!$activeLicense || !$activeLicense->isActive()) {
-            return false;
-        }
-
-        // If cancellation is scheduled, the subscription is still active until the expiration date
-        if ($activeLicense->status === 'cancelled_at_period_end' && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
-            return true;
-        }
-
-        // Check if license is not expired (for truly active subscriptions or after scheduled cancellation takes effect)
-        if ($activeLicense->isExpired()) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private function hasScheduledCancellation($user)
-    {
-        // Check if there's an order with cancellation_scheduled status for this user
-        // We check orders by user_id and also verify the user_licence has the subscription_id
-        $scheduledCancellation = \App\Models\Order::where('user_id', $user->id)
-            ->where('status', 'cancellation_scheduled')
-            ->exists();
-
-        return $scheduledCancellation;
-    }
-
-    private function canUpgradeSubscription($user)
-    {
-        return $this->hasActiveSubscription($user) &&
-            $user->package &&
-            strtolower($user->package->name) !== 'free' &&
-            $user->paymentGateway &&
-            $user->paymentGateway->is_active;
-    }
-
-    /**
-     * Get packages that can be upgraded to from the current package
-     */
-    private function getUpgradeablePackages($currentPackage)
-    {
-        if (!$currentPackage) {
-            return Package::where('price', '>', 0)->get();
-        }
-
-        $currentPrice = $currentPackage->price ?? 0;
-
-        // For upgrade, we want packages with higher prices
-        return Package::where('price', '>', $currentPrice)
-            ->where('name', '!=', $currentPackage->name)
-            ->orderBy('price', 'asc')
-            ->get();
-    }
-
-    /**
-     * Get packages that can be downgraded to from the current package
-     */
-    private function getDowngradeablePackages($currentPackage)
-    {
-        if (!$currentPackage) {
-            return collect();
-        }
-
-        $currentPrice = $currentPackage->price ?? 0;
-
-        // For downgrade, we want packages with lower prices
-        return Package::where('price', '<', $currentPrice)
-            ->where('name', '!=', $currentPackage->name)
-            ->orderBy('price', 'desc')
-            ->get();
-    }
-
-    /**
-     * Check if a specific package can be upgraded to from current package
-     */
-    private function canUpgradeToPackage($currentPackage, $targetPackage)
-    {
-        if (!$currentPackage || !$targetPackage) {
-            return false;
-        }
-
-        // Can't upgrade to the same package
-        if ($currentPackage->name === $targetPackage->name) {
-            return false;
-        }
-
-        // Can't upgrade to Enterprise (it's custom pricing)
-        if (strtolower($targetPackage->name) === 'enterprise') {
-            return false;
-        }
-
-        $currentPrice = $currentPackage->price ?? 0;
-        $targetPrice = $targetPackage->price ?? 0;
-
-        // Can upgrade to packages with higher prices
-        return $targetPrice > $currentPrice;
-    }
-
-    /**
-     * Check if a specific package can be downgraded to from current package
-     */
-    private function canDowngradeToPackage($currentPackage, $targetPackage)
-    {
-        if (!$currentPackage || !$targetPackage) {
-            return false;
-        }
-
-        // Can't downgrade to the same package
-        if ($currentPackage->name === $targetPackage->name) {
-            return false;
-        }
-
-        // Can't downgrade to Enterprise (it's custom pricing)
-        if (strtolower($targetPackage->name) === 'enterprise') {
-            return false;
-        }
-
-        $currentPrice = $currentPackage->price ?? 0;
-        $targetPrice = $targetPackage->price ?? 0;
-
-        // Can downgrade to packages with lower prices
-        return $targetPrice < $currentPrice;
-    }
-
-    /**
-     * Determine if user is a returning customer who has previously purchased packages
-     */
-    private function isReturningCustomer($user)
-    {
-        return $user->isReturningCustomer();
-    }
-
-    /**
-     * Get user's purchase history summary
-     */
-    private function getUserPurchaseHistory($user)
-    {
-        return $user->getPurchaseHistory();
-    }
-
-    /**
-     * Determine the appropriate payment gateway for the user
-     */
-    private function getAppropriatePaymentGateway($user, $type)
-    {
-        // If user is a returning customer, try to use their original payment gateway
-        if ($user->isReturningCustomer() && $user->paymentGateway) {
-            // Check if their original gateway is still active
-            if ($user->paymentGateway->is_active) {
-                return $user->paymentGateway;
-            } else {
-                // Original gateway is no longer active, but we'll still use it for returning customers
-                // This allows them to continue with their preferred payment method
-                return $user->paymentGateway;
-            }
-        }
-
-        // For new customers or returning customers without a payment gateway, use admin's active gateway
-        $activeGateway = PaymentGateways::where('is_active', true)->first();
-
-        if (!$activeGateway) {
-            // No active gateway found, try to get any available gateway
-            $activeGateway = PaymentGateways::first();
-        }
-
-        return $activeGateway;
-    }
-
     public function handleSubscription()
     {
         $user = Auth::user();
-        return $this->hasActiveSubscription($user)
+        return $this->subscriptionService->hasActiveSubscription($user)
             ? redirect()->route('user.dashboard')
             : $this->index();
     }
@@ -223,16 +39,6 @@ class SubscriptionController extends Controller
         $packageName = $request->query('package_name');
         $type = $request->query('type');
 
-        // Check if user is authenticated
-        // This check is removed because the route should be publicly accessible
-        // The 'auth' middleware will handle unauthenticated users accessing protected routes.
-        // if (!auth()->check()) {
-        //     // Store the intended URL to redirect back after login
-        //     session(['url.intended' => $request->fullUrl()]);
-        //     return redirect()->route('login')->with('info', 'Please log in to continue with your subscription.');
-        // }
-
-        // Handle different types
         if ($type === 'upgrade') {
             return $this->showSubscriptionPage('upgrade');
         }
@@ -241,7 +47,6 @@ class SubscriptionController extends Controller
             return $this->showSubscriptionPage('downgrade');
         }
 
-        // Handle package_name parameter (existing logic)
         if ($packageName) {
             $package = Package::where('name', $packageName)->first();
             if (!$package) {
@@ -251,7 +56,6 @@ class SubscriptionController extends Controller
             return $this->showSubscriptionPage('new', $package);
         }
 
-        // Default behavior - show subscription page without specific package
         return $this->showSubscriptionPage('new');
     }
 
@@ -259,7 +63,6 @@ class SubscriptionController extends Controller
     {
 
         if ($request->isMethod('post') && $package) {
-            // Delegate to PaymentController for checkout
             $paymentController = app(PaymentController::class);
             return $paymentController->fastspringCheckout($request, $package);
         }
@@ -286,18 +89,18 @@ class SubscriptionController extends Controller
             $targetPackageId = $request->input('package_id');
             $targetPackage = Package::find($targetPackageId);
 
-            if (!$targetPackage || !$this->canDowngradeToPackage($user->package, $targetPackage)) {
+            if (
+                !$targetPackage ||
+                !$this->subscriptionService->canDowngradeToPackage($user->package, $targetPackage)
+            ) {
                 return redirect()->route('user.subscription.details')->with('error', 'Invalid package selected for downgrade.');
             }
 
-            // Check if user's payment gateway is Pay Pro Global
             if ($user->paymentGateway && $user->paymentGateway->name === 'Pay Pro Global') {
-                // Delegate to PaymentController for PayProGlobal downgrade checkout
                 $paymentController = app(PaymentController::class);
                 return $paymentController->payproglobalDowngrade($request);
             }
 
-            // For FastSpring and Paddle, use PaymentService to handle downgrade via gateway
             try {
                 Log::info('=== SubscriptionController::downgrade POST called ===', [
                     'user_id' => $user->id,
@@ -317,8 +120,6 @@ class SubscriptionController extends Controller
                 $result = $paymentService->handleDowngradeSubscription($user, $targetPackage->name, $gatewayName);
 
                 if ($result['success'] && isset($result['checkout_url'])) {
-                    // For FastSpring, checkout_url is actually a redirect URL, not a checkout
-                    // It contains the success message parameters
                     return redirect($result['checkout_url']);
                 }
 
@@ -379,233 +180,15 @@ class SubscriptionController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        $activeLicense = $user->userLicence;
-        $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
-        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at) {
-            try {
-                $calculatedEndDate = $activeLicense->activated_at->copy()->addMonth();
-            } catch (\Throwable $e) {
-            }
-        }
-        $isUpgradeLocked = $activeLicense && $activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture();
+        $context = $this->subscriptionService->buildSubscriptionDetailsContext($user);
 
-        // Check for pending upgrade orders first
-        $pendingUpgrade = Order::where('user_id', $user->id)
-            ->whereIn('status', ['pending', 'pending_upgrade'])
-            ->where(function($query) {
-                $query->where('transaction_id', 'like', 'FS-UPGRADE-%')
-                      ->orWhere('transaction_id', 'like', 'PPG-UPGRADE-%')
-                      ->orWhere('transaction_id', 'like', 'PADDLE-UPGRADE-%');
-            })
-            ->where('created_at', '>=', now()->subDays(30)) // Only show recent upgrades
-            ->first();
-
-        $hasPendingUpgrade = $pendingUpgrade !== null;
-        $pendingUpgradeDetails = null;
-
-        // Check for pending downgrade orders
-        $pendingDowngrade = Order::where('user_id', $user->id)
-            ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
-            ->where('created_at', '>=', now()->subDays(30))
-            ->latest()
-            ->first();
-        $hasPendingDowngrade = $pendingDowngrade !== null;
-        $pendingDowngradeDetails = null;
-
-        if ($hasPendingDowngrade) {
-            $targetPackage = is_array($pendingDowngrade->metadata)
-                ? ($pendingDowngrade->metadata['downgrade_to'] ?? null)
-                : (is_string($pendingDowngrade->metadata) ? (json_decode($pendingDowngrade->metadata, true)['downgrade_to'] ?? null) : null);
-
-            $scheduledEnd = $calculatedEndDate;
-            if (!$scheduledEnd && $activeLicense && $activeLicense->activated_at) {
-                try { $scheduledEnd = $activeLicense->activated_at->copy()->addMonth(); } catch (\Throwable $e) {}
-            }
-            $scheduledActivationDate = $scheduledEnd ? $scheduledEnd->format('F j, Y') : null;
-
-            $pendingDowngradeDetails = [
-                'target_package' => $targetPackage,
-                'scheduled_activation_date' => $scheduledActivationDate,
-            ];
-        }
-
-        // Determine the current active package (gateway-agnostic)
-        // This should always reflect the package the user is CURRENTLY on.
-        $package = $user->package; // Start with user's current package
-
-        // If there's an active license and it has a package, that's the most accurate current package.
-        if ($activeLicense && $activeLicense->package) {
-            $package = $activeLicense->package;
-        }
-
-        $hasActiveSubscription = $this->hasActiveSubscription($user);
-        $canUpgrade = $this->canUpgradeSubscription($user);
-
-        if ($activeLicense && $calculatedEndDate) {
-            Log::info('License expiration date retrieved', [
-                'user_id' => $user->id,
-                'package_name' => $package ? $package->name : 'Unknown',
-                'end_date' => $calculatedEndDate->toDateTimeString(),
-                'has_pending_upgrade' => $hasPendingUpgrade
-            ]);
-        }
-
-        $hasScheduledCancellation = $this->hasScheduledCancellation($user);
-
-        if ($hasPendingUpgrade) {
-            $pendingUpgradeDetails = [
-                'target_package' => $pendingUpgrade->package->name ?? 'Unknown',
-                'created_at' => $pendingUpgrade->created_at,
-                'upgrade_type' => 'subscription_upgrade'
-            ];
-        }
-
-        if ($hasPendingDowngrade) {
-            $originalPackageName = null;
-            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package_name'])) {
-                $originalPackageName = $pendingDowngrade->metadata['original_package_name'];
-            } elseif (isset($pendingDowngrade->payload['original_package_name'])) {
-                $originalPackageName = $pendingDowngrade->payload['original_package_name'];
-            }
-            if (!$originalPackageName) {
-                $lastCompletedOrder = Order::where('user_id', $user->id)
-                    ->where('status', 'completed')
-                    ->where('created_at', '<=', $pendingDowngrade->created_at)
-                    ->latest()
-                    ->first();
-                if ($lastCompletedOrder && $lastCompletedOrder->package) {
-                    $originalPackageName = $lastCompletedOrder->package->name;
-                }
-            }
-
-            $targetPackageName = $pendingDowngrade->package->name ?? 'Unknown';
-
-            // Prefer the previously computed date; otherwise derive from metadata or license end
-            $scheduledActivationDate = null;
-            if (isset($pendingDowngradeDetails['scheduled_activation_date']) && $pendingDowngradeDetails['scheduled_activation_date']) {
-                $scheduledActivationDate = Carbon::parse($pendingDowngradeDetails['scheduled_activation_date']);
-            } elseif (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['scheduled_activation_date'])) {
-                $scheduledActivationDate = Carbon::parse($pendingDowngrade->metadata['scheduled_activation_date']);
-            } else {
-                $fallback = $calculatedEndDate;
-                if (!$fallback && $activeLicense && $activeLicense->activated_at) {
-                    try { $fallback = $activeLicense->activated_at->copy()->addMonth(); } catch (\Throwable $e) {}
-                }
-                if ($fallback) {
-                    $scheduledActivationDate = $fallback;
-                }
-            }
-
-            $pendingDowngradeDetails = [
-                'target_package' => $targetPackageName,
-                'original_package' => $originalPackageName,
-                'created_at' => $pendingDowngrade->created_at,
-                'scheduled_activation_date' => $scheduledActivationDate ? $scheduledActivationDate->format('F j, Y') : null,
-                'downgrade_type' => 'subscription_downgrade'
-            ];
-        }
-
-        // Debug logging for diagnosis
-        try {
-            Log::info('Subscription details resolution', [
-                'user_id' => $user->id,
-                'user_package' => $user->package?->name,
-                'active_license_package' => $activeLicense?->package?->name,
-                'active_license_expires_at' => $activeLicense?->expires_at?->toDateTimeString(),
-                'has_pending_upgrade' => $hasPendingUpgrade,
-                'has_pending_downgrade' => $hasPendingDowngrade,
-                'pending_downgrade_order' => $pendingDowngrade ? [
-                    'id' => $pendingDowngrade->id,
-                    'status' => $pendingDowngrade->status,
-                    'order_type' => $pendingDowngrade->order_type,
-                    'package' => $pendingDowngrade->package?->name,
-                    'metadata' => $pendingDowngrade->metadata ?? null,
-                    'scheduled_activation_date' => $pendingDowngrade->metadata['scheduled_activation_date'] ?? 'N/A',
-                ] : null,
-                'resolved_current_package' => $package?->name,
-                'pending_downgrade_details' => $pendingDowngradeDetails,
-            ]);
-        } catch (\Throwable $e) {
-            // Ignore logging errors
-        }
-
-        // Resolve add-on package IDs to include orders linked by package_id
-        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
-            ->pluck('id')
-            ->toArray();
-
-        // Debug: count purchased add-ons
-        try {
-            $debugPurchasedAddonsCount = \App\Models\Order::where('user_id', $user->id)
-                ->where('status', 'completed')
-                ->where(function($q) use ($addonPackageIds) {
-                    $q->where('order_type', 'addon')
-                      ->orWhereNotNull('metadata->addon')
-                      ->orWhereIn('package_id', $addonPackageIds)
-                      ->orWhere('metadata', 'like', '%"addon"%');
-                })
-                ->count();
-            \Illuminate\Support\Facades\Log::info('[SubscriptionDetails] Purchased addons resolved', [
-                'user_id' => $user->id,
-                'count' => $debugPurchasedAddonsCount,
-                'addon_package_ids' => $addonPackageIds
-            ]);
-        } catch (\Throwable $e) {}
-
-        return view('subscription.details', [
-            'currentPackage' => $package ? $package->name : null,
-            'user' => $user,
-            'calculatedEndDate' => $calculatedEndDate,
-            'hasActiveSubscription' => $hasActiveSubscription,
-            'hasScheduledCancellation' => $hasScheduledCancellation,
-            'canUpgrade' => $canUpgrade,
-            'isUpgradeLocked' => $isUpgradeLocked,
-            'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false,
-            'hasPendingUpgrade' => $hasPendingUpgrade,
-            'pendingUpgradeDetails' => $pendingUpgradeDetails,
-            'hasPendingDowngrade' => $hasPendingDowngrade,
-            'pendingDowngradeDetails' => $pendingDowngradeDetails,
-            'purchasedAddons' => \App\Models\Order::with('package')
-                ->where('user_id', $user->id)
-                ->where('status', 'completed')
-                ->where(function($q) use ($addonPackageIds) {
-                    $q->where('order_type', 'addon')
-                      ->orWhereNotNull('metadata->addon')
-                      ->orWhereIn('package_id', $addonPackageIds)
-                      ->orWhere('metadata', 'like', '%"addon"%');
-                })
-                ->latest()
-                ->get(),
-        ]);
+        return view('subscription.details', $context);
     }
 
     public function updateUserSubscription(Order $order)
     {
         try {
-            DB::transaction(function () use ($order) {
-                $user = $order->user;
-                $package = Package::where('name', $order->package)->firstOrFail();
-                $paymentGateway = PaymentGateways::where('name', $order->payment_method)->firstOrFail();
-
-                $user->update([
-                    'package_id' => $package->id,
-                    'payment_gateway_id' => $paymentGateway->id,
-                    'is_subscribed' => true
-                ]);
-
-                $order->update([
-                    'status' => 'completed',
-                    'completed_at' => now()
-                ]);
-
-                Log::info('User subscription updated', [
-                    'user_id' => $user->id,
-                    'package_id' => $package->id,
-                    'payment_gateway_id' => $paymentGateway->id,
-                    'order_id' => $order->id
-                ]);
-            });
+            $this->subscriptionService->updateUserSubscriptionFromOrder($order);
 
             return response()->json([
                 'success' => true,
@@ -631,93 +214,13 @@ class SubscriptionController extends Controller
             return redirect()->route('admin.dashboard');
         }
 
-        // Determine the appropriate payment gateway based on customer type
-        $targetGateway = $this->getAppropriatePaymentGateway($user, $type);
+        $context = $this->subscriptionService->buildSubscriptionIndexContext($user, $type, $selectedPackage);
 
-        // For upgrade scenarios, ensure the user has a payment gateway
-        if ($type === 'upgrade' && !$targetGateway) {
+        if ($type === 'upgrade' && !$context['activeGateway']) {
             return redirect()->route('user.dashboard')
                 ->with('error', 'No payment gateway available. Please contact support.');
         }
 
-        $gateways = collect($targetGateway ? [$targetGateway] : []);
-        // Exclude one-time add-ons from plan listing
-        $packages = Package::select('name', 'price', 'duration', 'features')
-            ->whereNotIn('name', ['Avatar Customization (Clone Yourself)'])
-            ->orderBy('id', 'asc')
-            ->get();
-
-        // Get current user's package
-        $currentUserPackage = $user->package;
-
-        // Determine which packages are available for upgrade/downgrade
-        $upgradeablePackages = $type === 'upgrade' ? $this->getUpgradeablePackages($currentUserPackage) : collect();
-        $downgradeablePackages = $type === 'downgrade' ? $this->getDowngradeablePackages($currentUserPackage) : collect();
-
-        // Create a map of package names to their availability status
-        $packageAvailability = [];
-        foreach ($packages as $package) {
-            if ($type === 'upgrade') {
-                $packageAvailability[$package->name] = $this->canUpgradeToPackage($currentUserPackage, $package);
-            } elseif ($type === 'downgrade') {
-                $packageAvailability[$package->name] = $this->canDowngradeToPackage($currentUserPackage, $package);
-            } else {
-                // For new subscriptions, all packages are available
-                $packageAvailability[$package->name] = true;
-            }
-        }
-
-        // Resolve active add-ons for the current user
-        $addonPackageIds = \App\Models\Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
-            ->pluck('id')
-            ->toArray();
-        $completedAddonOrders = \App\Models\Order::with('package')
-            ->where('user_id', $user->id)
-            ->where('status', 'completed')
-            ->where(function($q) use ($addonPackageIds) {
-                $q->where('order_type', 'addon')
-                  ->orWhereNotNull('metadata->addon')
-                  ->orWhereIn('package_id', $addonPackageIds)
-                  ->orWhere('metadata', 'like', '%"addon"%');
-            })
-            ->get();
-
-        $activeAddonSlugs = [];
-        foreach ($completedAddonOrders as $order) {
-            $name = $order->package->name ?? null;
-            if ($name === 'Avatar Customization (Clone Yourself)') {
-                $activeAddonSlugs[] = 'avatar_customization';
-            } elseif (is_array($order->metadata) && !empty($order->metadata['addon'])) {
-                $activeAddonSlugs[] = strtolower(str_replace('-', '_', $order->metadata['addon']));
-            }
-        }
-        $activeAddonSlugs = array_values(array_unique($activeAddonSlugs));
-        $hasActiveAddon = count($activeAddonSlugs) > 0;
-
-        return view('subscription.index', [
-            'payment_gateways' => $gateways,
-            'currentPackage' => $currentUserPackage ? $currentUserPackage->name : null,
-            'currentPackagePrice' => $currentUserPackage ? $currentUserPackage->price : 0,
-            'activeGateway' => $targetGateway,
-            'currentLoggedInUserPaymentGateway' => $targetGateway ? $targetGateway->name : null,
-            'userOriginalGateway' => $user->paymentGateway ? $user->paymentGateway->name : null,
-            'activeGatewaysByAdmin' => PaymentGateways::where('is_active', true)->pluck('name')->values(),
-            'packages' => $packages,
-            'pageType' => $type,
-            'isUpgrade' => $type === 'upgrade',
-            'upgradeEligible' => $type === 'upgrade' && $targetGateway,
-            'hasActiveSubscription' => $this->hasActiveSubscription($user),
-            'selectedPackage' => $selectedPackage,
-            'packageAvailability' => $packageAvailability,
-            'upgradeablePackages' => $upgradeablePackages,
-            'downgradeablePackages' => $downgradeablePackages,
-            'isReturningCustomer' => $this->isReturningCustomer($user),
-            'purchaseHistory' => $this->getUserPurchaseHistory($user),
-            'selectedPaymentGateway' => $targetGateway ? $targetGateway->name : null,
-            'isUsingOriginalGateway' => $user->isReturningCustomer() && $user->paymentGateway && $targetGateway && $user->paymentGateway->id === $targetGateway->id,
-            'isUsingAdminGateway' => !$user->isReturningCustomer() || !$user->paymentGateway || ($targetGateway && $user->paymentGateway && $user->paymentGateway->id !== $targetGateway->id),
-            'activeAddonSlugs' => $activeAddonSlugs,
-            'hasActiveAddon' => $hasActiveAddon,
-        ]);
+        return view('subscription.index', $context);
     }
 }

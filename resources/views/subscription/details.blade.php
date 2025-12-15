@@ -1,7 +1,6 @@
 @include('dashboard.includes.header')
 @include('dashboard.includes.sidebar')
-
-
+@include('components.spinner-overlay')
 
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper subscription-details-page">
@@ -102,7 +101,7 @@
                         <div class="card-header">
 
                             <div class="float-right">
-                                @if ($hasActiveSubscription)
+                                @if ($hasActiveSubscription && !$hasPendingDowngrade)
                                     @php
                                         $isFreePlan = $currentPackage && strtolower($currentPackage) === 'free';
                                         $isBusinessPlan = $currentPackage && strtolower($currentPackage) === 'business';
@@ -431,7 +430,9 @@
             showLoaderOnConfirm: true,
             preConfirm: () => {
                 return new Promise((resolve) => {
-                    // Submit the form
+                    if (window.SpinnerUtils && typeof SpinnerUtils.show === 'function') {
+                        SpinnerUtils.show('Scheduling cancellation...');
+                    }
                     document.getElementById('cancelSubscriptionForm').submit();
                 });
             },
@@ -454,3 +455,4 @@
 
 <!-- Add SweetAlert CDN -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('js/spinner-utils.js') }}"></script>

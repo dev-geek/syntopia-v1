@@ -1650,8 +1650,13 @@ class PaymentService
                 }
                 return $this->createPaddleDowngradeCheckout($user, $package, $subscriptionId, $price['id']);
             case 'fastspring':
+                /** @var \App\Services\Payment\Gateways\FastSpringPaymentGateway $fastSpringGateway */
                 $fastSpringGateway = $this->paymentGatewayFactory->create('fastspring');
-                return $fastSpringGateway->createDowngradeCheckout($user, $package, $subscriptionId);
+                // Use the configured FastSpring product ID for this package, fallback handled in gateway
+                $productId = method_exists($package, 'getGatewayProductId')
+                    ? $package->getGatewayProductId('FastSpring')
+                    : null;
+                return $fastSpringGateway->createDowngradeCheckout($user, $package, $subscriptionId, $productId);
             case 'payproglobal':
             case 'pay pro global':
                 return $this->createPayProGlobalDowngradeCheckout($user, $package, $subscriptionId);

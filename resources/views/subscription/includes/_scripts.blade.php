@@ -456,9 +456,6 @@
                         return;
                     }
 
-                    // Hide spinner before opening payment popup
-                    hideSpinner();
-
                     if (action === 'downgrade') {
                         // For downgrades, handle based on gateway
                         if (selectedGateway === 'Paddle') {
@@ -471,44 +468,49 @@
                                 processPaddle(packageName, action);
                             }
                         } else if (selectedGateway === 'FastSpring') {
-                            // For FastSpring downgrades, the backend returns a redirect URL (not a popup)
                             console.log('FastSpring downgrade API response:', data);
-                            if (data.checkout_url) {
-                                console.log('FastSpring downgrade successful, redirecting to:', data.checkout_url);
-                                hideSpinner();
-                                showSuccess(data.message || 'Downgrade Scheduled', 'Your downgrade has been scheduled successfully. It will take effect at the end of your current billing cycle.').then(() => {
-                                    window.location.href = data.checkout_url;
-                                });
-                                return; // Exit after handling downgrade
-                            } else {
-                                console.error('FastSpring downgrade successful, but no checkout_url in response:', data);
-                                throw new Error(data.error || 'FastSpring downgrade successful, but no redirect URL received.');
-                            }
+                            // Use FastSpring builder overlay, same UX as upgrade
+                            processFastSpring(packageName, action);
+                            return;
                         } else if (selectedGateway === 'Pay Pro Global') {
-                            // For PayProGlobal downgrades, the backend directly returns a redirect_url
                             console.log('PayProGlobal downgrade API response:', data);
-                            if (data.redirect_url) {
-                                console.log('PayProGlobal downgrade successful, redirecting to:', data.redirect_url);
-                                hideSpinner();
-                                showSuccess(data.message || 'Downgrade Successful', 'Your plan has been successfully downgraded.').then(() => {
-                                    window.location.href = data.redirect_url;
-                                });
-                                return; // Exit after handling downgrade
+                            const redirectUrl = data.redirect_url || data.checkout_url;
+                            if (redirectUrl) {
+                                console.log('PayProGlobal downgrade successful, opening checkout popup:', redirectUrl);
+                                const downgradePopup = window.open(
+                                    redirectUrl,
+                                    'payproglobal_downgrade_checkout',
+                                    'width=1200,height=800,scrollbars=yes,resizable=yes'
+                                );
+
+                                if (!downgradePopup) {
+                                    showError('Popup Blocked', 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.');
+                                    return;
+                                }
+
+                                if (typeof monitorDowngradePopup === 'function') {
+                                    monitorDowngradePopup(downgradePopup);
+                                } else {
+                                    console.warn('monitorDowngradePopup function not defined, skipping popup monitoring');
+                                }
+                                return;
                             } else {
                                 console.error('PayProGlobal downgrade successful, but no redirect_url in response:', data);
                                 throw new Error(data.error || 'PayProGlobal downgrade successful, but no redirect URL received.');
                             }
                         } else if (data.checkout_url) {
-                            // For other gateways with a checkout URL, open in popup (only if not FastSpring)
                             console.log('Opening downgrade checkout URL:', data.checkout_url);
-                            const downgradePopup = window.open(data.checkout_url, 'downgrade_checkout', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+                            const downgradePopup = window.open(
+                                data.checkout_url,
+                                'downgrade_checkout',
+                                'width=1200,height=800,scrollbars=yes,resizable=yes'
+                            );
 
                             if (!downgradePopup) {
                                 showError('Popup Blocked', 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.');
                                 return;
                             }
 
-                            // Monitor the downgrade popup (only if function exists)
                             if (typeof monitorDowngradePopup === 'function') {
                                 monitorDowngradePopup(downgradePopup);
                             } else {

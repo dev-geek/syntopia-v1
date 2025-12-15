@@ -6,6 +6,7 @@ use App\Models\Package;
 use App\Models\User;
 use App\Models\PaymentGateways;
 use App\Models\Order;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -347,6 +348,464 @@ class SubscriptionService
             }
 
             return ['success' => true, 'message' => 'Subscription cancelled successfully'];
+        });
+    }
+
+    public function hasActiveSubscription(User $user): bool
+    {
+        if (!$user->is_subscribed || !$user->package) {
+            return false;
+        }
+
+        if (strtolower($user->package->name) === 'free') {
+            return true;
+        }
+
+        $activeLicense = $user->userLicence;
+        if (!$activeLicense || !$activeLicense->isActive()) {
+            return false;
+        }
+
+        if ($activeLicense->status === 'cancelled_at_period_end' && $activeLicense->expires_at && $activeLicense->expires_at->isFuture()) {
+            return true;
+        }
+
+        if ($activeLicense->isExpired()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function hasScheduledCancellation(User $user): bool
+    {
+        return Order::where('user_id', $user->id)
+            ->where('status', 'cancellation_scheduled')
+            ->exists();
+    }
+
+    public function canUpgradeSubscription(User $user): bool
+    {
+        return $this->hasActiveSubscription($user)
+            && $user->package
+            && strtolower($user->package->name) !== 'free'
+            && $user->paymentGateway
+            && $user->paymentGateway->is_active;
+    }
+
+    public function getUpgradeablePackages(?Package $currentPackage)
+    {
+        if (!$currentPackage) {
+            return Package::where('price', '>', 0)->get();
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+
+        return Package::where('price', '>', $currentPrice)
+            ->where('name', '!=', $currentPackage->name)
+            ->orderBy('price', 'asc')
+            ->get();
+    }
+
+    public function getDowngradeablePackages(?Package $currentPackage)
+    {
+        if (!$currentPackage) {
+            return collect();
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+
+        return Package::where('price', '<', $currentPrice)
+            ->where('name', '!=', $currentPackage->name)
+            ->orderBy('price', 'desc')
+            ->get();
+    }
+
+    public function canUpgradeToPackage(?Package $currentPackage, ?Package $targetPackage): bool
+    {
+        if (!$currentPackage || !$targetPackage) {
+            return false;
+        }
+
+        if ($currentPackage->name === $targetPackage->name) {
+            return false;
+        }
+
+        if (strtolower($targetPackage->name) === 'enterprise') {
+            return false;
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+        $targetPrice = $targetPackage->price ?? 0;
+
+        return $targetPrice > $currentPrice;
+    }
+
+    public function canDowngradeToPackage(?Package $currentPackage, ?Package $targetPackage): bool
+    {
+        if (!$currentPackage || !$targetPackage) {
+            return false;
+        }
+
+        if ($currentPackage->name === $targetPackage->name) {
+            return false;
+        }
+
+        if (strtolower($targetPackage->name) === 'enterprise') {
+            return false;
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+        $targetPrice = $targetPackage->price ?? 0;
+
+        return $targetPrice < $currentPrice;
+    }
+
+    public function isReturningCustomer(User $user): bool
+    {
+        return $user->isReturningCustomer();
+    }
+
+    public function getUserPurchaseHistory(User $user)
+    {
+        return $user->getPurchaseHistory();
+    }
+
+    public function getAppropriatePaymentGateway(User $user, string $type): ?PaymentGateways
+    {
+        if ($user->isReturningCustomer() && $user->paymentGateway) {
+            if ($user->paymentGateway->is_active) {
+                return $user->paymentGateway;
+            }
+
+            return $user->paymentGateway;
+        }
+
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
+
+        if (!$activeGateway) {
+            $activeGateway = PaymentGateways::first();
+        }
+
+        return $activeGateway;
+    }
+
+    public function buildSubscriptionDetailsContext(User $user): array
+    {
+        $activeLicense = $user->userLicence;
+        $calculatedEndDate = $activeLicense ? $activeLicense->expires_at : null;
+
+        if ($activeLicense && !$calculatedEndDate && $activeLicense->activated_at) {
+            try {
+                $calculatedEndDate = $activeLicense->activated_at->copy()->addMonth();
+            } catch (\Throwable $e) {
+            }
+        }
+
+        $isUpgradeLocked = $activeLicense && $activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture();
+
+        $pendingUpgrade = Order::where('user_id', $user->id)
+            ->whereIn('status', ['pending', 'pending_upgrade'])
+            ->where(function ($query) {
+                $query->where('transaction_id', 'like', 'FS-UPGRADE-%')
+                    ->orWhere('transaction_id', 'like', 'PPG-UPGRADE-%')
+                    ->orWhere('transaction_id', 'like', 'PADDLE-UPGRADE-%');
+            })
+            ->where('created_at', '>=', now()->subDays(30))
+            ->first();
+
+        $hasPendingUpgrade = $pendingUpgrade !== null;
+        $pendingUpgradeDetails = null;
+
+        $pendingDowngrade = Order::where('user_id', $user->id)
+            ->where('order_type', 'downgrade')
+            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
+            ->where('created_at', '>=', now()->subDays(30))
+            ->latest()
+            ->first();
+
+        $hasPendingDowngrade = $pendingDowngrade !== null;
+        $pendingDowngradeDetails = null;
+
+        if ($hasPendingDowngrade) {
+            $targetPackage = is_array($pendingDowngrade->metadata)
+                ? ($pendingDowngrade->metadata['downgrade_to'] ?? null)
+                : (is_string($pendingDowngrade->metadata) ? (json_decode($pendingDowngrade->metadata, true)['downgrade_to'] ?? null) : null);
+
+            $scheduledEnd = $calculatedEndDate;
+            if (!$scheduledEnd && $activeLicense && $activeLicense->activated_at) {
+                try {
+                    $scheduledEnd = $activeLicense->activated_at->copy()->addMonth();
+                } catch (\Throwable $e) {
+                }
+            }
+            $scheduledActivationDate = $scheduledEnd ? $scheduledEnd->format('F j, Y') : null;
+
+            $pendingDowngradeDetails = [
+                'target_package' => $targetPackage,
+                'scheduled_activation_date' => $scheduledActivationDate,
+            ];
+        }
+
+        $package = $user->package;
+
+        if ($activeLicense && $activeLicense->package) {
+            $package = $activeLicense->package;
+        }
+
+        $hasActiveSubscription = $this->hasActiveSubscription($user);
+        $canUpgrade = $this->canUpgradeSubscription($user);
+
+        if ($activeLicense && $calculatedEndDate) {
+            Log::info('License expiration date retrieved', [
+                'user_id' => $user->id,
+                'package_name' => $package ? $package->name : 'Unknown',
+                'end_date' => $calculatedEndDate->toDateTimeString(),
+                'has_pending_upgrade' => $hasPendingUpgrade,
+            ]);
+        }
+
+        $hasScheduledCancellation = $this->hasScheduledCancellation($user);
+
+        if ($hasPendingUpgrade) {
+            $pendingUpgradeDetails = [
+                'target_package' => $pendingUpgrade->package->name ?? 'Unknown',
+                'created_at' => $pendingUpgrade->created_at,
+                'upgrade_type' => 'subscription_upgrade',
+            ];
+        }
+
+        if ($hasPendingDowngrade) {
+            $originalPackageName = null;
+
+            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['original_package_name'])) {
+                $originalPackageName = $pendingDowngrade->metadata['original_package_name'];
+            } elseif (isset($pendingDowngrade->payload['original_package_name'])) {
+                $originalPackageName = $pendingDowngrade->payload['original_package_name'];
+            }
+
+            if (!$originalPackageName) {
+                $lastCompletedOrder = Order::where('user_id', $user->id)
+                    ->where('status', 'completed')
+                    ->where('created_at', '<=', $pendingDowngrade->created_at)
+                    ->latest()
+                    ->first();
+
+                if ($lastCompletedOrder && $lastCompletedOrder->package) {
+                    $originalPackageName = $lastCompletedOrder->package->name;
+                }
+            }
+
+            $targetPackageName = $pendingDowngrade->package->name ?? 'Unknown';
+
+            $scheduledActivationDate = null;
+
+            if (isset($pendingDowngradeDetails['scheduled_activation_date']) && $pendingDowngradeDetails['scheduled_activation_date']) {
+                $scheduledActivationDate = Carbon::parse($pendingDowngradeDetails['scheduled_activation_date']);
+            } elseif (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['scheduled_activation_date'])) {
+                $scheduledActivationDate = Carbon::parse($pendingDowngrade->metadata['scheduled_activation_date']);
+            } else {
+                $fallback = $calculatedEndDate;
+
+                if (!$fallback && $activeLicense && $activeLicense->activated_at) {
+                    try {
+                        $fallback = $activeLicense->activated_at->copy()->addMonth();
+                    } catch (\Throwable $e) {
+                    }
+                }
+
+                if ($fallback) {
+                    $scheduledActivationDate = $fallback;
+                }
+            }
+
+            $pendingDowngradeDetails = [
+                'target_package' => $targetPackageName,
+                'original_package' => $originalPackageName,
+                'created_at' => $pendingDowngrade->created_at,
+                'scheduled_activation_date' => $scheduledActivationDate ? $scheduledActivationDate->format('F j, Y') : null,
+                'downgrade_type' => 'subscription_downgrade',
+            ];
+        }
+
+        try {
+            Log::info('Subscription details resolution', [
+                'user_id' => $user->id,
+                'user_package' => $user->package?->name,
+                'active_license_package' => $activeLicense?->package?->name,
+                'active_license_expires_at' => $activeLicense?->expires_at?->toDateTimeString(),
+                'has_pending_upgrade' => $hasPendingUpgrade,
+                'has_pending_downgrade' => $hasPendingDowngrade,
+                'pending_downgrade_order' => $pendingDowngrade ? [
+                    'id' => $pendingDowngrade->id,
+                    'status' => $pendingDowngrade->status,
+                    'order_type' => $pendingDowngrade->order_type,
+                    'package' => $pendingDowngrade->package?->name,
+                    'metadata' => $pendingDowngrade->metadata ?? null,
+                    'scheduled_activation_date' => $pendingDowngrade->metadata['scheduled_activation_date'] ?? 'N/A',
+                ] : null,
+                'resolved_current_package' => $package?->name,
+                'pending_downgrade_details' => $pendingDowngradeDetails,
+            ]);
+        } catch (\Throwable $e) {
+        }
+
+        $addonPackageIds = Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
+            ->pluck('id')
+            ->toArray();
+
+        try {
+            $debugPurchasedAddonsCount = Order::where('user_id', $user->id)
+                ->where('status', 'completed')
+                ->where(function ($q) use ($addonPackageIds) {
+                    $q->where('order_type', 'addon')
+                        ->orWhereNotNull('metadata->addon')
+                        ->orWhereIn('package_id', $addonPackageIds)
+                        ->orWhere('metadata', 'like', '%"addon"%');
+                })
+                ->count();
+
+            Log::info('[SubscriptionDetails] Purchased addons resolved', [
+                'user_id' => $user->id,
+                'count' => $debugPurchasedAddonsCount,
+                'addon_package_ids' => $addonPackageIds,
+            ]);
+        } catch (\Throwable $e) {
+        }
+
+        return [
+            'currentPackage' => $package ? $package->name : null,
+            'user' => $user,
+            'calculatedEndDate' => $calculatedEndDate,
+            'hasActiveSubscription' => $hasActiveSubscription,
+            'hasScheduledCancellation' => $hasScheduledCancellation,
+            'canUpgrade' => $canUpgrade,
+            'isUpgradeLocked' => $isUpgradeLocked,
+            'isExpired' => $calculatedEndDate ? Carbon::now()->gt($calculatedEndDate) : false,
+            'hasPendingUpgrade' => $hasPendingUpgrade,
+            'pendingUpgradeDetails' => $pendingUpgradeDetails,
+            'hasPendingDowngrade' => $hasPendingDowngrade,
+            'pendingDowngradeDetails' => $pendingDowngradeDetails,
+            'purchasedAddons' => Order::with('package')
+                ->where('user_id', $user->id)
+                ->where('status', 'completed')
+                ->where(function ($q) use ($addonPackageIds) {
+                    $q->where('order_type', 'addon')
+                        ->orWhereNotNull('metadata->addon')
+                        ->orWhereIn('package_id', $addonPackageIds)
+                        ->orWhere('metadata', 'like', '%"addon"%');
+                })
+                ->latest()
+                ->get(),
+        ];
+    }
+
+    public function buildSubscriptionIndexContext(User $user, string $type, ?Package $selectedPackage = null): array
+    {
+        $targetGateway = $this->getAppropriatePaymentGateway($user, $type);
+
+        $gateways = collect($targetGateway ? [$targetGateway] : []);
+
+        $packages = Package::select('name', 'price', 'duration', 'features')
+            ->whereNotIn('name', ['Avatar Customization (Clone Yourself)'])
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $currentUserPackage = $user->package;
+
+        $upgradeablePackages = $type === 'upgrade' ? $this->getUpgradeablePackages($currentUserPackage) : collect();
+        $downgradeablePackages = $type === 'downgrade' ? $this->getDowngradeablePackages($currentUserPackage) : collect();
+
+        $packageAvailability = [];
+        foreach ($packages as $package) {
+            if ($type === 'upgrade') {
+                $packageAvailability[$package->name] = $this->canUpgradeToPackage($currentUserPackage, $package);
+            } elseif ($type === 'downgrade') {
+                $packageAvailability[$package->name] = $this->canDowngradeToPackage($currentUserPackage, $package);
+            } else {
+                $packageAvailability[$package->name] = true;
+            }
+        }
+
+        $addonPackageIds = Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
+            ->pluck('id')
+            ->toArray();
+
+        $completedAddonOrders = Order::with('package')
+            ->where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->where(function ($q) use ($addonPackageIds) {
+                $q->where('order_type', 'addon')
+                    ->orWhereNotNull('metadata->addon')
+                    ->orWhereIn('package_id', $addonPackageIds)
+                    ->orWhere('metadata', 'like', '%"addon"%');
+            })
+            ->get();
+
+        $activeAddonSlugs = [];
+        foreach ($completedAddonOrders as $order) {
+            $name = $order->package->name ?? null;
+            if ($name === 'Avatar Customization (Clone Yourself)') {
+                $activeAddonSlugs[] = 'avatar_customization';
+            } elseif (is_array($order->metadata) && !empty($order->metadata['addon'])) {
+                $activeAddonSlugs[] = strtolower(str_replace('-', '_', $order->metadata['addon']));
+            }
+        }
+
+        $activeAddonSlugs = array_values(array_unique($activeAddonSlugs));
+        $hasActiveAddon = count($activeAddonSlugs) > 0;
+
+        return [
+            'payment_gateways' => $gateways,
+            'currentPackage' => $currentUserPackage ? $currentUserPackage->name : null,
+            'currentPackagePrice' => $currentUserPackage ? $currentUserPackage->price : 0,
+            'activeGateway' => $targetGateway,
+            'currentLoggedInUserPaymentGateway' => $targetGateway ? $targetGateway->name : null,
+            'userOriginalGateway' => $user->paymentGateway ? $user->paymentGateway->name : null,
+            'activeGatewaysByAdmin' => PaymentGateways::where('is_active', true)->pluck('name')->values(),
+            'packages' => $packages,
+            'pageType' => $type,
+            'isUpgrade' => $type === 'upgrade',
+            'upgradeEligible' => $type === 'upgrade' && $targetGateway,
+            'hasActiveSubscription' => $this->hasActiveSubscription($user),
+            'selectedPackage' => $selectedPackage,
+            'packageAvailability' => $packageAvailability,
+            'upgradeablePackages' => $upgradeablePackages,
+            'downgradeablePackages' => $downgradeablePackages,
+            'isReturningCustomer' => $this->isReturningCustomer($user),
+            'purchaseHistory' => $this->getUserPurchaseHistory($user),
+            'selectedPaymentGateway' => $targetGateway ? $targetGateway->name : null,
+            'isUsingOriginalGateway' => $user->isReturningCustomer() && $user->paymentGateway && $targetGateway && $user->paymentGateway->id === $targetGateway->id,
+            'isUsingAdminGateway' => !$user->isReturningCustomer() || !$user->paymentGateway || ($targetGateway && $user->paymentGateway && $user->paymentGateway->id !== $targetGateway->id),
+            'activeAddonSlugs' => $activeAddonSlugs,
+            'hasActiveAddon' => $hasActiveAddon,
+        ];
+    }
+
+    public function updateUserSubscriptionFromOrder(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $user = $order->user;
+            $package = Package::where('name', $order->package)->firstOrFail();
+            $paymentGateway = PaymentGateways::where('name', $order->payment_method)->firstOrFail();
+
+            $user->update([
+                'package_id' => $package->id,
+                'payment_gateway_id' => $paymentGateway->id,
+                'is_subscribed' => true,
+            ]);
+
+            $order->update([
+                'status' => 'completed',
+                'completed_at' => now(),
+            ]);
+
+            Log::info('User subscription updated', [
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'payment_gateway_id' => $paymentGateway->id,
+                'order_id' => $order->id,
+            ]);
         });
     }
 }
