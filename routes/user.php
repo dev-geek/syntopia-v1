@@ -68,20 +68,16 @@ Route::prefix('api')->middleware(['auth:sanctum', 'throttle:60,1', 'role:User'])
 
     // Payment routes
     Route::prefix('payments')->name('payments.')->group(function () {
-        Route::post('/paddle/checkout/{package}', [PaymentController::class, 'paddleCheckout'])
-            ->name('paddle.checkout')
+        Route::post('/{gateway}/checkout/{package}', [PaymentController::class, 'gatewayCheckout'])
+            ->name('gateway.checkout')
             ->middleware('throttle:10,1');
 
-        Route::post('/fastspring/checkout/{package}', [PaymentController::class, 'fastspringCheckout'])
-            ->name('fastspring.checkout')
-            ->middleware('throttle:10,1');
+        // Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])
+        //     ->name('payproglobal.checkout')
+        //     ->middleware('throttle:10,1');
 
-        Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])
-            ->name('payproglobal.checkout')
-            ->middleware('throttle:10,1');
-
-        Route::get('/verify-payproglobal/{paymentReference}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])
-            ->name('verify-payproglobal');
+        // Route::get('/verify-payproglobal/{paymentReference}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])
+        //     ->name('verify-payproglobal');
 
         Route::post('/upgrade', [PaymentController::class, 'upgradeSubscription'])
             ->name('upgrade')

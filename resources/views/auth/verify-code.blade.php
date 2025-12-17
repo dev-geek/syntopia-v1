@@ -521,7 +521,7 @@
 
             <p class="text-muted mt-3" style="font-size: 11px;">
                 By joining the workspace, you agree to our
-                <a href="#" class="text-primary">User Terms of Service</a> and
+                <a href="#" class="text-primary">User Terms of Services</a> and
                 <a href="#" class="text-primary">Privacy Policy</a>.
             </p>
         </div>

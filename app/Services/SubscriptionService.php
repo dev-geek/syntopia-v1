@@ -8,11 +8,11 @@ use App\Models\PaymentGateways;
 use App\Models\Order;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Services\License\LicenseApiService;
 use App\Factories\PaymentGatewayFactory;
+use App\Contracts\Payment\PaymentGatewayInterface;
 
 class SubscriptionService
 {
@@ -25,101 +25,66 @@ class SubscriptionService
         $this->paymentGatewayFactory = $paymentGatewayFactory;
     }
 
-    private function getGateway(string $gatewayName)
+    private function getGateway(string $gatewayName): PaymentGatewayInterface
     {
         return $this->paymentGatewayFactory->create($gatewayName);
     }
 
-    public function upgradeSubscription(User $user, string $newPackage, string $prorationBillingMode = null)
+    public function scheduleGatewayDowngrade(User $user, string $targetPackageName, string $gatewayName, array $downgradeData): array
     {
-        $currentGateway = $user->paymentGateway->name;
-        $gateway = $this->getGateway($currentGateway);
+        $user->refresh();
 
-        try {
-            return DB::transaction(function () use ($user, $newPackage, $gateway, $prorationBillingMode, $currentGateway) {
-                $newPackageModel = Package::where('name', $newPackage)->firstOrFail();
-
-                if ($newPackageModel->price <= $user->package->price) {
-                    throw new \Exception('This is not an upgrade');
-                }
-
-                $result = $gateway->upgradeSubscription(
-                    $user->subscription_id,
-                    $newPackageModel->getGatewayProductId($currentGateway),
-                    $prorationBillingMode
-                );
-
-                if (!$result) {
-                    throw new \Exception('Failed to process upgrade with payment gateway');
-                }
-
-                $user->update([
-                    'package_id' => $newPackageModel->id
-                ]);
-
-                return [
-                    'success' => true,
-                    'proration' => $result['proration'] ?? null,
-                    'new_package' => $newPackageModel->name,
-                    'scheduled' => $result['scheduled_change'] ?? null
-                ];
-            });
-        } catch (\Exception $e) {
-            Log::error("Upgrade failed for user {$user->id}", ['error' => $e->getMessage()]);
-            throw $e;
+        $currentPackage = $user->package;
+        if (!$currentPackage) {
+            throw new \RuntimeException('User has no active package to downgrade from');
         }
-    }
 
-    public function downgradeSubscription(User $user, string $newPackage, string $prorationBillingMode = null)
-    {
-        $currentGateway = $user->paymentGateway->name;
-        $gateway = $this->getGateway($currentGateway);
-
-        try {
-            return DB::transaction(function () use ($user, $newPackage, $gateway, $prorationBillingMode, $currentGateway) {
-                $newPackageModel = Package::where('name', $newPackage)->firstOrFail();
-
-                if ($newPackageModel->price >= $user->package->price) {
-                    throw new \Exception('This is not a downgrade');
-                }
-
-                if ($currentGateway === 'FastSpring') {
-                    $result = $gateway->downgradeSubscriptionForUser(
-                        $user,
-                        $user->subscription_id,
-                        $newPackageModel->getGatewayProductId($currentGateway)
-                    );
-                } else {
-                    $result = $gateway->downgradeSubscription(
-                        $user->subscription_id,
-                        $newPackageModel->getGatewayProductId($currentGateway),
-                        $prorationBillingMode
-                    );
-                }
-
-                if (!$result || !($result['success'] ?? false)) {
-                    throw new \Exception('Failed to process downgrade with payment gateway');
-                }
-
-                if (!($result['scheduled_change'] ?? false)) {
-                    $user->update([
-                        'package_id' => $newPackageModel->id
-                    ]);
-                }
-
-                return [
-                    'success' => true,
-                    'proration' => $result['proration'] ?? null,
-                    'new_package' => $newPackageModel->name,
-                    'scheduled' => $result['scheduled_change'] ?? null,
-                    'scheduled_date' => $result['scheduled_date'] ?? null,
-                    'message' => $result['message'] ?? null
-                ];
-            });
-        } catch (\Exception $e) {
-            Log::error("Downgrade failed for user {$user->id}", ['error' => $e->getMessage()]);
-            throw $e;
+        $targetPackage = Package::whereRaw('LOWER(name) = ?', [strtolower($targetPackageName)])->first();
+        if (!$targetPackage) {
+            throw new \RuntimeException('Target package not found');
         }
+
+        if (!$this->canDowngradeToPackage($currentPackage, $targetPackage)) {
+            throw new \RuntimeException('Invalid downgrade target package');
+        }
+
+        if (!($downgradeData['success'] ?? false)) {
+            $error = $downgradeData['error'] ?? 'Failed to prepare downgrade';
+            throw new \RuntimeException($error);
+        }
+
+        $effectiveDate = $downgradeData['effective_date'] ?? null;
+
+        if (!$effectiveDate) {
+            throw new \RuntimeException('Failed to determine downgrade effective date');
+        }
+
+        $gatewayRecord = PaymentGateways::whereRaw('LOWER(name) = ?', [strtolower($gatewayName)])->first();
+
+        $order = DB::transaction(function () use ($user, $currentPackage, $targetPackage, $gatewayRecord, $gatewayName, $effectiveDate) {
+            return Order::create([
+                'user_id'            => $user->id,
+                'package_id'         => $targetPackage->id,
+                'amount'             => $targetPackage->price ?? 0,
+                'currency'           => $targetPackage->currency ?? 'USD',
+                'payment_gateway_id' => $gatewayRecord?->id,
+                'status'             => 'scheduled_downgrade',
+                'order_type'         => 'downgrade',
+                'transaction_id'     => strtoupper($gatewayName) . '-DOWNGRADE-' . Str::uuid(),
+                'metadata'           => [
+                    'downgrade_to'              => $targetPackage->name,
+                    'original_package_name'     => $currentPackage->name,
+                    'scheduled_activation_date' => $effectiveDate,
+                ],
+            ]);
+        });
+
+        return [
+            'success'        => true,
+            'message'        => "Downgrade to {$targetPackage->name} scheduled for {$effectiveDate}.",
+            'order_id'       => $order->id,
+            'effective_date' => $effectiveDate,
+        ];
     }
 
     public function cancelSubscription(User $user, int $cancellationReasonId = null, string $reasonText = null)
@@ -173,7 +138,9 @@ class SubscriptionService
                     Log::info('PayProGlobal cancellation - subscription ID being sent', ['user_id' => $user->id, 'subscription_id_sent' => $subscriptionId]);
                 }
 
-                $result = $gateway->cancelSubscription($user, $user->subscription_id, $cancellationReasonId, $reasonText);
+                $result = method_exists($gateway, 'cancelSubscription')
+                    ? $gateway->cancelSubscription($user, $user->subscription_id, $cancellationReasonId, $reasonText)
+                    : ['success' => false];
 
                 if (!($result['success'] ?? false)) {
                     throw new \Exception('Failed to process cancellation with payment gateway');
@@ -188,7 +155,7 @@ class SubscriptionService
                 }
 
                 // Create a record in orders table for scheduled cancellation
-                \App\Models\Order::create([
+                Order::create([
                     'user_id' => $user->id,
                     'package_id' => $user->package_id,
                     'order_type' => 'cancellation',
@@ -339,7 +306,7 @@ class SubscriptionService
                 'user_license_id' => null
             ]);
 
-            $order = \App\Models\Order::where('user_id', $user->id)
+            $order = Order::where('user_id', $user->id)
                 ->latest('created_at')
                 ->first();
 
@@ -362,7 +329,14 @@ class SubscriptionService
         }
 
         $activeLicense = $user->userLicence;
-        if (!$activeLicense || !$activeLicense->isActive()) {
+
+        // Fallback: if we don't yet have a license but the user is marked subscribed with a paid package,
+        // treat this as active for UI purposes.
+        if (!$activeLicense) {
+            return true;
+        }
+
+        if (!$activeLicense->isActive()) {
             return false;
         }
 
@@ -549,7 +523,11 @@ class SubscriptionService
 
         $package = $user->package;
 
-        if ($activeLicense && $activeLicense->package) {
+        if (
+            $activeLicense &&
+            $activeLicense->package &&
+            (int) $activeLicense->package_id === (int) $user->package_id
+        ) {
             $package = $activeLicense->package;
         }
 
