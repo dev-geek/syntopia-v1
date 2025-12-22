@@ -101,7 +101,7 @@
                         <div class="card-header">
 
                             <div class="float-right">
-                                @if ($hasActiveSubscription && !$hasPendingDowngrade && !$hasScheduledCancellation)
+                                @if ($hasActiveSubscription && !$hasPendingDowngrade && !$hasScheduledCancellation && (empty($hasActiveAddon) || !($hasActiveAddon ?? false)))
                                     @php
                                         $isFreePlan = $currentPackage && strtolower($currentPackage) === 'free';
                                         $isBusinessPlan = $currentPackage && strtolower($currentPackage) === 'business';
@@ -146,6 +146,7 @@
                                 </div>
 
                                 {{-- Package Information Card --}}
+                                @if(empty($hasActiveAddon) || !($hasActiveAddon ?? false))
                                 <div class="col-lg-6 col-md-12 mb-4">
                                     <div class="info-card">
                                         <h5 class="info-card-title">
@@ -214,8 +215,10 @@
                                         </div>
                                     </div>
                                 </div>
+                                @endif
 
                                 {{-- License Information Card --}}
+                                @if(empty($hasActiveAddon) || !($hasActiveAddon ?? false))
                                 @if ($user->userLicence)
                                     <div class="col-lg-6 col-md-12 mb-4">
                                         <div class="info-card">
@@ -262,8 +265,10 @@
                                         </div>
                                     </div>
                                 @endif
+                                @endif
 
                                 {{-- Subscription Period Card --}}
+                                @if(empty($hasActiveAddon) || !($hasActiveAddon ?? false))
                                 @if ($user->userLicence)
                                     <div class="col-lg-6 col-md-12 mb-4">
                                         <div class="info-card">
@@ -317,6 +322,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                @endif
                                 @endif
                             </div>
                         </div>

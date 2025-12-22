@@ -12,7 +12,6 @@ use App\Models\{
 };
 use App\Services\{
     License\LicenseApiService,
-    FirstPromoterService,
     TenantAssignmentService
 };
 use Illuminate\Support\Facades\Http;
@@ -37,7 +36,6 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
     public function __construct(
         private LicenseApiService $licenseApiService,
-        private FirstPromoterService $firstPromoterService,
         private TenantAssignmentService $tenantAssignmentService,
     ) {
         $this->storefront = (string) config('payment.gateways.FastSpring.storefront', '');

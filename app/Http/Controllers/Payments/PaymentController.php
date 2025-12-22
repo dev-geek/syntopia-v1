@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Payments;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Services\Payment\PaymentService;
 use App\Services\SubscriptionService;
@@ -62,63 +63,6 @@ class PaymentController extends Controller
         }
     }
 
-    // public function fastspringCheckout(CheckoutRequest $request, string $package)
-    // {
-    //     try {
-    //         $result = $this->paymentService->processPayment('fastspring', [
-    //             'package' => $package,
-    //             'user' => Auth::user(),
-    //             'is_upgrade' => $request->input('is_upgrade', false)
-    //         ]);
-
-    //         return response()->json($result);
-    //     } catch (\Exception $e) {
-    //         Log::error('FastSpring checkout error', [
-    //             'error' => $e->getMessage(),
-    //             'package' => $package,
-    //             'user_id' => Auth::id()
-    //         ]);
-    //         return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
-    //     }
-    // }
-
-    // public function payProGlobalCheckout(CheckoutRequest $request, string $package)
-    // {
-    //     Log::info('PayProGlobal checkout started', [
-    //         'package' => $package,
-    //         'user_id' => Auth::id(),
-    //         'is_upgrade' => $request->input('is_upgrade', false),
-    //         'is_downgrade' => $request->input('is_downgrade', false)
-    //     ]);
-
-    //     try {
-    //         if ($request->input('is_downgrade')) {
-    //             $user = Auth::user();
-    //             $targetPackageId = $request->input('package_id');
-    //             if (!$targetPackageId) {
-    //                 return response()->json(['error' => 'Package ID required for downgrade'], 400);
-    //             }
-    //             return response()->json($this->paymentService->handlePayProGlobalDowngrade($user, $targetPackageId));
-    //         }
-
-    //         $result = $this->paymentService->createCheckoutWithValidation($package, 'payproglobal', [
-    //             'is_upgrade' => $request->input('is_upgrade', false),
-    //             'is_downgrade' => $request->input('is_downgrade', false),
-    //             'fp_tid' => $request->input('fp_tid')
-    //         ]);
-
-    //         return response()->json($result);
-    //     } catch (\Exception $e) {
-    //         Log::error('PayProGlobal checkout error', [
-    //             'error' => $e->getMessage(),
-    //             'trace' => $e->getTraceAsString(),
-    //             'package' => $package,
-    //             'user_id' => Auth::id()
-    //         ]);
-    //         return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
-    //     }
-    // }
-
     public function handleSuccess(SuccessCallbackRequest $request)
     {
         Log::info('[handleSuccess] called', [
@@ -131,6 +75,25 @@ class PaymentController extends Controller
         ]);
 
         try {
+            // Handle PayProGlobal auth token authentication
+            $authToken = $request->input('auth_token', $request->query('auth_token'));
+            if ($authToken && !auth()->check()) {
+                $userId = Cache::get("paypro_auth_token_{$authToken}");
+                if ($userId) {
+                    $user = \App\Models\User::find($userId);
+                    if ($user && method_exists($user, 'hasRole') && $user->hasRole('User')) {
+                        Auth::guard('web')->login($user, true);
+                        $request->session()->save();
+                        Log::info('[handleSuccess] User authenticated via auth token', [
+                            'user_id' => $user->id,
+                            'auth_token' => $authToken
+                        ]);
+                        // Clear the token after use
+                        Cache::forget("paypro_auth_token_{$authToken}");
+                    }
+                }
+            }
+
             $gateway = $request->input('gateway', $request->query('gateway'));
 
             if (empty($gateway) && $request->has('success-url')) {
@@ -220,42 +183,27 @@ class PaymentController extends Controller
         $user = $result['user'];
         $successMessage = $result['message'] ?? 'Your subscription is now active!';
 
-        $wasAuthenticated = Auth::guard('web')->check();
-        $previousAuthId = Auth::guard('web')->id();
-
-        $request->session()->forget('url.intended');
-        $request->session()->forget('verification_intended_url');
-
-        if (!$wasAuthenticated || $previousAuthId !== $user->id) {
+        // Ensure user is authenticated and session is saved
+        if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
             if (method_exists($user, 'hasRole') && $user->hasRole('User')) {
-                Auth::guard('web')->login($user, false);
+                Auth::guard('web')->login($user, true);
                 $request->session()->save();
+                Log::info('[handlePayProGlobalSuccess] User logged in', ['user_id' => $user->id]);
             } else {
                 return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
             }
-        } else {
-            $request->session()->save();
         }
+
+        // Clear any intended redirects
+        $request->session()->forget('url.intended');
+        $request->session()->forget('verification_intended_url');
+        $request->session()->save();
 
         if ($request->query('popup') === 'true') {
             return view('payments.popup-close', ['message' => 'Payment successful! Please wait while we update your subscription.']);
         }
 
-        if (!Auth::guard('web')->check() || Auth::guard('web')->id() !== $user->id) {
-            if (method_exists($user, 'hasRole') && $user->hasRole('User')) {
-                $request->session()->forget('url.intended');
-                $request->session()->forget('verification_intended_url');
-                Auth::guard('web')->login($user, false);
-                $request->session()->save();
-            } else {
-                return redirect()->route('login')->with('info', 'Payment processed successfully. Please log in to access your account.');
-            }
-        } else {
-            $request->session()->forget('url.intended');
-            $request->session()->forget('verification_intended_url');
-        }
-
-        $request->session()->save();
+        // Always redirect to dashboard with success message
         return redirect()->route('user.dashboard')->with('success', $successMessage);
     }
 

@@ -8,8 +8,8 @@ use App\Models\{
     User,
     Package,
     PaymentGateways,
+    UserLicence,
 };
-use App\Models\UserLicence;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -50,6 +50,16 @@ class PaymentService
             $package = Package::whereRaw('LOWER(name) = ?', [strtolower($packageName)])->first();
             if (!$package) {
                 throw new \RuntimeException('Package not found');
+            }
+
+            $isAddonPackage = in_array($package->name, ['Avatar Customization (Clone Yourself)']);
+            if ($isAddonPackage && strtolower($gatewayName) !== 'fastspring') {
+                Log::warning('Addon purchase attempted with non-FastSpring gateway', [
+                    'package' => $package->name,
+                    'requested_gateway' => $gatewayName,
+                    'user_id' => $this->user->id
+                ]);
+                $gatewayName = 'FastSpring';
             }
 
             $gatewayRecord = PaymentGateways::whereRaw('LOWER(name) = ?', [strtolower($gatewayName)])->first();
@@ -224,6 +234,104 @@ class PaymentService
                 'assigned_at' => now()->toISOString()
             ]
         ]);
+    }
+
+    public function processAddonSuccess(User $user, string $orderId, string $addon): array
+    {
+        Log::info('[PaymentService::processAddonSuccess] Processing addon success', [
+            'user_id' => $user->id,
+            'order_id' => $orderId,
+            'addon' => $addon,
+        ]);
+
+        $addonPackage = Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])->first();
+
+        if (!$addonPackage) {
+            Log::error('[PaymentService::processAddonSuccess] Addon package not found', [
+                'user_id' => $user->id,
+                'order_id' => $orderId,
+                'addon' => $addon,
+            ]);
+            throw new \RuntimeException('Add-on package not found');
+        }
+
+        $fastSpringGateway = PaymentGateways::where('name', 'FastSpring')->first();
+
+        if (!$fastSpringGateway) {
+            Log::error('[PaymentService::processAddonSuccess] FastSpring gateway not found', [
+                'user_id' => $user->id,
+                'order_id' => $orderId,
+            ]);
+            throw new \RuntimeException('FastSpring payment gateway not found');
+        }
+
+        $order = Order::where('transaction_id', $orderId)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$order) {
+            Log::info('[PaymentService::processAddonSuccess] Order not found, creating new order', [
+                'user_id' => $user->id,
+                'order_id' => $orderId,
+                'addon' => $addon,
+            ]);
+
+            $order = Order::create([
+                'user_id' => $user->id,
+                'package_id' => $addonPackage->id,
+                'amount' => $addonPackage->price,
+                'currency' => $addonPackage->currency ?? 'USD',
+                'payment_gateway_id' => $fastSpringGateway->id,
+                'status' => 'completed',
+                'order_type' => 'addon',
+                'transaction_id' => $orderId,
+                'metadata' => [
+                    'addon' => $addon,
+                    'source' => 'fastspring_addon_success',
+                    'processed_at' => now()->toISOString(),
+                ],
+            ]);
+
+            Log::info('[PaymentService::processAddonSuccess] Addon order created', [
+                'order_id' => $order->id,
+                'transaction_id' => $orderId,
+                'addon' => $addon,
+            ]);
+        } else {
+            if ($order->status === 'completed') {
+                Log::info('[PaymentService::processAddonSuccess] Order already completed', [
+                    'order_id' => $order->id,
+                    'transaction_id' => $orderId,
+                ]);
+                return [
+                    'success' => true,
+                    'message' => 'Add-on purchase was already processed successfully',
+                ];
+            }
+
+            $metadata = $order->metadata ?? [];
+            $metadata['addon'] = $addon;
+            $metadata['processed_at'] = now()->toISOString();
+
+            $order->update([
+                'status' => 'completed',
+                'order_type' => 'addon',
+                'metadata' => $metadata,
+            ]);
+
+            Log::info('[PaymentService::processAddonSuccess] Addon order completed', [
+                'order_id' => $order->id,
+                'transaction_id' => $orderId,
+                'addon' => $addon,
+            ]);
+        }
+
+        $packageName = $order->package->name ?? $addon;
+
+        return [
+            'success' => true,
+            'message' => "Successfully purchased {$packageName} add-on!",
+        ];
     }
 
     // handle package cancellation

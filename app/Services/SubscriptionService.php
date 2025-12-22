@@ -477,6 +477,29 @@ class SubscriptionService
         } catch (\Throwable $e) {
         }
 
+        $completedAddonOrders = Order::with('package')
+            ->where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->where(function ($q) use ($addonPackageIds) {
+                $q->where('order_type', 'addon')
+                    ->orWhereNotNull('metadata->addon')
+                    ->orWhereIn('package_id', $addonPackageIds)
+                    ->orWhere('metadata', 'like', '%"addon"%');
+            })
+            ->get();
+
+        $activeAddonSlugs = [];
+        foreach ($completedAddonOrders as $order) {
+            $name = $order->package->name ?? null;
+            if ($name === 'Avatar Customization (Clone Yourself)') {
+                $activeAddonSlugs[] = 'avatar_customization';
+            } elseif (is_array($order->metadata) && !empty($order->metadata['addon'])) {
+                $activeAddonSlugs[] = strtolower(str_replace('-', '_', $order->metadata['addon']));
+            }
+        }
+
+        $hasActiveAddon = count($activeAddonSlugs) > 0;
+
         return [
             'currentPackage' => $package ? $package->name : null,
             'user' => $user,
@@ -490,23 +513,24 @@ class SubscriptionService
             'pendingUpgradeDetails' => $pendingUpgradeDetails,
             'hasPendingDowngrade' => $hasPendingDowngrade,
             'pendingDowngradeDetails' => $pendingDowngradeDetails,
-            'purchasedAddons' => Order::with('package')
-                ->where('user_id', $user->id)
-                ->where('status', 'completed')
-                ->where(function ($q) use ($addonPackageIds) {
-                    $q->where('order_type', 'addon')
-                        ->orWhereNotNull('metadata->addon')
-                        ->orWhereIn('package_id', $addonPackageIds)
-                        ->orWhere('metadata', 'like', '%"addon"%');
-                })
-                ->latest()
-                ->get(),
+            'purchasedAddons' => $completedAddonOrders->sortByDesc('created_at')->values(),
+            'activeAddonSlugs' => array_values(array_unique($activeAddonSlugs)),
+            'hasActiveAddon' => $hasActiveAddon,
         ];
     }
 
     public function buildSubscriptionIndexContext(User $user, string $type, ?Package $selectedPackage = null): array
     {
-        $targetGateway = $this->getAppropriatePaymentGateway($user, $type);
+        $isAddonPurchase = request()->has('adon') || request()->query('adon');
+
+        if ($isAddonPurchase) {
+            $targetGateway = PaymentGateways::where('name', 'FastSpring')->where('is_active', true)->first();
+            if (!$targetGateway) {
+                $targetGateway = PaymentGateways::where('name', 'FastSpring')->first();
+            }
+        } else {
+            $targetGateway = $this->getAppropriatePaymentGateway($user, $type);
+        }
 
         $gateways = collect($targetGateway ? [$targetGateway] : []);
 

@@ -1,4 +1,4 @@
-@if (empty($hasScheduledCancellation))
+@if (empty($hasScheduledCancellation) && (empty($hasActiveAddon) || !($hasActiveAddon ?? false)))
     @php
         $isFreePlan = $isFreePlan ?? false;
         $isBusinessPlan = $isBusinessPlan ?? false;

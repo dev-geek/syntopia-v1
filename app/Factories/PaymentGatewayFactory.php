@@ -28,22 +28,17 @@ class PaymentGatewayFactory
         return match ($normalizedName) {
             'fastspring' => new FastSpringPaymentGateway(
                 $this->licenseApiService,
-                $this->firstPromoterService,
-                $this->tenantAssignmentService,
-                $this->passwordBindingService
-
+                $this->tenantAssignmentService
             ),
             'paddle' => new PaddlePaymentGateway(
                 $this->licenseApiService,
                 $this->firstPromoterService,
-                $this->tenantAssignmentService,
-                $this->passwordBindingService
+                $this->tenantAssignmentService
             ),
             'payproglobal', 'pay pro global' => new PayProGlobalPaymentGateway(
                 $this->licenseApiService,
                 $this->firstPromoterService,
-                $this->tenantAssignmentService,
-                $this->passwordBindingService
+                $this->tenantAssignmentService
             ),
             default => throw new \InvalidArgumentException("Unsupported payment gateway: {$gatewayName}")
         };

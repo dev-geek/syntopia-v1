@@ -16,7 +16,11 @@
                                 @endif
                             </h3>
                         <p class="addon-price">$1380</p>
-                            <button class="btn dark" @if(!empty($hasActiveAddon) && $hasActiveAddon) disabled @endif onclick="window.location.href = '{{ route('subscription', ['adon' => 'avatar_customization']) }}'">Get Started</button>
+                            @if(!empty($hasActiveAddon) && $hasActiveAddon)
+                                <p class="text-success" style="margin: 25px 0; font-weight: 600;">✓ Add-on Already Purchased</p>
+                            @else
+                                <button class="btn dark" onclick="window.location.href = '{{ route('subscription', ['adon' => 'avatar_customization']) }}'">Get Started</button>
+                            @endif
                         <p class="included-title">What's required from you:</p>
                             <ul class="features">
                             <li><span class="icon"></span> 7 min of training video recorded required from you</li>
