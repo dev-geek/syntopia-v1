@@ -17,6 +17,15 @@ class LicenseApiService
     private const API_BASE_URL = 'https://openapi.xiaoice.com/vh-cp';
     private const SUBSCRIPTION_KEY = '5c745ccd024140ffad8af2ed7a30ccad';
     private const CACHE_TTL = 300;
+    private const TEST_LICENSE_CODE = 'PKG-FOR-TESTING';
+
+    /**
+     * Are we in a test-like environment where we should not hit the real license API?
+     */
+    private function isTestEnvironment(): bool
+    {
+        return app()->environment(['local', 'testing']);
+    }
 
     private function getHeaders(): array
     {
@@ -29,6 +38,14 @@ class LicenseApiService
 
     public function getSubscriptionSummary(?string $tenantId = null, bool $bypassCache = false): ?array
     {
+        if ($this->isTestEnvironment()) {
+            return [[
+                'subscriptionCode' => self::TEST_LICENSE_CODE,
+                'subscriptionName' => 'Test License',
+                'remaining' => 9999,
+            ]];
+        }
+
         $cacheKey = $this->getCacheKey('subscription_summary', $tenantId);
 
         if ($bypassCache) {
@@ -99,6 +116,15 @@ class LicenseApiService
 
     public function addLicenseToTenant(string $tenantId, string $licenseKey): bool
     {
+        if ($this->isTestEnvironment()) {
+            Log::info('Test environment: skipping external addLicenseToTenant call', [
+                'tenant_id' => $tenantId,
+                'license_key' => $licenseKey,
+            ]);
+
+            return true;
+        }
+
         $payload = [
             'tenantId' => $tenantId,
             'subscriptionCode' => $licenseKey,
@@ -181,6 +207,14 @@ class LicenseApiService
 
     public function resolvePlanLicense(?string $tenantId, string $planName, bool $bypassCache = false): ?array
     {
+        if ($this->isTestEnvironment()) {
+            return [
+                'subscriptionCode' => self::TEST_LICENSE_CODE,
+                'subscriptionName' => $planName,
+                'remaining' => 9999,
+            ];
+        }
+
         $summaryData = $this->getSubscriptionSummary($tenantId, $bypassCache) ?? [];
 
         if (empty($summaryData)) {
@@ -287,7 +321,10 @@ class LicenseApiService
             return false;
         }
 
-        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        $licenseKey = $this->isTestEnvironment()
+            ? self::TEST_LICENSE_CODE
+            : ($summaryData[0]['subscriptionCode'] ?? null);
+
         if (!$licenseKey) {
             Log::error('No license codes available in license availability check');
             return false;
@@ -309,7 +346,9 @@ class LicenseApiService
             return null;
         }
 
-        $licenseKey = $summaryData[0]['subscriptionCode'] ?? null;
+        $licenseKey = $this->isTestEnvironment()
+            ? self::TEST_LICENSE_CODE
+            : ($summaryData[0]['subscriptionCode'] ?? null);
         if (!$licenseKey) {
             Log::error('Subscription code not found in summary response', [
                 'bypass_cache' => $bypassCache,

@@ -48,4 +48,11 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
         ];
     }
 
+    public function cancelSubscription(User $user, ?string $subscriptionId = null, ?int $cancellationReasonId = null, ?string $reasonText = null): array
+    {
+        return [
+            'success' => false,
+            'message' => 'PayProGlobal cancellation is not implemented yet'
+        ];
+    }
 }

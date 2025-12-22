@@ -47,4 +47,12 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             'error'   => 'Paddle payment processing not implemented yet',
         ];
     }
+
+    public function cancelSubscription(User $user, ?string $subscriptionId = null, ?int $cancellationReasonId = null, ?string $reasonText = null): array
+    {
+        return [
+            'success' => false,
+            'message' => 'Paddle cancellation is not implemented yet'
+        ];
+    }
 }

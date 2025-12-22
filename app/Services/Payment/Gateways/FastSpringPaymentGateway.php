@@ -76,12 +76,12 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
         $isUpgrade = (bool) ($paymentData['is_upgrade'] ?? false);
 
-        if (!$this->user?->tenant_id) {
-            $assignmentResult = $this->tenantAssignmentService->assignTenantWithRetry($this->user);
+        if (!$paymentData['user']->tenant_id) {
+            $assignmentResult = $this->tenantAssignmentService->assignTenantWithRetry($paymentData['user']);
 
             if (!($assignmentResult['success'] ?? false) || empty($assignmentResult['data']['tenantId'] ?? null)) {
                 Log::error('[FastSpringPaymentGateway::createCheckout] Failed to assign tenant before checkout', [
-                    'user_id' => $this->user?->id,
+                    'user_id' => $paymentData['user']->id,
                     'result'  => $assignmentResult,
                 ]);
 
@@ -91,15 +91,15 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                 ];
             }
 
-            $this->user->refresh();
+            $paymentData['user']->refresh();
         }
 
-        $licensePlan = $this->licenseApiService->resolvePlanLicense($this->user->tenant_id, $paymentData['package']);
+        $licensePlan = $this->licenseApiService->resolvePlanLicense($paymentData['user']->tenant_id, $paymentData['package']);
 
         if (!$licensePlan) {
             Log::warning('[FastSpringPaymentGateway::createCheckout] No licenses available for requested plan', [
-                'user_id'      => $this->user->id,
-                'tenant_id'    => $this->user->tenant_id,
+                'user_id'      => $paymentData['user']->id,
+                'tenant_id'    => $paymentData['user']->tenant_id,
                 'package_name' => $paymentData['package'],
                 'is_upgrade'   => $isUpgrade,
             ]);
@@ -111,19 +111,19 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
         }
         $secureHash = hash_hmac(
             'sha256',
-            $this->user->id . $paymentData['package'] . time(),
+            $paymentData['user']->id . $paymentData['package'] . time(),
             $this->webhookSecret
         );
 
         $baseSuccessUrl = route('payments.success');
 
         $queryParams = [
-            'referrer' => $this->user->id,
+            'referrer' => $paymentData['user']->id,
             'contactEmail' => $this->user->email,
             'contactFirstName' => $this->user->first_name ?? '',
-            'contactLastName' => $this->user->last_name ?? '',
+            'contactLastName' => $paymentData['user']->last_name ?? '',
             'tags' => json_encode([
-                'user_id'     => $this->user->id,
+                'user_id'     => $paymentData['user']->id,
                 'package'     => $paymentData['package'],
                 'package_id'  => $this->order->package_id,
                 'secure_hash' => $secureHash,
@@ -259,11 +259,106 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
     }
 
     // then create a method to handle the cancellation
-    public function handleCancellation(array $paymentData, bool $returnRedirect = true): array
+    public function handleCancellation(User $user, ?string $subscriptionId = null): array
     {
-        return [
-            'success' => false,
-            'error'   => 'FastSpring cancellation handling not implemented yet',
-        ];
+        if (!$subscriptionId) {
+            $activeLicense = $user->userLicence;
+
+            if (!$activeLicense || !$activeLicense->subscription_id) {
+                Log::error('[FastSpringPaymentGateway::cancelSubscription] No subscription ID found', [
+                    'user_id' => $user->id,
+                    'has_license' => $activeLicense !== null,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'No active subscription found to cancel'
+                ];
+            }
+
+            $subscriptionId = $activeLicense->subscription_id;
+        }
+
+        try {
+            $url = "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}?billingPeriod=1";
+
+            $response = Http::withBasicAuth($this->username, $this->password)
+                ->withHeaders([
+                    'accept' => 'application/json',
+                ])
+                ->delete($url);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+
+                Log::info('[FastSpringPaymentGateway::cancelSubscription] Subscription cancelled successfully', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'response' => $responseData,
+                ]);
+
+                $activeLicense = $user->userLicence;
+                if ($activeLicense) {
+                    $activeLicense->update([
+                        'status' => 'cancelled_at_period_end'
+                    ]);
+                }
+
+                $order = Order::create([
+                    'user_id' => $user->id,
+                    'package_id' => $user->package_id,
+                    'amount' => 0,
+                    'currency' => 'USD',
+                    'status' => 'cancellation_scheduled',
+                    'transaction_id' => 'FS-CANCEL-' . Str::random(10),
+                    'metadata' => [
+                        'subscription_id' => $subscriptionId,
+                        'cancelled_at' => now()->toISOString()
+                    ]
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Subscription cancellation scheduled successfully. Your subscription will remain active until the end of the current billing period.',
+                    'order_id' => $order->id,
+                    'subscription_id' => $subscriptionId,
+                ];
+            }
+
+            $responseBody = $response->body();
+            $errorMessage = 'Unknown error';
+
+            try {
+                $errorData = $response->json();
+                $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Unknown error';
+            } catch (\Exception $e) {
+                $errorMessage = $responseBody ?: 'Unknown error';
+            }
+
+            Log::error('[FastSpringPaymentGateway::cancelSubscription] FastSpring API error', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+                'status' => $response->status(),
+                'error' => $errorMessage,
+                'response' => $responseBody,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Failed to cancel subscription: ' . $errorMessage
+            ];
+        } catch (\Exception $e) {
+            Log::error('[FastSpringPaymentGateway::cancelSubscription] Exception during cancellation', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while cancelling the subscription: ' . $e->getMessage()
+            ];
+        }
     }
 }

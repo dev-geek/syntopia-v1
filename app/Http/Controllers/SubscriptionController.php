@@ -122,19 +122,8 @@ class SubscriptionController extends Controller
                         ->with('error', "Downgrade is not supported for gateway {$gatewayName}.");
                 }
 
-                $downgradeData = $gatewayInstance->handleDowngrade([
-                    'package' => $targetPackage->name,
-                ], false);
-
-                $result = $this->subscriptionService->scheduleGatewayDowngrade(
-                    $user,
-                    $targetPackage->name,
-                    $gatewayName,
-                    $downgradeData
-                );
-
                 return redirect()->route('user.subscription.details')
-                    ->with('success', $result['message'] ?? "Downgrade to {$targetPackage->name} scheduled successfully.");
+                    ->with('error', 'Downgrade functionality is not available for this gateway.');
             } catch (\Exception $e) {
                 Log::error('Failed to schedule downgrade', [
                     'user_id' => $user->id,

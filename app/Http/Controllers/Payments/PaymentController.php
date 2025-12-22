@@ -640,18 +640,11 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            $downgradeData = $gatewayInstance->handleDowngrade([
-                'package' => $targetPackage->name,
-            ], false);
-
-            $result = $this->subscriptionService->scheduleGatewayDowngrade(
-                $user,
-                $targetPackage->name,
-                $gatewayName,
-                $downgradeData
-            );
-
-            return response()->json($result);
+            return response()->json([
+                'success' => false,
+                'error' => 'Downgrade functionality is not available',
+                'message' => 'Downgrade is not currently supported for this gateway.',
+            ], 400);
         } catch (\Exception $e) {
             Log::error('Package downgrade error', [
                 'error' => $e->getMessage(),

@@ -18,25 +18,14 @@ use App\Services\License\LicenseApiService;
 
 class PaymentService
 {
+    private ?Order $order = null;
+    private ?User $user = null;
 
     public function __construct(
         private PaymentGatewayFactory $gatewayFactory,
-        private Order $order,
-        private User $user,
         private LicenseApiService $licenseApiService,
     ) {}
 
-    public function setUser(User $user): self
-    {
-        $this->user = $user;
-        return $this;
-    }
-
-    public function setOrder(Order $order): self
-    {
-        $this->order = $order;
-        return $this;
-    }
     public function processPayment(array $paymentData, string $gatewayName, bool $returnRedirect = true): array
     {
         if (!isset($this->user) && isset($paymentData['user']) && $paymentData['user'] instanceof User) {
@@ -173,9 +162,6 @@ class PaymentService
                 ]);
             }
 
-            // keep service-level order in sync when available
-            $this->order = $order;
-
             $user->update([
                 'package_id'         => $package->id,
                 'payment_gateway_id' => $gatewayRecord?->id ?? $user->payment_gateway_id,
@@ -222,6 +208,88 @@ class PaymentService
                 'package_name' => $package->name,
             ];
         });
+    }
+
+    public function createFreePlanOrder(User $user, Package $package): Order
+    {
+        return Order::create([
+            'user_id' => $user->id,
+            'package_id' => $package->id,
+            'amount' => 0,
+            'currency' => 'USD',
+            'status' => 'completed',
+            'transaction_id' => 'FREE-' . Str::random(10),
+            'metadata' => [
+                'source' => 'free_plan_immediate_assignment',
+                'assigned_at' => now()->toISOString()
+            ]
+        ]);
+    }
+
+    // handle package cancellation
+    public function handleSubscriptionCancellation(User $user): array
+    {
+        Log::info('[PaymentService::handleSubscriptionCancellation] Starting cancellation', [
+            'user_id' => $user->id,
+        ]);
+
+        $activeLicense = $user->userLicence;
+
+        if (!$activeLicense) {
+            Log::warning('[PaymentService::handleSubscriptionCancellation] No active license found', [
+                'user_id' => $user->id,
+            ]);
+            return [
+                'success' => false,
+                'message' => 'No active subscription found to cancel'
+            ];
+        }
+
+        $subscriptionId = $activeLicense->subscription_id;
+        Log::info('[PaymentService::handleSubscriptionCancellation] Found subscription', [
+            'user_id' => $user->id,
+            'subscription_id' => $subscriptionId,
+        ]);
+
+        $gatewayRecord = $this->detectGatewayFromUser($user, $subscriptionId);
+
+        if (!$gatewayRecord) {
+            Log::error('[PaymentService::handleSubscriptionCancellation] Gateway not found', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+            ]);
+            return [
+                'success' => false,
+                'message' => 'Payment gateway not found for this subscription'
+            ];
+        }
+
+        Log::info('[PaymentService::handleSubscriptionCancellation] Gateway detected', [
+            'user_id' => $user->id,
+            'gateway_name' => $gatewayRecord->name,
+        ]);
+
+        $gateway = $this->gatewayFactory->create($gatewayRecord->name)
+            ->setUser($user);
+
+        if (!method_exists($gateway, 'handleCancellation')) {
+            Log::error('[PaymentService::handleSubscriptionCancellation] Cancellation not supported', [
+                'user_id' => $user->id,
+                'gateway_name' => $gatewayRecord->name,
+            ]);
+            return [
+                'success' => false,
+                'message' => "Cancellation is not supported for gateway {$gatewayRecord->name}"
+            ];
+        }
+
+        Log::info('[PaymentService::handleSubscriptionCancellation] Calling gateway cancellation', [
+            'user_id' => $user->id,
+            'gateway_name' => $gatewayRecord->name,
+            'subscription_id' => $subscriptionId,
+        ]);
+
+        return $gateway->handleCancellation($user, $subscriptionId);
     }
 }
 
