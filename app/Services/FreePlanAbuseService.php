@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\FreePlanAttempt;
 use App\Models\Package;
+use App\Services\Payment\Gateways\PaddlePaymentGateway;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -371,8 +372,19 @@ class FreePlanAbuseService
                 ['price' => 0, 'duration' => 'lifetime', 'features' => json_encode([])]
             );
 
+            $paddleCustomerId = null;
+            try {
+                $paddleGateway = app(PaddlePaymentGateway::class);
+                $paddleCustomerId = $paddleGateway->createOrGetCustomer($user);
+            } catch (\Exception $e) {
+                Log::warning('Failed to create Paddle customer for free plan user', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Assign free package to user
-            $user->update([
+            $updateData = [
                 'package_id' => $freePackage->id,
                 'is_subscribed' => true,
                 'last_ip' => $request->ip(),
@@ -381,7 +393,13 @@ class FreePlanAbuseService
                 'last_login_at' => now(),
                 'has_used_free_plan' => true,
                 'free_plan_used_at' => now(),
-            ]);
+            ];
+
+            if ($paddleCustomerId) {
+                $updateData['paddle_customer_id'] = $paddleCustomerId;
+            }
+
+            $user->update($updateData);
 
             // Create order record for free plan
             $user->orders()->create([

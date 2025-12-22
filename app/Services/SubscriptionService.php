@@ -10,8 +10,11 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Services\License\LicenseApiService;
-use App\Services\Payment\PaymentService;
+use App\Services\{
+    License\LicenseApiService,
+    Payment\PaymentService,
+    Payment\Gateways\PaddlePaymentGateway,
+};
 
 class SubscriptionService
 {
@@ -82,11 +85,28 @@ class SubscriptionService
             }
 
             return DB::transaction(function () use ($user, $package) {
-                // Update user with free package
-                $user->update([
+                $paddleCustomerId = null;
+
+                try {
+                    $paddleGateway = app(PaddlePaymentGateway::class);
+                    $paddleCustomerId = $paddleGateway->createOrGetCustomer($user);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to create Paddle customer for free plan user', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                $updateData = [
                     'package_id' => $package->id,
                     'is_subscribed' => true,
-                ]);
+                ];
+
+                if ($paddleCustomerId) {
+                    $updateData['paddle_customer_id'] = $paddleCustomerId;
+                }
+
+                $user->update($updateData);
 
                 $order = $this->paymentService->createFreePlanOrder($user, $package);
 
