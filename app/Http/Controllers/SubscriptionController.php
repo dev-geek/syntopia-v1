@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Package;
 use App\Services\SubscriptionService;
+use App\Factories\PaymentGatewayFactory;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
@@ -14,11 +15,13 @@ class SubscriptionController extends Controller
 {
     private SubscriptionService $subscriptionService;
     private PaymentController $paymentController;
+    private PaymentGatewayFactory $paymentGatewayFactory;
 
-    public function __construct(SubscriptionService $subscriptionService, PaymentController $paymentController)
+    public function __construct(SubscriptionService $subscriptionService, PaymentController $paymentController, PaymentGatewayFactory $paymentGatewayFactory)
     {
         $this->subscriptionService = $subscriptionService;
         $this->paymentController = $paymentController;
+        $this->paymentGatewayFactory = $paymentGatewayFactory;
     }
 
     public function handleSubscription()
@@ -64,7 +67,7 @@ class SubscriptionController extends Controller
 
         if ($request->isMethod('post') && $package) {
             $paymentController = app(PaymentController::class);
-            return $paymentController->fastspringCheckout($request, $package);
+            return $paymentController->gatewayCheckout($request, $package, $gateway);
         }
 
         return $this->showSubscriptionPage('upgrade');
@@ -102,26 +105,33 @@ class SubscriptionController extends Controller
             }
 
             try {
-                Log::info('=== SubscriptionController::downgrade POST called ===', [
-                    'user_id' => $user->id,
-                    'target_package_id' => $targetPackageId,
-                    'gateway' => $user->paymentGateway->name ?? 'FastSpring'
-                ]);
-
-                $paymentService = app(\App\Services\Payment\PaymentService::class);
                 $gatewayName = $user->paymentGateway->name ?? 'FastSpring';
 
-                Log::info('Processing downgrade via PaymentService', [
+                Log::info('Processing downgrade via gateway service', [
                     'user_id' => $user->id,
                     'target_package' => $targetPackage->name,
                     'gateway' => $gatewayName
                 ]);
 
-                $result = $paymentService->handleDowngradeSubscription($user, $targetPackage->name, $gatewayName);
+                $gatewayInstance = $this->paymentGatewayFactory
+                    ->create($gatewayName)
+                    ->setUser($user);
 
-                if ($result['success'] && isset($result['checkout_url'])) {
-                    return redirect($result['checkout_url']);
+                if (!method_exists($gatewayInstance, 'handleDowngrade')) {
+                    return redirect()->route('user.subscription.details')
+                        ->with('error', "Downgrade is not supported for gateway {$gatewayName}.");
                 }
+
+                $downgradeData = $gatewayInstance->handleDowngrade([
+                    'package' => $targetPackage->name,
+                ], false);
+
+                $result = $this->subscriptionService->scheduleGatewayDowngrade(
+                    $user,
+                    $targetPackage->name,
+                    $gatewayName,
+                    $downgradeData
+                );
 
                 return redirect()->route('user.subscription.details')
                     ->with('success', $result['message'] ?? "Downgrade to {$targetPackage->name} scheduled successfully.");

@@ -7,35 +7,44 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Services\Payment\PaymentService;
+use App\Services\SubscriptionService;
+use App\Factories\PaymentGatewayFactory;
+use App\Models\Package;
 use App\Http\Requests\Payments\CheckoutRequest;
 use App\Http\Requests\Payments\UpgradeRequest;
 use App\Http\Requests\Payments\DowngradeRequest;
 use App\Http\Requests\Payments\PayProGlobalDowngradeRequest;
 use App\Http\Requests\Payments\CancelSubscriptionRequest;
+use App\Http\Requests\Payments\SuccessCallbackRequest;
 use App\Models\Order;
 
 class PaymentController extends Controller
 {
     public function __construct(
-        private PaymentService $paymentService
+        private PaymentService $paymentService,
+        private SubscriptionService $subscriptionService,
+        private PaymentGatewayFactory $paymentGatewayFactory,
     ) {}
 
-    public function paddleCheckout(CheckoutRequest $request, string $package)
+    public function gatewayCheckout(CheckoutRequest $request, string $gateway, string $package)
     {
-        Log::info('[paddleCheckout] called', ['package' => $package, 'user_id' => Auth::id()]);
+        Log::info('[gatewayCheckout] called', ['package' => $package, 'user_id' => Auth::id(), 'gateway' => $gateway]);
 
         try {
-            $result = $this->paymentService->createCheckoutWithValidation($package, 'paddle', [
+            $result = $this->paymentService->processPayment([
+                'package' => $package,
+                'user' => Auth::user(),
                 'is_upgrade' => $request->input('is_upgrade', false),
-                'is_downgrade' => $request->input('is_downgrade', false)
-            ]);
+                'is_downgrade' => $request->input('is_downgrade', false),
+            ], $gateway, true);
 
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Paddle checkout error', [
+            Log::error('Gateway checkout error', [
                 'error' => $e->getMessage(),
                 'package' => $package,
-                'user_id' => Auth::id()
+                'user_id' => Auth::id(),
+                'gateway' => $gateway
             ]);
 
             $statusCode = match(true) {
@@ -53,62 +62,64 @@ class PaymentController extends Controller
         }
     }
 
-    public function fastspringCheckout(CheckoutRequest $request, string $package)
-    {
-        try {
-            $result = $this->paymentService->createCheckoutWithValidation($package, 'fastspring', [
-                'is_upgrade' => $request->input('is_upgrade', false)
-            ]);
+    // public function fastspringCheckout(CheckoutRequest $request, string $package)
+    // {
+    //     try {
+    //         $result = $this->paymentService->processPayment('fastspring', [
+    //             'package' => $package,
+    //             'user' => Auth::user(),
+    //             'is_upgrade' => $request->input('is_upgrade', false)
+    //         ]);
 
-            return response()->json($result);
-        } catch (\Exception $e) {
-            Log::error('FastSpring checkout error', [
-                'error' => $e->getMessage(),
-                'package' => $package,
-                'user_id' => Auth::id()
-            ]);
-            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
-        }
-    }
+    //         return response()->json($result);
+    //     } catch (\Exception $e) {
+    //         Log::error('FastSpring checkout error', [
+    //             'error' => $e->getMessage(),
+    //             'package' => $package,
+    //             'user_id' => Auth::id()
+    //         ]);
+    //         return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
+    //     }
+    // }
 
-    public function payProGlobalCheckout(CheckoutRequest $request, string $package)
-    {
-        Log::info('PayProGlobal checkout started', [
-            'package' => $package,
-            'user_id' => Auth::id(),
-            'is_upgrade' => $request->input('is_upgrade', false),
-            'is_downgrade' => $request->input('is_downgrade', false)
-        ]);
+    // public function payProGlobalCheckout(CheckoutRequest $request, string $package)
+    // {
+    //     Log::info('PayProGlobal checkout started', [
+    //         'package' => $package,
+    //         'user_id' => Auth::id(),
+    //         'is_upgrade' => $request->input('is_upgrade', false),
+    //         'is_downgrade' => $request->input('is_downgrade', false)
+    //     ]);
 
-        try {
-            if ($request->input('is_downgrade')) {
-                $user = Auth::user();
-                $targetPackageId = $request->input('package_id');
-                if (!$targetPackageId) {
-                    return response()->json(['error' => 'Package ID required for downgrade'], 400);
-                }
-                return response()->json($this->paymentService->handlePayProGlobalDowngrade($user, $targetPackageId));
-            }
+    //     try {
+    //         if ($request->input('is_downgrade')) {
+    //             $user = Auth::user();
+    //             $targetPackageId = $request->input('package_id');
+    //             if (!$targetPackageId) {
+    //                 return response()->json(['error' => 'Package ID required for downgrade'], 400);
+    //             }
+    //             return response()->json($this->paymentService->handlePayProGlobalDowngrade($user, $targetPackageId));
+    //         }
 
-            $result = $this->paymentService->createCheckoutWithValidation($package, 'payproglobal', [
-                'is_upgrade' => $request->input('is_upgrade', false),
-                'is_downgrade' => $request->input('is_downgrade', false),
-                'fp_tid' => $request->input('fp_tid')
-            ]);
+    //         $result = $this->paymentService->createCheckoutWithValidation($package, 'payproglobal', [
+    //             'is_upgrade' => $request->input('is_upgrade', false),
+    //             'is_downgrade' => $request->input('is_downgrade', false),
+    //             'fp_tid' => $request->input('fp_tid')
+    //         ]);
 
-            return response()->json($result);
-        } catch (\Exception $e) {
-            Log::error('PayProGlobal checkout error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'package' => $package,
-                'user_id' => Auth::id()
-            ]);
-            return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
-        }
-    }
+    //         return response()->json($result);
+    //     } catch (\Exception $e) {
+    //         Log::error('PayProGlobal checkout error', [
+    //             'error' => $e->getMessage(),
+    //             'trace' => $e->getTraceAsString(),
+    //             'package' => $package,
+    //             'user_id' => Auth::id()
+    //         ]);
+    //         return response()->json(['error' => 'Checkout failed', 'message' => $e->getMessage()], 500);
+    //     }
+    // }
 
-    public function handleSuccess(Request $request)
+    public function handleSuccess(SuccessCallbackRequest $request)
     {
         Log::info('[handleSuccess] called', [
             'auth_check_start' => auth()->check(),
@@ -606,7 +617,39 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            $result = $this->paymentService->handleDowngradeSubscription($user, $request->input('package'), $gateway->name);
+            $gatewayName = $gateway->name;
+
+            $targetPackageName = $request->input('package');
+            $targetPackage = Package::whereRaw('LOWER(name) = ?', [strtolower($targetPackageName)])->first();
+
+            if (!$targetPackage) {
+                return response()->json([
+                    'error' => 'Invalid package selected for downgrade',
+                    'message' => 'Target package not found',
+                ], 400);
+            }
+
+            $gatewayInstance = $this->paymentGatewayFactory
+                ->create($gatewayName)
+                ->setUser($user);
+
+            if (!method_exists($gatewayInstance, 'handleDowngrade')) {
+                return response()->json([
+                    'error' => 'Downgrade Not Supported',
+                    'message' => "Downgrade is not supported for gateway {$gatewayName}",
+                ], 400);
+            }
+
+            $downgradeData = $gatewayInstance->handleDowngrade([
+                'package' => $targetPackage->name,
+            ], false);
+
+            $result = $this->subscriptionService->scheduleGatewayDowngrade(
+                $user,
+                $targetPackage->name,
+                $gatewayName,
+                $downgradeData
+            );
 
             return response()->json($result);
         } catch (\Exception $e) {
