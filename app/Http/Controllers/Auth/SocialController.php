@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Services\SubscriptionService;
-use App\Models\Package;
+use App\Models\{Package, PaymentGateways};
+use App\Factories\PaymentGatewayFactory;
 
 
 class SocialController extends Controller
@@ -211,6 +212,29 @@ class SocialController extends Controller
                         ]);
 
                         $userData->assignRole('User');
+
+                        $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
+                        if ($paddleGateway) {
+                            try {
+                                $paddlePaymentGateway = app(PaymentGatewayFactory::class)->create('Paddle');
+                                $paddlePaymentGateway->setUser($userData);
+                                $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($userData);
+                                
+                                if ($paddleCustomerId) {
+                                    Log::info('[googleAuthentication] Paddle customer ID created for new Google user', [
+                                        'user_id' => $userData->id,
+                                        'email' => $userData->email,
+                                        'paddle_customer_id' => $paddleCustomerId
+                                    ]);
+                                }
+                            } catch (\Exception $e) {
+                                Log::warning('[googleAuthentication] Failed to create Paddle customer ID during Google registration', [
+                                    'user_id' => $userData->id,
+                                    'email' => $userData->email,
+                                    'error' => $e->getMessage()
+                                ]);
+                            }
+                        }
 
                         // Create tenant and bind password using TenantAssignmentService with retry logic
                         Log::info('[googleAuthentication] Calling TenantAssignmentService for new Google user with retry logic', ['user_id' => $userData->id]);
@@ -503,6 +527,29 @@ class SocialController extends Controller
                         ]);
 
                         $userData->assignRole('User');
+
+                        $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
+                        if ($paddleGateway) {
+                            try {
+                                $paddlePaymentGateway = app(PaymentGatewayFactory::class)->create('Paddle');
+                                $paddlePaymentGateway->setUser($userData);
+                                $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($userData);
+                                
+                                if ($paddleCustomerId) {
+                                    Log::info('[handleFacebookCallback] Paddle customer ID created for new Facebook user', [
+                                        'user_id' => $userData->id,
+                                        'email' => $userData->email,
+                                        'paddle_customer_id' => $paddleCustomerId
+                                    ]);
+                                }
+                            } catch (\Exception $e) {
+                                Log::warning('[handleFacebookCallback] Failed to create Paddle customer ID during Facebook registration', [
+                                    'user_id' => $userData->id,
+                                    'email' => $userData->email,
+                                    'error' => $e->getMessage()
+                                ]);
+                            }
+                        }
 
                         // Create tenant and bind password using TenantAssignmentService with retry logic
                         Log::info('[handleFacebookCallback] Calling TenantAssignmentService for new Facebook user with retry logic', ['user_id' => $userData->id]);

@@ -2,7 +2,8 @@
 
 namespace App\Services\Auth;
 
-use App\Models\User;
+use App\Models\{User, PaymentGateways};
+use App\Factories\PaymentGatewayFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +16,8 @@ class RegistrationService
 {
     public function __construct(
         private DeviceFingerprintService $deviceFingerprintService,
-        private FreePlanAbuseService $freePlanAbuseService
+        private FreePlanAbuseService $freePlanAbuseService,
+        private PaymentGatewayFactory $paymentGatewayFactory
     ) {}
 
     public function validateRegistration(Request $request): array
@@ -153,6 +155,29 @@ class RegistrationService
                 'email' => $user->email,
                 'has_subscriber_password' => !empty($user->subscriber_password)
             ]);
+
+            $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
+            if ($paddleGateway) {
+                try {
+                    $paddlePaymentGateway = $this->paymentGatewayFactory->create('Paddle');
+                    $paddlePaymentGateway->setUser($user);
+                    $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($user);
+
+                    if ($paddleCustomerId) {
+                        Log::info('Paddle customer ID created for new user', [
+                            'user_id' => $user->id,
+                            'email' => $user->email,
+                            'paddle_customer_id' => $paddleCustomerId
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to create Paddle customer ID during registration', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
 
             DB::commit();
 
