@@ -566,6 +566,7 @@ class LicenseApiService
                     'metadata' => [
                         'created_via' => 'payment',
                         'package_name' => $package->name,
+                        'package_price' => $package->price,
                         'original_license_data' => $licenseData,
                         'expiration_calculated' => true
                     ]
