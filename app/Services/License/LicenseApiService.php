@@ -392,25 +392,30 @@ class LicenseApiService
                 Log::error('LicenseApiService: cURL connection error when getting subscription summary', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
                 DB::rollBack();
-                throw new \Exception('Failed to connect to the license server to get subscription details. Please check your internet connection and try again.');
+                throw new \Exception('THIRD_PARTY_API_ERROR');
             } catch (\Exception $e) {
                 Log::error('LicenseApiService: Unexpected error when getting subscription summary', [
                     'user_id' => $user->id,
                     'package_name' => $package->name,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
+                DB::rollBack();
+                throw new \Exception('THIRD_PARTY_API_ERROR');
             }
 
             if (empty($summaryData)) {
                 Log::error('Failed to get license summary', [
                     'user_id' => $user->id,
-                    'package_name' => $package->name
+                    'package_name' => $package->name,
+                    'tenant_id' => $user->tenant_id
                 ]);
                 DB::rollBack();
-                return null;
+                throw new \Exception('THIRD_PARTY_API_ERROR');
             }
 
             $createdLicenses = [];
@@ -527,26 +532,32 @@ class LicenseApiService
                         'user_id' => $user->id,
                         'package_name' => $package->name,
                         'license_key' => $licenseKey,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
                     DB::rollBack();
-                    throw new \Exception('Failed to connect to the license server. Please check your internet connection and try again.');
+                    throw new \Exception('THIRD_PARTY_API_ERROR');
                 } catch (\Exception $e) {
                     Log::error('LicenseApiService: Unexpected error when calling addLicenseToTenant', [
                         'user_id' => $user->id,
                         'package_name' => $package->name,
                         'license_key' => $licenseKey,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
+                    DB::rollBack();
+                    throw new \Exception('THIRD_PARTY_API_ERROR');
                 }
 
                 if (!$licenseApiSuccess) {
                     Log::error('Failed to add license to external API', [
                         'user_id' => $user->id,
                         'package_name' => $package->name,
-                        'license_key' => $licenseKey
+                        'license_key' => $licenseKey,
+                        'tenant_id' => $user->tenant_id
                     ]);
-                    continue;
+                    DB::rollBack();
+                    throw new \Exception('THIRD_PARTY_API_ERROR');
                 }
 
                 $expiresAt = $package->isFree()
@@ -607,8 +618,14 @@ class LicenseApiService
             Log::error('Failed to create and activate license', [
                 'user_id' => $user->id,
                 'package_name' => $package->name,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
+
+            if (str_contains($e->getMessage(), 'THIRD_PARTY_API_ERROR')) {
+                throw $e;
+            }
+
             return null;
         }
     }

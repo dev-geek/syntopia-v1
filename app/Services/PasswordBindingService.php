@@ -107,11 +107,7 @@ class PasswordBindingService
                 ];
             }
 
-            Log::info('Password bound successfully', [
-                'user_id' => $user->id,
-                'response' => $bindJson
-            ]);
-
+            // Success is logged in bindPasswordWithRetry with attempt info
             return [
                 'success' => true,
                 'data' => $bindJson['data'] ?? null,

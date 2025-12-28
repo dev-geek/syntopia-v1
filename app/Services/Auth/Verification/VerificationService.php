@@ -179,7 +179,16 @@ class VerificationService
         ]);
 
         $user->refresh();
-        if ($user->subscriber_password) {
+        // Only bind password if it wasn't already bound during tenant assignment
+        $passwordAlreadyBound = $apiResponse['password_bound'] ?? false;
+        
+        Log::info('[VerificationService] Checking password binding status', [
+            'user_id' => $user->id,
+            'has_subscriber_password' => !empty($user->subscriber_password),
+            'password_bound_during_tenant_assignment' => $passwordAlreadyBound
+        ]);
+        
+        if ($user->subscriber_password && !$passwordAlreadyBound) {
             $passwordBindResult = $this->passwordBindingService->bindPasswordWithRetry($user, $user->subscriber_password);
 
             if (!$passwordBindResult['success']) {
@@ -192,6 +201,10 @@ class VerificationService
                     'user_id' => $user->id
                 ]);
             }
+        } elseif ($user->subscriber_password && $passwordAlreadyBound) {
+            Log::info('[VerificationService] Password already bound during tenant assignment, skipping duplicate binding', [
+                'user_id' => $user->id
+            ]);
         }
 
         $this->assignFreePackageIfNeeded($user);

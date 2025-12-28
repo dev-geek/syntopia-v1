@@ -97,6 +97,8 @@ class SubscriptionService
                     ]);
                 }
 
+                $activeGateway = $this->getAppropriatePaymentGateway($user);
+
                 $updateData = [
                     'package_id' => $package->id,
                     'is_subscribed' => true,
@@ -106,26 +108,44 @@ class SubscriptionService
                     $updateData['paddle_customer_id'] = $paddleCustomerId;
                 }
 
+                if ($activeGateway) {
+                    $updateData['payment_gateway_id'] = $activeGateway->id;
+                }
+
                 $user->update($updateData);
 
                 $order = $this->paymentService->createFreePlanOrder($user, $package);
 
                 // Create and activate license for free plan using transaction_id as subscription_id
-                $license = $this->licenseApiService->createAndActivateLicense(
-                    $user,
-                    $package,
-                    $order->transaction_id,
-                    null,
-                    false
-                );
+                try {
+                    $license = $this->licenseApiService->createAndActivateLicense(
+                        $user,
+                        $package,
+                        $order->transaction_id,
+                        $activeGateway ? $activeGateway->id : null,
+                        false
+                    );
 
-                if (!$license) {
+                    if (!$license) {
+                        Log::error('Failed to create license for free plan', [
+                            'user_id' => $user->id,
+                            'package_id' => $package->id,
+                            'tenant_id' => $user->tenant_id,
+                        ]);
+                        throw new \Exception('THIRD_PARTY_API_ERROR');
+                    }
+                } catch (\Exception $e) {
+                    if (str_contains($e->getMessage(), 'THIRD_PARTY_API_ERROR')) {
+                        throw $e;
+                    }
                     Log::error('Failed to create license for free plan', [
                         'user_id' => $user->id,
                         'package_id' => $package->id,
                         'tenant_id' => $user->tenant_id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
-                    throw new \Exception('Failed to create license for free plan.');
+                    throw new \Exception('THIRD_PARTY_API_ERROR');
                 }
 
                 Log::info('Free plan assigned immediately without checkout', [
@@ -190,7 +210,8 @@ class SubscriptionService
     public function hasScheduledCancellation(User $user): bool
     {
         return Order::where('user_id', $user->id)
-            ->where('status', 'cancellation_scheduled')
+            ->where('status', 'cancelled')
+            ->whereJsonContains('metadata->cancellation_scheduled', true)
             ->exists();
     }
 
@@ -271,13 +292,9 @@ class SubscriptionService
         return $targetPrice < $currentPrice;
     }
 
-    public function getAppropriatePaymentGateway(User $user, string $type): ?PaymentGateways
+    public function getAppropriatePaymentGateway(User $user): ?PaymentGateways
     {
-        if ($user->isReturningCustomer() && $user->paymentGateway) {
-            if ($user->paymentGateway->is_active) {
-                return $user->paymentGateway;
-            }
-
+        if ($user->paymentGateway) {
             return $user->paymentGateway;
         }
 
@@ -302,7 +319,7 @@ class SubscriptionService
             }
         }
 
-        $isUpgradeLocked = $activeLicense && $activeLicense->is_upgrade_license && $activeLicense->expires_at && $activeLicense->expires_at->isFuture();
+        $isUpgradeLocked = false;
 
         $pendingUpgrade = Order::where('user_id', $user->id)
             ->whereIn('status', ['pending', 'pending_upgrade'])
@@ -401,6 +418,14 @@ class SubscriptionService
             }
 
             $targetPackageName = $pendingDowngrade->package->name ?? 'Unknown';
+            $targetPackage = $pendingDowngrade->package;
+
+            $targetPackagePrice = null;
+            if (is_array($pendingDowngrade->metadata) && isset($pendingDowngrade->metadata['target_package_price'])) {
+                $targetPackagePrice = $pendingDowngrade->metadata['target_package_price'];
+            } elseif ($targetPackage) {
+                $targetPackagePrice = $targetPackage->price;
+            }
 
             $scheduledActivationDate = null;
 
@@ -425,6 +450,7 @@ class SubscriptionService
 
             $pendingDowngradeDetails = [
                 'target_package' => $targetPackageName,
+                'target_package_price' => $targetPackagePrice,
                 'original_package' => $originalPackageName,
                 'created_at' => $pendingDowngrade->created_at,
                 'scheduled_activation_date' => $scheduledActivationDate ? $scheduledActivationDate->format('F j, Y') : null,
@@ -529,7 +555,7 @@ class SubscriptionService
                 $targetGateway = PaymentGateways::where('name', 'FastSpring')->first();
             }
         } else {
-            $targetGateway = $this->getAppropriatePaymentGateway($user, $type);
+            $targetGateway = $this->getAppropriatePaymentGateway($user);
         }
 
         $gateways = collect($targetGateway ? [$targetGateway] : []);
@@ -541,18 +567,9 @@ class SubscriptionService
 
         $currentUserPackage = $user->package;
 
-        $upgradeablePackages = $type === 'upgrade' ? $this->getUpgradeablePackages($currentUserPackage) : collect();
-        $downgradeablePackages = $type === 'downgrade' ? $this->getDowngradeablePackages($currentUserPackage) : collect();
-
         $packageAvailability = [];
         foreach ($packages as $package) {
-            if ($type === 'upgrade') {
-                $packageAvailability[$package->name] = $this->canUpgradeToPackage($currentUserPackage, $package);
-            } elseif ($type === 'downgrade') {
-                $packageAvailability[$package->name] = $this->canDowngradeToPackage($currentUserPackage, $package);
-            } else {
-                $packageAvailability[$package->name] = true;
-            }
+            $packageAvailability[$package->name] = true;
         }
 
         $addonPackageIds = Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])
@@ -592,14 +609,12 @@ class SubscriptionService
             'userOriginalGateway' => $user->paymentGateway ? $user->paymentGateway->name : null,
             'activeGatewaysByAdmin' => PaymentGateways::where('is_active', true)->pluck('name')->values(),
             'packages' => $packages,
-            'pageType' => $type,
-            'isUpgrade' => $type === 'upgrade',
-            'upgradeEligible' => $type === 'upgrade' && $targetGateway,
+            'pageType' => 'new',
+            'isUpgrade' => false,
+            'upgradeEligible' => false,
             'hasActiveSubscription' => $this->hasActiveSubscription($user),
             'selectedPackage' => $selectedPackage,
             'packageAvailability' => $packageAvailability,
-            'upgradeablePackages' => $upgradeablePackages,
-            'downgradeablePackages' => $downgradeablePackages,
             'isReturningCustomer' => $user->isReturningCustomer(),
             'purchaseHistory' => $user->getPurchaseHistory(),
             'selectedPaymentGateway' => $targetGateway ? $targetGateway->name : null,
@@ -607,6 +622,8 @@ class SubscriptionService
             'isUsingAdminGateway' => !$user->isReturningCustomer() || !$user->paymentGateway || ($targetGateway && $user->paymentGateway && $user->paymentGateway->id !== $targetGateway->id),
             'activeAddonSlugs' => $activeAddonSlugs,
             'hasActiveAddon' => $hasActiveAddon,
+            'upgradeablePackages' => collect(),
+            'downgradeablePackages' => collect(),
         ];
     }
 

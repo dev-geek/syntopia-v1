@@ -25,18 +25,9 @@
 
                 $buttonClass = $isCurrentPackage ? 'active' : ($isDisabled ? 'disabled' : 'dark');
 
-                // Determine button action based on page type
-                // Check all possible variables that might indicate downgrade page
-                $isDowngradePage = (isset($pageType) && $pageType === 'downgrade') ||
-                                   (isset($type) && $type === 'downgrade') ||
-                                   (request()->query('type') === 'downgrade');
-
+                // Determine button action
                 if ($isCurrentPackage) {
                     $buttonAction = 'current';
-                } elseif (isset($isUpgrade) && $isUpgrade) {
-                    $buttonAction = 'upgrade';
-                } elseif ($isDowngradePage && !$isCurrentPackage && $isAvailable) {
-                    $buttonAction = 'downgrade';
                 } else {
                     $buttonAction = 'new';
                 }
@@ -45,6 +36,7 @@
             <button class="btn {{ $buttonClass }} checkout-button"
                 data-package="{{ $package->name }}"
                 data-action="{{ $buttonAction }}"
+                data-price="{{ $package->price }}"
                 {{ $isDisabled ? 'disabled' : '' }}
                 @if ($package->name == 'Enterprise') onclick="window.location.href='https://syntopia.ai/contact-us/'" @endif
                 >
@@ -53,17 +45,7 @@
                 @elseif ($isCurrentPackage)
                     ✓ Current Plan
                 @elseif (!$isAvailable)
-                    @if (isset($isUpgrade) && $isUpgrade)
-                        Not Available for Upgrade
-                    @elseif (isset($pageType) && $pageType === 'downgrade')
-                        Not Available for Downgrade
-                    @else
-                        Not Available
-                    @endif
-                @elseif (isset($isUpgrade) && $isUpgrade)
-                    Upgrade to {{ $package->name }}
-                @elseif (isset($pageType) && $pageType === 'downgrade')
-                    Downgrade to {{ $package->name }}
+                    Not Available
                 @else
                     Get Started
                 @endif

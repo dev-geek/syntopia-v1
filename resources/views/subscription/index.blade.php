@@ -51,23 +51,11 @@
             </div>
             @include('components.alert-messages')
             <h2 class="section-title">
-                @if (isset($isUpgrade) && $isUpgrade)
-                    Upgrade Your Subscription
-                @elseif (isset($pageType) && $pageType === 'downgrade')
-                    Downgrade Your Subscription
-                @else
-                    Plans For Every Type of Business
-                @endif
+                Plans For Every Type of Business
             </h2>
             <p class="section-subtitle">
-                @if (isset($isUpgrade) && $isUpgrade)
-                    Choose a higher-tier plan to unlock more features. Your current subscription will be prorated.
-                @elseif (isset($pageType) && $pageType === 'downgrade')
-                    Select a lower-tier plan. The change will take effect at the end of your current billing cycle.
-                @else
-                    SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
-                    individuals connect with their audiences.
-                @endif
+                SYNTOPIA creates hyperrealistic, interactive AI avatars that revolutionize how businesses and
+                individuals connect with their audiences.
             </p>
             @include('subscription.includes._pricing-grid')
         </div>

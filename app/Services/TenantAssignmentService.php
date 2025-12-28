@@ -131,14 +131,16 @@ class TenantAssignmentService
             Log::info('Tenant_id assigned successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'tenant_id' => $apiResponse['data']['tenantId']
+                'tenant_id' => $apiResponse['data']['tenantId'],
+                'password_bound' => $apiResponse['password_bound'] ?? false
             ]);
 
             return [
                 'success' => true,
                 'message' => 'Tenant_id assigned successfully',
                 'tenant_id' => $apiResponse['data']['tenantId'],
-                'data' => $apiResponse['data']
+                'data' => $apiResponse['data'],
+                'password_bound' => $apiResponse['password_bound'] ?? false
             ];
 
         } catch (\Exception $e) {
@@ -259,7 +261,8 @@ class TenantAssignmentService
             return [
                 'success' => true,
                 'data' => ['tenantId' => $tenantId],
-                'error_message' => null
+                'error_message' => null,
+                'password_bound' => $passwordBindResult['success'] ?? false
             ];
 
         } catch (\Exception $e) {

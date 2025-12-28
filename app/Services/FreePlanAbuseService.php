@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\FreePlanAttempt;
 use App\Models\Package;
+use App\Models\PaymentGateways;
 use App\Services\Payment\Gateways\PaddlePaymentGateway;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -383,6 +384,12 @@ class FreePlanAbuseService
                 ]);
             }
 
+            // Get an active payment gateway to assign to user
+            $activeGateway = PaymentGateways::where('is_active', true)->first();
+            if (!$activeGateway) {
+                $activeGateway = PaymentGateways::first();
+            }
+
             // Assign free package to user
             $updateData = [
                 'package_id' => $freePackage->id,
@@ -399,6 +406,10 @@ class FreePlanAbuseService
                 $updateData['paddle_customer_id'] = $paddleCustomerId;
             }
 
+            if ($activeGateway) {
+                $updateData['payment_gateway_id'] = $activeGateway->id;
+            }
+
             $user->update($updateData);
 
             // Create order record for free plan
@@ -406,6 +417,7 @@ class FreePlanAbuseService
                 'package_id' => $freePackage->id,
                 'amount' => 0,
                 'status' => 'completed',
+                'payment_gateway_id' => $activeGateway ? $activeGateway->id : null,
                 'transaction_id' => 'free_' . uniqid(),
                 'metadata' => ['source' => 'free_plan_assignment'],
                 'created_at' => now(),

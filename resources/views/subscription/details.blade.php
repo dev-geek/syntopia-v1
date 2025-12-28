@@ -46,6 +46,16 @@
                                         <strong>{{ $pendingDowngradeDetails['target_package'] ?? 'the selected plan' }}</strong>
                                         at the end of your current billing cycle. It will activate on <strong>{{ $pendingDowngradeDetails['scheduled_activation_date'] ?? 'N/A' }}</strong>.
                                     </p>
+                                    <div class="mb-2 notice-text-small">
+                                        <i class="fas fa-info-circle mr-2"></i>
+                                        <strong>What happens when the downgrade activates:</strong>
+                                        <ul class="mb-0 mt-2 pl-4" style="list-style-type: disc;">
+                                            <li>Payment of <strong>${{ number_format($pendingDowngradeDetails['target_package_price'] ?? 0, 2) }}</strong> will be automatically processed</li>
+                                            <li>Your subscription will be updated to <strong>{{ $pendingDowngradeDetails['target_package'] ?? 'the selected plan' }}</strong></li>
+                                            <li>A new license will be created and activated for the downgraded package</li>
+                                            <li>Your access will continue seamlessly with the new plan features</li>
+                                        </ul>
+                                    </div>
                                     <p class="mb-0 notice-text-small">
                                         <i class="fas fa-exclamation-triangle mr-2"></i>
                                         <strong>Important:</strong> Your current plan remains active until
@@ -66,28 +76,30 @@
             @if ($hasScheduledCancellation && $calculatedEndDate)
                 <div class="row">
                     <div class="col-12">
-                        <div class="alert alert-warning cancellation-notice subscription-notice">
+                        <div class="alert alert-info cancellation-notice subscription-notice">
                             <div class="d-flex align-items-center">
                                 <div class="flex-shrink-0">
-                                    <i class="fas fa-exclamation-triangle fa-2x mr-3 notice-icon"></i>
+                                    <i class="fas fa-calendar-alt fa-2x mr-3 notice-icon"></i>
                                 </div>
                                 <div class="flex-grow-1">
-                                    <h5 class="alert-heading mb-2 notice-heading">
-                                        <i class="fas fa-clock mr-2"></i>
-                                        Cancellation Scheduled
-                                    </h5>
-                                    <p class="mb-2 notice-text">
-                                        Your subscription cancellation has been scheduled and will take effect on
-                                        <strong>{{ $calculatedEndDate->format('F j, Y') }}</strong>.
-                                    </p>
-                                    <p class="mb-0 notice-text-small">
+                                    <h5 class="alert-heading mb-3 notice-heading">
                                         <i class="fas fa-info-circle mr-2"></i>
-                                        <strong>Important:</strong> Your subscription remains fully active until the end
-                                        of your current billing period. You can continue using all premium features
-                                        until {{ $calculatedEndDate->format('F j, Y') }}.
-                                        <br><small class="notice-days-remaining">({{ $calculatedEndDate->diffInDays(now()) }}
-                                            days remaining)</small>
-                                    </p>
+                                        Your Subscription Will End Soon
+                                    </h5>
+                                    <div class="mb-3">
+                                        <p class="mb-2 notice-text">
+                                            Your subscription is scheduled to end on <strong>{{ $calculatedEndDate->format('F j, Y') }}</strong>.
+                                        </p>
+                                        <div class="alert alert-light border-left-info pl-3 py-2 mb-2">
+                                            <p class="mb-1">
+                                                <i class="fas fa-check-circle text-success mr-2"></i>
+                                                <strong>Good news!</strong> You still have <strong>{{ $calculatedEndDate->diffInDays(now()) }} {{ $calculatedEndDate->diffInDays(now()) == 1 ? 'day' : 'days' }}</strong> of full access remaining.
+                                            </p>
+                                            <p class="mb-0 small text-muted">
+                                                Continue enjoying all premium features until {{ $calculatedEndDate->format('F j, Y') }}. No changes will occur before then.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -101,7 +113,7 @@
                         <div class="card-header">
 
                             <div class="float-right">
-                                @if ($hasActiveSubscription && !$hasPendingDowngrade && !$hasScheduledCancellation && (empty($hasActiveAddon) || !($hasActiveAddon ?? false)))
+                                @if ($hasActiveSubscription && (empty($hasActiveAddon) || !($hasActiveAddon ?? false)))
                                     @php
                                         $isFreePlan = $currentPackage && strtolower($currentPackage) === 'free';
                                         $isBusinessPlan = $currentPackage && strtolower($currentPackage) === 'business';
@@ -156,7 +168,7 @@
                                             <div class="info-item">
                                             <span class="info-label">Current Plan:</span>
                                             <span class="info-value">
-                                                {{ $currentPackage ?? 'No Package' }}
+                                                <strong>{{ $currentPackage ?? 'No Package' }}</strong>
                                                 @php
                                                     $isFreePlan = $currentPackage && strtolower($currentPackage) === 'free';
                                                 @endphp
@@ -166,35 +178,17 @@
                                             </span>
                                         </div>
 
-                                        @if ($hasPendingDowngrade && !empty($pendingDowngradeDetails['target_package']))
-                                            <div class="info-item">
-                                                <span class="info-label">Plan after downgrade:</span>
-                                                <span class="info-value">
-                                                    {{ $pendingDowngradeDetails['target_package'] }}
-                                                    <span class="badge badge-info ml-2"><i class="fas fa-arrow-down mr-1"></i> Downgrading</span>
-                                                </span>
-                                            </div>
-                                        @endif
-
                                         <div class="info-item">
-                                            <span class="info-label">Status:</span>
+                                            <span class="info-label">Subscription Status:</span>
                                             <span class="info-value">
                                                 @if ($hasActiveSubscription)
                                                     @if ($hasScheduledCancellation)
-                                                        <span class="badge badge-success px-3 py-2">
-                                                            <i class="fas fa-check-circle"></i> Active Until Expiration
-                                                        </span>
-                                                        <br class="d-block d-md-none">
-                                                        <span class="badge badge-warning px-3 py-2 mt-2 d-inline-block">
-                                                            <i class="fas fa-clock"></i> Cancellation Scheduled
+                                                        <span class="badge badge-warning px-3 py-2">
+                                                            <i class="fas fa-clock"></i> Active Until {{ $calculatedEndDate ? $calculatedEndDate->format('M j, Y') : 'Expiration' }} (Cancellation Scheduled)
                                                         </span>
                                                     @elseif ($hasPendingDowngrade)
-                                                        <span class="badge badge-success px-3 py-2">
-                                                            <i class="fas fa-check-circle"></i> Active Until Expiration
-                                                        </span>
-                                                        <br class="d-block d-md-none">
-                                                        <span class="badge badge-info px-3 py-2 mt-2 d-inline-block">
-                                                            <i class="fas fa-arrow-down"></i> Downgrade Scheduled
+                                                        <span class="badge badge-info px-3 py-2">
+                                                            <i class="fas fa-check-circle"></i> Active Until {{ $calculatedEndDate ? $calculatedEndDate->format('M j, Y') : 'Expiration' }} (Downgrade to {{ $pendingDowngradeDetails['target_package'] ?? 'Starter' }} Scheduled)
                                                         </span>
                                                     @else
                                                         <span class="badge badge-success px-3 py-2">
@@ -211,7 +205,7 @@
                                                     </span>
                                                 @endif
                                             </span>
-                                            </div>
+                                        </div>
                                         </div>
                                     </div>
                                 </div>
@@ -247,16 +241,11 @@
                                                     <span class="info-value">
                                                         @if ($user->userLicence->is_active)
                                                             <span class="badge badge-success px-3 py-2">
-                                                                <i class="fas fa-check-circle"></i> Active License
+                                                                <i class="fas fa-check-circle"></i> Active
                                                             </span>
                                                         @else
                                                             <span class="badge badge-warning px-3 py-2">
-                                                                <i class="fas fa-exclamation-circle"></i> Inactive License
-                                                            </span>
-                                                        @endif
-                                                        @if ($user->userLicence->is_upgrade_license)
-                                                            <span class="badge badge-info px-3 py-2 ml-2">
-                                                                <i class="fas fa-arrow-up"></i> Upgrade License
+                                                                <i class="fas fa-exclamation-circle"></i> Inactive
                                                             </span>
                                                         @endif
                                                     </span>

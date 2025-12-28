@@ -136,14 +136,10 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                 'package_name' => $paymentData['package'],
                 'payment_gateway_id' => $this->order->payment_gateway_id,
             ]),
-            'cancelUrl' => route('payments.popup-cancel', [
-                'gateway' => 'fastspring',
-                'package_name' => $paymentData['package'],
-                'payment_gateway_id' => $this->order->payment_gateway_id,
-            ]),
+            'cancelUrl' => route('subscription'),
         ];
 
-        if ($paymentData['is_upgrade'] && $this->user->subscription_id) {
+        if (($paymentData['is_upgrade'] ?? false) && $this->user->subscription_id) {
             $queryParams['subscription_id'] = $this->user->subscription_id;
         }
 
@@ -224,35 +220,81 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             ];
         }
 
-        $expiresAt = $activeLicense->expires_at;
-
-        if ($expiresAt && $expiresAt->isPast()) {
+        $targetPackage = Package::where('name', $targetPackageName)->first();
+        if (!$targetPackage) {
             return [
                 'success' => false,
-                'error'   => 'Active license already expired, cannot schedule downgrade.',
+                'error'   => 'Target package not found',
             ];
         }
 
-        if ($expiresAt) {
+        $expiresAt = $activeLicense->expires_at;
+        $isExpired = $expiresAt && $expiresAt->isPast();
+
+        if ($isExpired) {
+            $effectiveDate = now()->toDateTimeString();
+            $appliesAtPeriodEnd = false;
+        } elseif ($expiresAt) {
             $effectiveDate = $expiresAt->toDateTimeString();
+            $appliesAtPeriodEnd = true;
         } elseif ($activeLicense->activated_at) {
             try {
                 $effectiveDate = $activeLicense->activated_at->copy()->addMonth()->toDateTimeString();
             } catch (\Throwable $e) {
                 $effectiveDate = now()->addMonth()->toDateTimeString();
             }
+            $appliesAtPeriodEnd = true;
         } else {
             $effectiveDate = now()->addMonth()->toDateTimeString();
+            $appliesAtPeriodEnd = true;
         }
 
-        $appliesAtPeriodEnd = true;
+        $gatewayRecord = PaymentGateways::whereRaw('LOWER(name) = ?', [strtolower('FastSpring')])->first();
+
+        $order = Order::create([
+            'user_id' => $this->user->id,
+            'package_id' => $targetPackage->id,
+            'amount' => 0, // No immediate payment - will be updated to target_package_price when downgrade becomes active
+            'currency' => 'USD',
+            'status' => 'scheduled_downgrade',
+            'order_type' => 'downgrade',
+            'payment_gateway_id' => $gatewayRecord?->id,
+            'transaction_id' => 'FS-DOWNGRADE-' . Str::random(10),
+            'metadata' => [
+                'subscription_id' => $activeLicense->subscription_id,
+                'original_package_name' => $currentPackage->name,
+                'original_package_price' => $currentPackage->price,
+                'target_package_name' => $targetPackageName,
+                'target_package_price' => $targetPackage->price, // Price that will be automatically charged when downgrade becomes active
+                'scheduled_activation_date' => $effectiveDate,
+                'scheduled_at' => now()->toISOString(),
+            ],
+        ]);
+
+        $logMessage = $isExpired
+            ? '[FastSpringPaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
+            : '[FastSpringPaymentGateway::handleDowngrade] Downgrade scheduled successfully';
+
+        Log::info($logMessage, [
+            'user_id' => $this->user->id,
+            'subscription_id' => $activeLicense->subscription_id,
+            'order_id' => $order->id,
+            'effective_date' => $effectiveDate,
+            'is_expired' => $isExpired,
+        ]);
+
+        $message = $isExpired
+            ? 'Downgrade processed successfully. Your subscription has been updated immediately.'
+            : 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.';
 
         return [
             'success'               => true,
-            'current_package'       => $currentPackage->name,
-            'target_package'        => $targetPackageName,
-            'effective_date'        => $effectiveDate,
-            'applies_at_period_end' => $appliesAtPeriodEnd,
+            'message'                => $message,
+            'current_package'        => $currentPackage->name,
+            'target_package'         => $targetPackageName,
+            'effective_date'         => $effectiveDate,
+            'applies_at_period_end'  => $appliesAtPeriodEnd,
+            'order_id'               => $order->id,
         ];
     }
 
@@ -307,17 +349,19 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                     'package_id' => $user->package_id,
                     'amount' => 0,
                     'currency' => 'USD',
-                    'status' => 'cancellation_scheduled',
+                    'status' => 'cancelled',
                     'transaction_id' => 'FS-CANCEL-' . Str::random(10),
                     'metadata' => [
                         'subscription_id' => $subscriptionId,
-                        'cancelled_at' => now()->toISOString()
+                        'cancelled_at' => now()->toISOString(),
+                        'cancellation_scheduled' => true,
                     ]
                 ]);
 
                 return [
                     'success' => true,
                     'message' => 'Subscription cancellation scheduled successfully. Your subscription will remain active until the end of the current billing period.',
+                    'cancellation_type' => 'end_of_billing_period',
                     'order_id' => $order->id,
                     'subscription_id' => $subscriptionId,
                 ];
@@ -325,12 +369,79 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
             $responseBody = $response->body();
             $errorMessage = 'Unknown error';
+            $isSubscriptionNotFound = false;
 
             try {
                 $errorData = $response->json();
-                $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Unknown error';
+
+                // Check if the error indicates subscription not found
+                // FastSpring can return this in different formats
+                if (isset($errorData['subscriptions']) && is_array($errorData['subscriptions'])) {
+                    foreach ($errorData['subscriptions'] as $sub) {
+                        if (isset($sub['error']['subscription']) &&
+                            stripos($sub['error']['subscription'], 'not found') !== false) {
+                            $isSubscriptionNotFound = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!$isSubscriptionNotFound) {
+                    $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Unknown error';
+
+                    // Also check for "not found" in the error message itself
+                    if (is_string($errorMessage) && stripos($errorMessage, 'not found') !== false) {
+                        $isSubscriptionNotFound = true;
+                    }
+                }
             } catch (\Exception $e) {
                 $errorMessage = $responseBody ?: 'Unknown error';
+                if (stripos($errorMessage, 'not found') !== false) {
+                    $isSubscriptionNotFound = true;
+                }
+            }
+
+            // If subscription not found in FastSpring, mark it as cancelled locally
+            // This handles cases where the subscription was already cancelled/deleted in FastSpring
+            // but the local database still has the subscription_id
+            // FastSpring returns result: "success" with error: "Subscription not found" when subscription doesn't exist
+            if ($isSubscriptionNotFound) {
+                Log::info('[FastSpringPaymentGateway::cancelSubscription] Subscription not found in FastSpring (already cancelled), syncing local status', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $subscriptionId,
+                    'status' => $response->status(),
+                    'response' => $responseBody,
+                ]);
+
+                $activeLicense = $user->userLicence;
+                if ($activeLicense) {
+                    $activeLicense->update([
+                        'status' => 'cancelled_at_period_end'
+                    ]);
+                }
+
+                $order = Order::create([
+                    'user_id' => $user->id,
+                    'package_id' => $user->package_id,
+                    'amount' => 0,
+                    'currency' => 'USD',
+                    'status' => 'cancelled',
+                    'transaction_id' => 'FS-CANCEL-LOCAL-' . Str::random(10),
+                    'metadata' => [
+                        'cancellation_scheduled' => true,
+                        'subscription_id' => $subscriptionId,
+                        'cancelled_at' => now()->toISOString(),
+                        'note' => 'Subscription not found in FastSpring, cancelled locally'
+                    ]
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Subscription was already cancelled in the payment system. Your local subscription has been updated accordingly.',
+                    'cancellation_type' => 'end_of_billing_period',
+                    'order_id' => $order->id,
+                    'subscription_id' => $subscriptionId,
+                ];
             }
 
             Log::error('[FastSpringPaymentGateway::cancelSubscription] FastSpring API error', [

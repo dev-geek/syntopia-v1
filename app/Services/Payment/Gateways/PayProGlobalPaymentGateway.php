@@ -152,7 +152,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             'use-test-mode' => $this->testMode ? 'true' : 'false',
             'secret-key' => $this->webhookSecret,
             'success-url' => $successUrl,
-            'cancel-url' => route('payments.popup-cancel')
+            'cancel-url' => route('subscription')
         ];
 
         $checkoutUrl = 'https://store.payproglobal.com/checkout?' . http_build_query($checkoutParams);
@@ -220,26 +220,33 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             }
 
             $expiresAt = $activeLicense->expires_at;
-            if ($expiresAt && $expiresAt->isPast()) {
-                return ['success' => false, 'error' => 'Active license already expired, cannot schedule downgrade'];
-            }
+            $isExpired = $expiresAt && $expiresAt->isPast();
 
-            if ($expiresAt) {
+            if ($isExpired) {
+                $effectiveDate = now()->toDateTimeString();
+                $appliesAtPeriodEnd = false;
+            } elseif ($expiresAt) {
                 $effectiveDate = $expiresAt->toDateTimeString();
+                $appliesAtPeriodEnd = true;
             } elseif ($activeLicense->activated_at) {
                 try {
                     $effectiveDate = $activeLicense->activated_at->copy()->addMonth()->toDateTimeString();
                 } catch (\Throwable $e) {
                     $effectiveDate = now()->addMonth()->toDateTimeString();
                 }
+                $appliesAtPeriodEnd = true;
             } else {
                 $effectiveDate = now()->addMonth()->toDateTimeString();
+                $appliesAtPeriodEnd = true;
             }
 
+            // Create scheduled downgrade order with amount = 0
+            // Payment will be processed automatically by the gateway when the downgrade becomes active
+            // at the end of the current billing period (scheduled_activation_date)
             $order = Order::create([
                 'user_id' => $this->user->id,
                 'package_id' => $targetPackage->id,
-                'amount' => 0,
+                'amount' => 0, // No immediate payment - will be charged when downgrade becomes active
                 'currency' => 'USD',
                 'status' => 'scheduled_downgrade',
                 'order_type' => 'downgrade',
@@ -247,27 +254,38 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 'metadata' => [
                     'subscription_id' => $activeLicense->subscription_id,
                     'original_package_name' => $currentPackage->name,
+                    'original_package_price' => $currentPackage->price,
                     'target_package_name' => $targetPackageName,
+                    'target_package_price' => $targetPackage->price, // Price to charge when downgrade becomes active
                     'product_id' => $newProductId,
                     'scheduled_activation_date' => $effectiveDate,
                     'scheduled_at' => now()->toISOString(),
                 ],
             ]);
 
-            Log::info('[PayProGlobalPaymentGateway::handleDowngrade] Downgrade scheduled successfully', [
+            $logMessage = $isExpired
+                ? '[PayProGlobalPaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
+                : '[PayProGlobalPaymentGateway::handleDowngrade] Downgrade scheduled successfully';
+
+            Log::info($logMessage, [
                 'user_id' => $this->user->id,
                 'subscription_id' => $activeLicense->subscription_id,
                 'order_id' => $order->id,
                 'effective_date' => $effectiveDate,
+                'is_expired' => $isExpired,
             ]);
+
+            $message = $isExpired
+                ? 'Downgrade processed successfully. Your subscription has been updated immediately.'
+                : 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.';
 
             return [
                 'success' => true,
-                'message' => 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.',
+                'message' => $message,
                 'current_package' => $currentPackage->name,
                 'target_package' => $targetPackageName,
                 'effective_date' => $effectiveDate,
-                'applies_at_period_end' => true,
+                'applies_at_period_end' => $appliesAtPeriodEnd,
                 'order_id' => $order->id,
             ];
         } catch (\Exception $e) {
@@ -438,7 +456,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
         }
     }
 
-    public function handleCancellation(User $user, ?string $subscriptionId = null, ?int $cancellationReasonId = null, ?string $reasonText = null): array
+    public function handleCancellation(User $user, ?string $subscriptionId = null): array
     {
         $activeLicense = $user->userLicence;
 
@@ -459,9 +477,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
         }
 
         try {
-            if (!$cancellationReasonId && !$reasonText) {
-                $reasonText = 'Customer requested cancellation';
-            }
+            $reasonText = 'Customer requested cancellation';
 
             $expiresAt = $activeLicense->expires_at;
             if ($expiresAt && $expiresAt->isPast()) {
@@ -484,7 +500,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             }
 
             $activeLicense->update([
-                'status' => 'cancelled_at_period_end'
+'status' => 'cancelled_at_period_end'
             ]);
 
             $order = Order::create([
@@ -492,15 +508,15 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 'package_id' => $user->package_id,
                 'amount' => 0,
                 'currency' => 'USD',
-                'status' => 'cancellation_scheduled',
+                'status' => 'cancelled',
                 'transaction_id' => 'PPG-CANCEL-' . Str::random(10),
                 'metadata' => [
                     'subscription_id' => $subscriptionId,
-                    'cancellation_reason_id' => $cancellationReasonId,
                     'reason_text' => $reasonText,
                     'scheduled_activation_date' => $effectiveDate,
                     'scheduled_at' => now()->toISOString(),
-                    'cancelled_at' => now()->toISOString()
+                    'cancelled_at' => now()->toISOString(),
+                    'cancellation_scheduled' => true,
                 ]
             ]);
 
@@ -514,6 +530,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             return [
                 'success' => true,
                 'message' => 'Subscription cancellation scheduled successfully. Your subscription will remain active until the end of your current billing period.',
+                'cancellation_type' => 'end_of_billing_period',
                 'order_id' => $order->id,
                 'subscription_id' => $subscriptionId,
                 'effective_date' => $effectiveDate,

@@ -40,15 +40,6 @@ class SubscriptionController extends Controller
     public function showSubscriptionWithPackage(Request $request)
     {
         $packageName = $request->query('package_name');
-        $type = $request->query('type');
-
-        if ($type === 'upgrade') {
-            return $this->showSubscriptionPage('upgrade');
-        }
-
-        if ($type === 'downgrade') {
-            return $this->showSubscriptionPage('downgrade');
-        }
 
         if ($packageName) {
             $package = Package::where('name', $packageName)->first();
@@ -62,80 +53,6 @@ class SubscriptionController extends Controller
         return $this->showSubscriptionPage('new');
     }
 
-    public function upgrade(Request $request, $package = null)
-    {
-
-        if ($request->isMethod('post') && $package) {
-            $paymentController = app(PaymentController::class);
-            return $paymentController->gatewayCheckout($request, $package, $gateway);
-        }
-
-        return $this->showSubscriptionPage('upgrade');
-    }
-
-    public function downgrade(Request $request)
-    {
-        Log::info('=== SubscriptionController::downgrade called ===', [
-            'method' => $request->method(),
-            'user_id' => Auth::id(),
-            'is_post' => $request->isMethod('post'),
-            'all_data' => $request->all()
-        ]);
-
-        $user = Auth::user();
-
-        if (!$user) {
-            return redirect()->route('login')->with('error', 'Please log in to manage your subscription.');
-        }
-
-        if ($request->isMethod('post')) {
-            $targetPackageId = $request->input('package_id');
-            $targetPackage = Package::find($targetPackageId);
-
-            if (
-                !$targetPackage ||
-                !$this->subscriptionService->canDowngradeToPackage($user->package, $targetPackage)
-            ) {
-                return redirect()->route('user.subscription.details')->with('error', 'Invalid package selected for downgrade.');
-            }
-
-            if ($user->paymentGateway && $user->paymentGateway->name === 'Pay Pro Global') {
-                $paymentController = app(PaymentController::class);
-                return $paymentController->payproglobalDowngrade($request);
-            }
-
-            try {
-                $gatewayName = $user->paymentGateway->name ?? 'FastSpring';
-
-                Log::info('Processing downgrade via gateway service', [
-                    'user_id' => $user->id,
-                    'target_package' => $targetPackage->name,
-                    'gateway' => $gatewayName
-                ]);
-
-                $gatewayInstance = $this->paymentGatewayFactory
-                    ->create($gatewayName)
-                    ->setUser($user);
-
-                if (!method_exists($gatewayInstance, 'handleDowngrade')) {
-                    return redirect()->route('user.subscription.details')
-                        ->with('error', "Downgrade is not supported for gateway {$gatewayName}.");
-                }
-
-                return redirect()->route('user.subscription.details')
-                    ->with('error', 'Downgrade functionality is not available for this gateway.');
-            } catch (\Exception $e) {
-                Log::error('Failed to schedule downgrade', [
-                    'user_id' => $user->id,
-                    'target_package_id' => $targetPackageId,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-                return redirect()->route('user.subscription.details')->with('error', 'Failed to schedule downgrade: ' . $e->getMessage());
-            }
-        }
-        return $this->showSubscriptionPage('downgrade');
-    }
 
 
 
@@ -144,17 +61,31 @@ class SubscriptionController extends Controller
         $user = auth()->user();
 
         try {
-            $this->subscriptionService->cancelSubscription($user);
-            return response()->json([
-                'success' => true,
-                'message' => 'Subscription cancelled successfully'
-            ]);
+            $result = $this->subscriptionService->cancelSubscription($user);
+
+            // If it's an AJAX request, return JSON
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json($result);
+            }
+
+            // Otherwise redirect to subscription details page
+            $message = $result['message'] ?? 'Subscription cancelled successfully';
+            return redirect()->route('user.subscription.details')
+                ->with('success', $message);
         } catch (\Exception $e) {
             Log::error("Cancellation failed for user {$user->id}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage()
-            ], 400);
+            
+            // If it's an AJAX request, return JSON error
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $e->getMessage()
+                ], 400);
+            }
+
+            // Otherwise redirect back with error
+            return redirect()->back()
+                ->with('error', $e->getMessage());
         }
     }
 
@@ -215,7 +146,7 @@ class SubscriptionController extends Controller
 
         $context = $this->subscriptionService->buildSubscriptionIndexContext($user, $type, $selectedPackage);
 
-        if ($type === 'upgrade' && !$context['activeGateway']) {
+        if (!$context['activeGateway']) {
             return redirect()->route('user.dashboard')
                 ->with('error', 'No payment gateway available. Please contact support.');
         }

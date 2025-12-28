@@ -4,8 +4,8 @@
     const currentPackagePrice = parseFloat("{{ $currentPackagePrice ?? 0 }}");
     const userOriginalGateway = "{{ $userOriginalGateway ?? '' }}";
     const activeGatewaysByAdmin = @json($activeGatewaysByAdmin ?? []);
-    const isUpgrade = '{{ isset($isUpgrade) && $isUpgrade ? 'true' : 'false' }}';
-    const pageType = '{{ $pageType ?? 'new' }}';
+    const isUpgrade = 'false';
+    const pageType = 'new';
     const hasActiveSubscription = '{{ isset($hasActiveSubscription) && $hasActiveSubscription ? 'true' : 'false' }}';
     const selectedPackage = @json($selectedPackage ?? null);
     const currentPaymentGateway = "{{ $currentLoggedInUserPaymentGateway ?? '' }}";
@@ -18,7 +18,7 @@
 
     document.addEventListener("DOMContentLoaded", function() {
         // Track Facebook Pixel CompleteRegistration event for newly verified users
-        @if(session('success') && str_contains(session('success'), 'verified'))
+        @if (session('success') && str_contains(session('success'), 'verified'))
             if (typeof fbq !== 'undefined') {
                 fbq('track', 'CompleteRegistration', {
                     content_name: 'Email Verification Complete'
@@ -45,17 +45,14 @@
             hasActiveSubscription
         });
 
-        let selectedGateway = (isUpgrade === 'true' || pageType === 'downgrade') && userOriginalGateway ?
+        let selectedGateway = userOriginalGateway ?
             userOriginalGateway :
             activeGatewaysByAdmin.length > 0 ? activeGatewaysByAdmin[0] : null;
         console.log('Selected gateway:', selectedGateway);
 
-        console.log(`[${isUpgrade === 'true' ? 'UPGRADE' : pageType.toUpperCase()}] Using gateway:`,
-            selectedGateway);
+        console.log(`[SUBSCRIPTION] Using gateway:`, selectedGateway);
 
-        if (isUpgrade === 'true' || pageType === 'downgrade') {
-            setupSubscriptionUI();
-        }
+        setupSubscriptionUI();
 
         // Auto-select package if provided via URL
         if (selectedPackage) {
@@ -81,14 +78,17 @@
 
             // Validate package name
             const validPackages = ['Free', 'Starter', 'Pro', 'Business', 'Enterprise'];
-            const normalizedPackageName = packageNameFromUrl.charAt(0).toUpperCase() + packageNameFromUrl.slice(1).toLowerCase();
+            const normalizedPackageName = packageNameFromUrl.charAt(0).toUpperCase() + packageNameFromUrl.slice(
+                1).toLowerCase();
 
             console.log('Normalized package name:', normalizedPackageName);
             console.log('Valid packages:', validPackages);
 
             if (!validPackages.includes(normalizedPackageName)) {
                 console.error('Invalid package name in URL:', packageNameFromUrl);
-                showError('Invalid Package', `Package "${packageNameFromUrl}" is not valid. Available packages: ${validPackages.join(', ')}`);
+                showError('Invalid Package',
+                    `Package "${packageNameFromUrl}" is not valid. Available packages: ${validPackages.join(', ')}`
+                    );
                 return;
             }
 
@@ -96,7 +96,8 @@
             const targetButton = document.querySelector(`[data-package="${normalizedPackageName}"]`);
             if (!targetButton || targetButton.disabled || targetButton.classList.contains('disabled')) {
                 console.error('Package not available for current action:', normalizedPackageName);
-                showError('Package Not Available', `Package "${normalizedPackageName}" is not available for ${isUpgrade === 'true' ? 'upgrade' : pageType === 'downgrade' ? 'downgrade' : 'subscription'}.`);
+                showError('Package Not Available',
+                    `Package "${normalizedPackageName}" is not available for subscription.`);
                 return;
             }
 
@@ -142,11 +143,13 @@
                 // Trigger the checkout process
                 if (selectedGateway) {
                     // Show spinner for auto-popup
-                    showSpinner('Preparing payment...', `Setting up ${normalizedPackageName} plan checkout`);
+                    showSpinner('Preparing payment...',
+                        `Setting up ${normalizedPackageName} plan checkout`);
                     processCheckout(normalizedPackageName, action);
                 } else {
                     console.error('No payment gateway available for auto-popup');
-                    showError('Payment Error', 'No payment gateway is currently available. Please try again later.');
+                    showError('Payment Error',
+                        'No payment gateway is currently available. Please try again later.');
                     // Clear the flag if there's an error so user can try again
                     sessionStorage.removeItem('autoPopupTriggered');
                 }
@@ -160,7 +163,9 @@
             try {
                 // Ensure retries on reload when adon is present
                 sessionStorage.removeItem('addonAutoPopupTriggered');
-                logAddonDebug('Addon param detected on load. Reset trigger flag.', { addonFromUrl });
+                logAddonDebug('Addon param detected on load. Reset trigger flag.', {
+                    addonFromUrl
+                });
             } catch (_) {}
         }
         const addonKey = (addonFromUrl || pendingAddon || '').toLowerCase();
@@ -233,7 +238,9 @@
                     }
                     processFastSpring(productPath, 'addon');
                 } catch (e) {
-                    console.warn('Add-on checkout with specific product failed, attempting generic checkout...', e);
+                    console.warn(
+                        'Add-on checkout with specific product failed, attempting generic checkout...',
+                        e);
                     logAddonDebug('Addon checkout failed, attempting generic', {
                         error: String(e),
                         productPath
@@ -256,7 +263,9 @@
                             window.hideSpinner();
                         }
                         if (window.showError) {
-                            window.showError('Payment Error', 'Could not start add-on checkout. Please configure the add-on product in FastSpring and try again.');
+                            window.showError('Payment Error',
+                                'Could not start add-on checkout. Please configure the add-on product in FastSpring and try again.'
+                                );
                         }
                         sessionStorage.removeItem('addonAutoPopupTriggered');
                         window.isAddonCheckout = false;
@@ -282,20 +291,23 @@
                     return;
                 }
 
-                if (this.disabled || this.classList.contains('active') || this.classList.contains('disabled')) {
-                    console.warn('Button click ignored - button is disabled, active, or not available', {
-                        packageName,
-                        action,
-                        disabled: this.disabled,
-                        hasActiveClass: this.classList.contains('active'),
-                        hasDisabledClass: this.classList.contains('disabled')
-                    });
+                if (this.disabled || this.classList.contains('active') || this.classList
+                    .contains('disabled')) {
+                    console.warn(
+                        'Button click ignored - button is disabled, active, or not available', {
+                            packageName,
+                            action,
+                            disabled: this.disabled,
+                            hasActiveClass: this.classList.contains('active'),
+                            hasDisabledClass: this.classList.contains('disabled')
+                        });
                     return;
                 }
 
                 // Track Facebook Pixel InitiateCheckout event
                 if (typeof fbq !== 'undefined') {
-                    const packagePrice = parseFloat(this.closest('.card')?.querySelector('.price')?.textContent?.replace(/[^0-9.]/g, '') || '0') || 0;
+                    const packagePrice = parseFloat(this.closest('.card')?.querySelector(
+                        '.price')?.textContent?.replace(/[^0-9.]/g, '') || '0') || 0;
                     fbq('track', 'InitiateCheckout', {
                         value: packagePrice,
                         currency: 'USD',
@@ -338,13 +350,31 @@
                 selectedGateway
             });
             try {
-                if (!selectedGateway) {
-                    throw new Error('No payment gateway available');
+                // Detect if this is actually a downgrade by comparing prices
+                if (hasActiveSubscription === 'true' && currentPackage && currentPackagePrice > 0) {
+                    const targetButton = document.querySelector(`[data-package="${packageName}"]`);
+                    const targetPrice = parseFloat(targetButton?.getAttribute('data-price') || '0') || 0;
+                    if (targetPrice > 0 && targetPrice < currentPackagePrice) {
+                        action = 'downgrade';
+                    } else if (targetPrice > currentPackagePrice) {
+                        action = 'upgrade';
+                    }
                 }
-                if (action === 'upgrade' || action === 'downgrade') {
-                    hideSpinner(); // Hide spinner for confirmation dialog
-                    showConfirmation(packageName, action, selectedGateway);
+
+                // Downgrades require payment gateway - they're scheduled without payment
+                if (action === 'downgrade') {
+                    const downgradeGateway = currentPaymentGateway || userOriginalGateway || selectedGateway;
+                    if (!downgradeGateway) {
+                        throw new Error('No payment gateway available for downgrade');
+                    }
+                    // Downgrades don't require checkout - schedule directly without payment UI
+                    executeCheckout(packageName, action);
                 } else {
+                    // For upgrades and new subscriptions, gateway is required
+                    if (!selectedGateway) {
+                        throw new Error('No payment gateway available');
+                    }
+                    // Upgrades proceed immediately to checkout for instant upgrade
                     executeCheckout(packageName, action);
                 }
             } catch (error) {
@@ -361,9 +391,13 @@
                 gateway
             });
             const title = action === 'upgrade' ? 'Confirm Upgrade' : 'Confirm Downgrade';
-            const text = action === 'upgrade' ?
-                `You're about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. Your current subscription will be active only when current subscription expires.` :
-                `You're about to downgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>. The change will take effect at the end of your current billing cycle.`;
+            const text =
+                action === 'upgrade' ?
+                `You’re about to upgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>.
+       Any remaining time on your current plan will be <strong>wasted</strong>, and the new plan will start after it expires.` :
+                `You’re about to downgrade from <strong>${currentPackage}</strong> to <strong>${packageName}</strong>.
+       The downgrade will take effect at the end of your current billing cycle.`;
+
             Swal.fire({
                 title: title,
                 html: text,
@@ -396,40 +430,45 @@
                 selectedGateway
             });
 
-            // Show appropriate spinner message
-            const spinnerText = action === 'upgrade' ? 'Processing upgrade...' :
-                              action === 'downgrade' ? 'Processing downgrade...' :
-                              'Setting up payment...';
-            const spinnerSubtext = `Preparing ${packageName} plan checkout`;
-            showSpinner(spinnerText, spinnerSubtext);
-
-            let apiUrl;
-            if (action === 'upgrade') {
-                apiUrl = `/api/payments/upgrade/${packageName}`;
-            } else if (action === 'downgrade') {
-                // Use the downgrade endpoint for all gateways
-                apiUrl = `/api/payments/downgrade`;
-                console.log('=== DOWNGRADE API CALL ===', {
-                    url: apiUrl,
-                    package: packageName,
-                    gateway: selectedGateway
-                });
+            // Show appropriate spinner message based on action
+            if (action === 'downgrade') {
+                const spinnerText = 'Scheduling downgrade...';
+                const spinnerSubtext = `Scheduling your subscription downgrade to ${packageName}`;
+                showSpinner(spinnerText, spinnerSubtext);
             } else {
-                apiUrl =
-                    `/api/payments/${selectedGateway.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
+                const spinnerText = 'Setting up payment...';
+                const spinnerSubtext = `Preparing ${packageName} plan checkout`;
+                showSpinner(spinnerText, spinnerSubtext);
             }
+
+            // For downgrades, use user's current payment gateway (backend needs it to call handleDowngrade)
+            // For upgrades/new subscriptions, use selected gateway
+            let gatewayForRequest = selectedGateway;
+
+            if (action === 'downgrade') {
+                // Use user's current gateway for downgrades, fallback to selected gateway
+                // Gateway is required for downgrades (validated in processCheckout)
+                gatewayForRequest = currentPaymentGateway || userOriginalGateway || selectedGateway;
+            } else {
+                // For upgrades and new subscriptions, gateway is required
+                if (!selectedGateway) {
+                    throw new Error('No payment gateway available');
+                }
+            }
+
+            const apiUrl = `/api/payments/${gatewayForRequest.toLowerCase().replace(/\s+/g, '')}/checkout/${packageName}`;
 
             const requestBody = createRequestBody(packageName, action);
             console.log('=== FETCH REQUEST ===', {
                 url: apiUrl,
                 method: 'POST',
                 body: requestBody,
-                headers: getRequestHeaders(action === 'upgrade', action === 'downgrade')
+                headers: getRequestHeaders(false, false)
             });
 
             fetch(apiUrl, {
                     method: 'POST',
-                    headers: getRequestHeaders(action === 'upgrade', action === 'downgrade'),
+                    headers: getRequestHeaders(false, false),
                     credentials: 'same-origin',
                     body: JSON.stringify(requestBody)
                 })
@@ -457,72 +496,23 @@
                     }
 
                     if (action === 'downgrade') {
-                        // For downgrades, handle based on gateway
-                        if (selectedGateway === 'Paddle') {
-                            console.log('Executing Paddle downgrade checkout with transaction ID from response...');
-                            // Use the transaction ID from the downgrade response directly
-                            if (data.transaction_id) {
-                                openPaddleCheckout(data.transaction_id, action);
-                            } else {
-                                // Fallback to the old processPaddle method if no transaction_id
-                                processPaddle(packageName, action);
-                            }
-                        } else if (selectedGateway === 'FastSpring') {
-                            console.log('FastSpring downgrade API response:', data);
-                            // Use FastSpring builder overlay, same UX as upgrade
-                            processFastSpring(packageName, action);
-                            return;
-                        } else if (selectedGateway === 'Pay Pro Global') {
-                            console.log('PayProGlobal downgrade API response:', data);
-                            const redirectUrl = data.redirect_url || data.checkout_url;
-                            if (redirectUrl) {
-                                console.log('PayProGlobal downgrade successful, opening checkout popup:', redirectUrl);
-                                const downgradePopup = window.open(
-                                    redirectUrl,
-                                    'payproglobal_downgrade_checkout',
-                                    'width=1200,height=800,scrollbars=yes,resizable=yes'
-                                );
-
-                                if (!downgradePopup) {
-                                    showError('Popup Blocked', 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.');
-                                    return;
-                                }
-
-                                if (typeof monitorDowngradePopup === 'function') {
-                                    monitorDowngradePopup(downgradePopup);
-                                } else {
-                                    console.warn('monitorDowngradePopup function not defined, skipping popup monitoring');
-                                }
-                                return;
-                            } else {
-                                console.error('PayProGlobal downgrade successful, but no redirect_url in response:', data);
-                                throw new Error(data.error || 'PayProGlobal downgrade successful, but no redirect URL received.');
-                            }
-                        } else if (data.checkout_url) {
-                            console.log('Opening downgrade checkout URL:', data.checkout_url);
-                            const downgradePopup = window.open(
-                                data.checkout_url,
-                                'downgrade_checkout',
-                                'width=1200,height=800,scrollbars=yes,resizable=yes'
-                            );
-
-                            if (!downgradePopup) {
-                                showError('Popup Blocked', 'Please allow popups for this site and try again. You may need to click the popup blocker icon in your browser\'s address bar.');
-                                return;
-                            }
-
-                            if (typeof monitorDowngradePopup === 'function') {
-                                monitorDowngradePopup(downgradePopup);
-                            } else {
-                                console.warn('monitorDowngradePopup function not defined, skipping popup monitoring');
-                            }
-                        } else {
-                            throw new Error('No valid checkout method provided');
-                        }
+                        // Downgrades are scheduled without payment - just show success message
+                        hideSpinner();
+                        const effectiveDate = data.effective_date ? new Date(data.effective_date)
+                            .toLocaleDateString() : 'the end of your billing period';
+                        showSuccess(
+                            'Downgrade Scheduled',
+                            data.message ||
+                            `Your subscription will downgrade to ${packageName} at ${effectiveDate}. No payment is required now.`
+                        ).then(() => {
+                            window.location.href = '/user/subscription-details';
+                        });
+                        return;
                     } else if (selectedGateway === 'FastSpring') {
                         processFastSpring(packageName, action);
                     } else if (selectedGateway === 'Paddle') {
-                        console.log('Executing Paddle checkout with transaction ID from upgrade response...');
+                        console.log(
+                            'Executing Paddle checkout with transaction ID from upgrade response...');
                         // Use the transaction ID from the upgrade response directly
                         if (data.transaction_id) {
                             openPaddleCheckout(data.transaction_id, action);
@@ -580,8 +570,14 @@
                     const uid = eventData.data?.customer?.id || loggedInUserId;
 
                     if (email && uid && typeof fpr !== 'undefined') {
-                        console.log('Tracking FirstPromoter referral:', { email, uid });
-                        fpr("referral", { email, uid });
+                        console.log('Tracking FirstPromoter referral:', {
+                            email,
+                            uid
+                        });
+                        fpr("referral", {
+                            email,
+                            uid
+                        });
                     }
                 }
 
@@ -702,12 +698,14 @@
 
                     // Handle downgrade action specifically
                     if (action === 'downgrade') {
-                        console.log('PayProGlobal downgrade API response:', data); // Log full data for downgrade
+                        console.log('PayProGlobal downgrade API response:',
+                        data); // Log full data for downgrade
                         const redirectUrl = data.redirect_url || data.checkout_url;
                         if (redirectUrl) {
                             console.log('PayProGlobal downgrade redirecting to:', redirectUrl);
                             hideSpinner();
-                            showSuccess(data.message || 'Downgrade Successful', 'Your plan downgrade has been scheduled.').then(() => {
+                            showSuccess(data.message || 'Downgrade Successful',
+                                'Your plan downgrade has been scheduled.').then(() => {
                                 window.location.href = redirectUrl;
                             });
                             return; // Exit after handling downgrade
@@ -741,7 +739,8 @@
                     sessionStorage.setItem('payProGlobalAction', action);
 
                     // Store success URL for fallback redirect if PayPro Global redirects to marketplace
-                    const successUrl = `/payments/success?gateway=payproglobal&user_id=${userId}&package=${packageName}&popup=true&pending_order_id=${data.pending_order_id}&action=${action}`;
+                    const successUrl =
+                        `/payments/success?gateway=payproglobal&user_id=${userId}&package=${packageName}&popup=true&pending_order_id=${data.pending_order_id}&action=${action}`;
                     sessionStorage.setItem('payProGlobalSuccessUrl', successUrl);
 
                     // Always open PayProGlobal checkout in the same tab
@@ -770,9 +769,11 @@
             // Determine cancellation behavior based on payment gateway
             let cancellationInfo = '';
             if (currentPaymentGateway === 'fastspring' || currentPaymentGateway === 'paddle') {
-                cancellationInfo = '<br><br><small class="text-muted">Your subscription will remain active until the end of your current billing period.</small>';
+                cancellationInfo =
+                    '<br><br><small class="text-muted">Your subscription will remain active until the end of your current billing period.</small>';
             } else if (currentPaymentGateway === 'payproglobal') {
-                cancellationInfo = '<br><br><small class="text-muted">Your subscription will be cancelled immediately.</small>';
+                cancellationInfo =
+                    '<br><br><small class="text-muted">Your subscription will be cancelled immediately.</small>';
             }
 
             Swal.fire({
@@ -786,7 +787,8 @@
             }).then(result => {
                 if (result.isConfirmed) {
                     // Show spinner for cancellation
-                    showSpinner('Cancelling subscription...', 'Please wait while we process your cancellation');
+                    showSpinner('Cancelling subscription...',
+                        'Please wait while we process your cancellation');
 
                     fetch('/payments/cancel-subscription', {
                             method: 'POST',
@@ -800,14 +802,18 @@
                                 // Handle different cancellation types with appropriate messages
                                 if (data.cancellation_type === 'end_of_billing_period') {
                                     showInfo('Cancellation Scheduled',
-                                        data.message || 'Your subscription cancellation has been scheduled. You will continue to have access until the end of your current billing period.').then(() => {
-                                            window.location.href = '/user/dashboard';
-                                        });
+                                        data.message ||
+                                        'Your subscription cancellation has been scheduled. You will continue to have access until the end of your current billing period.'
+                                        ).then(() => {
+                                        window.location.href = '/user/subscription-details';
+                                    });
                                 } else {
-                                    // Immediate cancellation
+                                    // Immediate cancellation or already cancelled
                                     showSuccess('Subscription Cancelled',
-                                        data.message || 'Your subscription has been cancelled successfully.').then(() => {
-                                            window.location.href = '/user/dashboard';
+                                            data.message ||
+                                            'Your subscription has been cancelled successfully.')
+                                        .then(() => {
+                                            window.location.href = '/user/subscription-details';
                                         });
                                 }
                             } else {
@@ -838,9 +844,11 @@
                     packageElement.classList.add('disabled-package');
                     // Keep the existing text from the server-side rendering
                 } else if (action === 'upgrade') {
-                    button.innerHTML = '<span class="upgrade-text">Upgrade to ' + packageName + '</span>';
+                    button.innerHTML = '<span class="upgrade-text">Upgrade to ' + packageName +
+                        '</span>';
                 } else if (action === 'downgrade') {
-                    button.innerHTML = '<span class="downgrade-text">Downgrade to ' + packageName + '</span>';
+                    button.innerHTML = '<span class="downgrade-text">Downgrade to ' + packageName +
+                        '</span>';
                 }
             });
         }
@@ -893,7 +901,10 @@
             };
 
             if (action === 'downgrade') {
-                return { package: packageName };
+                return {
+                    package: packageName,
+                    is_downgrade: true
+                };
             }
 
             if (fpTid) {
@@ -912,7 +923,11 @@
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                     },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ message, context, level })
+                    body: JSON.stringify({
+                        message,
+                        context,
+                        level
+                    })
                 }).catch(() => {});
             } catch (_) {}
         }
@@ -921,7 +936,8 @@
             if (data.message && data.message.includes('Free plan activated successfully')) {
                 console.log('Free plan activated successfully, redirecting...');
                 hideSpinner();
-                showSuccess('Free Plan Activated', data.message || 'Your free plan has been activated successfully!').then(() => {
+                showSuccess('Free Plan Activated', data.message ||
+                    'Your free plan has been activated successfully!').then(() => {
                     window.location.href = '/user/subscription-details';
                 });
                 return true;
@@ -970,14 +986,17 @@
 
         // Spinner functions - using universal spinner component
         function showSpinner(text = 'Loading...', subtext = 'Please wait while we prepare your payment') {
-            console.log('Showing spinner:', { text, subtext });
+            console.log('Showing spinner:', {
+                text,
+                subtext
+            });
             const spinnerOverlay = document.getElementById('spinnerOverlay');
             const spinnerText = document.getElementById('spinnerText');
 
             // Use subtext if provided and different from default, otherwise use text
-            const message = subtext && subtext !== 'Please wait while we prepare your payment'
-                ? subtext
-                : text;
+            const message = subtext && subtext !== 'Please wait while we prepare your payment' ?
+                subtext :
+                text;
 
             if (spinnerText) spinnerText.textContent = message;
             if (spinnerOverlay) {
@@ -1076,15 +1095,9 @@
         });
     }
 
-    // Note: injectPayProGlobalSuccessHandler is deprecated - cannot inject scripts into cross-origin popups due to CORS
-    // Instead, we rely on:
-    // 1. PayProGlobal redirecting to our thank you handler URL (configured in PaymentController)
-    // 2. postMessage API if PayProGlobal supports it
-    // 3. URL monitoring in monitorPayProGlobalPopup function
     function injectPayProGlobalSuccessHandler(popup, userId, packageName) {
-        console.warn('injectPayProGlobalSuccessHandler: Cannot inject scripts into cross-origin popups. Using postMessage and URL monitoring instead.');
-        // This function is kept for backwards compatibility but does nothing
-        // Cross-origin script injection is blocked by browser security
+        console.warn(
+            'injectPayProGlobalSuccessHandler: Cannot inject scripts into cross-origin popups. Using postMessage and URL monitoring instead.'
+            );
     }
 </script>
-

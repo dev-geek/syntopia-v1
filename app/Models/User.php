@@ -140,14 +140,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasScheduledCancellation(): bool
     {
         return $this->orders()
-            ->where('status', 'cancellation_scheduled')
+            ->where('status', 'cancelled')
+            ->whereJsonContains('metadata->cancellation_scheduled', true)
             ->exists();
     }
 
     public function getCancellationInfo(): ?array
     {
         $cancellationOrder = $this->orders()
-            ->where('status', 'cancellation_scheduled')
+            ->where('status', 'cancelled')
+            ->whereJsonContains('metadata->cancellation_scheduled', true)
             ->latest('created_at')
             ->first();
 

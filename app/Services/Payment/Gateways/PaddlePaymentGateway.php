@@ -125,11 +125,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                 'package_name' => $paymentData['package'],
                 'payment_gateway_id' => $this->order->payment_gateway_id,
             ]),
-            'cancelUrl' => route('payments.popup-cancel', [
-                'gateway' => 'paddle',
-                'package_name' => $paymentData['package'],
-                'payment_gateway_id' => $this->order->payment_gateway_id,
-            ]),
+            'cancelUrl' => route('subscription'),
         ];
 
         if ($paymentData['is_upgrade'] && $this->user->subscription_id) {
@@ -196,29 +192,36 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
             $nextBilledAt = $subscription['data']['next_billed_at'] ?? null;
             $expiresAt = $activeLicense->expires_at;
+            $isExpired = $expiresAt && $expiresAt->isPast();
 
-            if ($expiresAt && $expiresAt->isPast()) {
-                return ['success' => false, 'error' => 'Active license already expired, cannot schedule downgrade'];
-            }
-
-            if ($nextBilledAt) {
+            if ($isExpired) {
+                $effectiveDate = now();
+                $appliesAtPeriodEnd = false;
+            } elseif ($nextBilledAt) {
                 $effectiveDate = \Carbon\Carbon::parse($nextBilledAt);
+                $appliesAtPeriodEnd = true;
             } elseif ($expiresAt) {
                 $effectiveDate = $expiresAt;
+                $appliesAtPeriodEnd = true;
             } elseif ($activeLicense->activated_at) {
                 try {
                     $effectiveDate = $activeLicense->activated_at->copy()->addMonth();
                 } catch (\Throwable $e) {
                     $effectiveDate = now()->addMonth();
                 }
+                $appliesAtPeriodEnd = true;
             } else {
                 $effectiveDate = now()->addMonth();
+                $appliesAtPeriodEnd = true;
             }
 
+            // Create scheduled downgrade order with amount = 0
+            // Payment will be processed automatically by the gateway when the downgrade becomes active
+            // at the end of the current billing period (scheduled_activation_date)
             $order = Order::create([
                 'user_id' => $this->user->id,
                 'package_id' => $targetPackage->id,
-                'amount' => 0,
+                'amount' => 0, // No immediate payment - will be charged when downgrade becomes active
                 'currency' => 'USD',
                 'status' => 'scheduled_downgrade',
                 'order_type' => 'downgrade',
@@ -226,26 +229,37 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                 'metadata' => [
                     'subscription_id' => $subscriptionId,
                     'original_package_name' => $currentPackage->name,
+                    'original_package_price' => $currentPackage->price,
                     'target_package_name' => $targetPackageName,
+                    'target_package_price' => $targetPackage->price, // Price to charge when downgrade becomes active
                     'scheduled_activation_date' => $effectiveDate->toDateTimeString(),
                     'scheduled_at' => now()->toISOString(),
                 ],
             ]);
 
-            Log::info('[PaddlePaymentGateway::handleDowngrade] Downgrade scheduled successfully', [
+            $logMessage = $isExpired
+                ? '[PaddlePaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
+                : '[PaddlePaymentGateway::handleDowngrade] Downgrade scheduled successfully';
+
+            Log::info($logMessage, [
                 'user_id' => $this->user->id,
                 'subscription_id' => $subscriptionId,
                 'order_id' => $order->id,
                 'effective_date' => $effectiveDate->toDateTimeString(),
+                'is_expired' => $isExpired,
             ]);
+
+            $message = $isExpired
+                ? 'Downgrade processed successfully. Your subscription has been updated immediately.'
+                : 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.';
 
             return [
                 'success' => true,
-                'message' => 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.',
+                'message' => $message,
                 'current_package' => $currentPackage->name,
                 'target_package' => $targetPackageName,
                 'effective_date' => $effectiveDate->toDateTimeString(),
-                'applies_at_period_end' => true,
+                'applies_at_period_end' => $appliesAtPeriodEnd,
                 'order_id' => $order->id,
             ];
         } catch (\Exception $e) {
@@ -428,7 +442,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                     'package_id' => $user->package_id,
                     'amount' => 0,
                     'currency' => 'USD',
-                    'status' => $cancelImmediately ? 'cancelled' : 'cancellation_scheduled',
+                    'status' => 'cancelled',
                     'transaction_id' => 'PADDLE-CANCEL-' . Str::random(10),
                     'metadata' => [
                         'subscription_id' => $subscriptionId,
@@ -439,6 +453,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                         'next_billed_at' => $nextBilledAt,
                         'cancel_immediately' => $cancelImmediately,
                         'cancelled_at_timestamp' => now()->toISOString(),
+                        'cancellation_scheduled' => !$cancelImmediately,
                     ]
                 ]);
 
@@ -449,6 +464,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                 return [
                     'success' => true,
                     'message' => $message,
+                    'cancellation_type' => $cancelImmediately ? 'immediate' : 'end_of_billing_period',
                     'order_id' => $order->id,
                     'subscription_id' => $subscriptionId,
                     'canceled_at' => $canceledAt,

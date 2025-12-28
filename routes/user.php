@@ -40,8 +40,6 @@ Route::middleware(['auth', 'verified.custom', 'role:User'])->group(function () {
 
     // Subscription routes
     Route::match(['get', 'post'], '/user/subscription-details', [SubscriptionController::class, 'subscriptionDetails'])->name('user.subscription.details');
-    Route::get('/subscription/upgrade', [SubscriptionController::class, 'upgrade'])->name('subscription.upgrade');
-    Route::get('/subscription/downgrade', [SubscriptionController::class, 'downgrade'])->name('subscription.downgrade');
 
     // Orders
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
@@ -51,7 +49,7 @@ Route::middleware(['auth', 'verified.custom', 'role:User'])->group(function () {
     Route::post('/software/token', [SoftwareAccessController::class, 'generateAccessToken'])->name('software.token');
 
     // Subscription cancellation
-    Route::post('/payments/cancel-subscription', [PaymentController::class, 'cancelSubscription'])
+    Route::post('/payments/cancel-subscription', [SubscriptionController::class, 'cancel'])
         ->name('payments.cancel-subscription');
 });
 
@@ -71,42 +69,7 @@ Route::prefix('api')->middleware(['auth:sanctum', 'throttle:60,1', 'role:User'])
         Route::post('/{gateway}/checkout/{package}', [PaymentController::class, 'gatewayCheckout'])
             ->name('gateway.checkout')
             ->middleware('throttle:10,1');
-
-        // Route::post('/payproglobal/checkout/{package}', [PaymentController::class, 'payProGlobalCheckout'])
-        //     ->name('payproglobal.checkout')
-        //     ->middleware('throttle:10,1');
-
-        // Route::get('/verify-payproglobal/{paymentReference}', [PaymentController::class, 'verifyPayProGlobalPaymentStatus'])
-        //     ->name('verify-payproglobal');
-
-        Route::post('/upgrade', [PaymentController::class, 'upgradeSubscription'])
-            ->name('upgrade')
-            ->middleware('throttle:10,1');
-
-        Route::post('/upgrade/{package}', [PaymentController::class, 'upgradeToPackage'])
-            ->name('upgrade.package')
-            ->middleware('throttle:10,1');
-
-        Route::post('/downgrade', [PaymentController::class, 'downgradeSubscription'])
-            ->name('downgrade')
-            ->middleware('throttle:10,1');
-
-        Route::post('/cancel', [PaymentController::class, 'cancelSubscription'])
-            ->name('api.cancel-subscription')
-            ->middleware('throttle:10,1');
-
-        Route::get('/paddle/success', [PaymentController::class, 'paddleSuccess'])->name('paddle.success');
-        Route::get('/verify-order/{transactionId}', [PaymentController::class, 'verifyOrder'])->name('verify-order');
-        Route::get('/payproglobal/latest-order', [PaymentController::class, 'getLatestPayProGlobalOrder'])
-            ->name('payproglobal.latest-order');
-
-        // Test endpoint for debugging
-        Route::get('/test-paddle-config', [PaymentController::class, 'testPaddleConfiguration'])
-            ->name('test.paddle-config');
     });
-
-    // Orders
-    Route::get('/orders', [PaymentController::class, 'getOrdersList'])->name('api.orders.index');
 
     // License management
     Route::prefix('licenses')->name('licenses.')->group(function () {

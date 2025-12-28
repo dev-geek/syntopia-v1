@@ -40,6 +40,21 @@ class PaymentService
             throw new \RuntimeException('User not authenticated');
         }
 
+        $isDowngrade = !empty($paymentData['is_downgrade']) || $this->isDowngrade($paymentData);
+
+        if ($isDowngrade) {
+            // Cancel any scheduled cancellation when user schedules a downgrade
+            $this->cancelScheduledCancellation($this->user, 'downgrade');
+
+            $gateway = $this->gatewayFactory->create($gatewayName)->setUser($this->user);
+
+            if (!method_exists($gateway, 'handleDowngrade')) {
+                throw new \RuntimeException("Downgrade is not supported for gateway {$gatewayName}");
+            }
+
+            return $gateway->handleDowngrade($paymentData, $returnRedirect);
+        }
+
         if (!isset($this->order) && !(isset($paymentData['order']) && $paymentData['order'] instanceof Order)) {
             $packageName = $paymentData['package'] ?? null;
 
@@ -62,6 +77,9 @@ class PaymentService
                 $gatewayName = 'FastSpring';
             }
 
+            $isUpgrade = $this->isUpgrade($paymentData);
+            $paymentData['is_upgrade'] = $isUpgrade;
+
             $gatewayRecord = PaymentGateways::whereRaw('LOWER(name) = ?', [strtolower($gatewayName)])->first();
 
             $this->order = Order::create([
@@ -71,13 +89,17 @@ class PaymentService
                 'currency'           => $package->currency ?? 'USD',
                 'payment_gateway_id' => $gatewayRecord?->id,
                 'status'             => 'pending',
-                'order_type'         => !empty($paymentData['is_upgrade']) ? 'upgrade' : 'new',
+                'order_type'         => $isUpgrade ? 'upgrade' : 'new',
                 'transaction_id'     => strtoupper($gatewayName) . '-PENDING-' . Str::uuid(),
             ]);
 
             $paymentData['order'] = $this->order;
         } elseif (!isset($this->order) && isset($paymentData['order']) && $paymentData['order'] instanceof Order) {
             $this->order = $paymentData['order'];
+        }
+
+        if (!isset($paymentData['is_upgrade'])) {
+            $paymentData['is_upgrade'] = $this->isUpgrade($paymentData);
         }
 
         $gateway = $this->gatewayFactory->create($gatewayName)
@@ -87,16 +109,56 @@ class PaymentService
         return $gateway->processPayment($paymentData, $returnRedirect);
     }
 
+    private function isDowngrade(array $paymentData): bool
+    {
+        if (!isset($paymentData['package']) || !$this->user || !$this->user->package) {
+            return false;
+        }
+
+        $currentPackage = $this->user->package;
+        $targetPackageName = $paymentData['package'];
+        $targetPackage = Package::whereRaw('LOWER(name) = ?', [strtolower($targetPackageName)])->first();
+
+        if (!$targetPackage) {
+            return false;
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+        $targetPrice = $targetPackage->price ?? 0;
+
+        return $targetPrice < $currentPrice;
+    }
+
+    private function isUpgrade(array $paymentData): bool
+    {
+        if (!isset($paymentData['package']) || !$this->user || !$this->user->package) {
+            return false;
+        }
+
+        $currentPackage = $this->user->package;
+        $targetPackageName = $paymentData['package'];
+        $targetPackage = Package::whereRaw('LOWER(name) = ?', [strtolower($targetPackageName)])->first();
+
+        if (!$targetPackage) {
+            return false;
+        }
+
+        $currentPrice = $currentPackage->price ?? 0;
+        $targetPrice = $targetPackage->price ?? 0;
+
+        return $targetPrice > $currentPrice;
+    }
+
     public function detectGatewayFromUser(User $user, ?string $subscriptionId = null): ?PaymentGateways
     {
-        if ($user->paymentGateway && $user->paymentGateway->is_active) {
+        if ($user->paymentGateway) {
             return $user->paymentGateway;
         }
 
         if ($subscriptionId) {
             $license = UserLicence::where('subscription_id', $subscriptionId)->first();
 
-            if ($license && $license->paymentGateway && $license->paymentGateway->is_active) {
+            if ($license && $license->paymentGateway) {
                 return $license->paymentGateway;
             }
         }
@@ -140,41 +202,93 @@ class PaymentService
             $currentPrice = $currentPackage?->price ?? 0;
             $newPrice = $package->price ?? 0;
             $isUpgrade = $newPrice > $currentPrice;
+            $isDowngrade = $newPrice < $currentPrice && $currentPrice > 0;
 
-            $order = Order::query()
+            if ($isUpgrade || $isDowngrade) {
+                $this->cancelScheduledCancellation($user, $isUpgrade ? 'upgrade' : 'downgrade');
+            }
+
+            $scheduledDowngradeOrder = Order::query()
                 ->where('user_id', $user->id)
                 ->where('package_id', $package->id)
+                ->where('status', 'scheduled_downgrade')
                 ->when($gatewayRecord, fn ($q) => $q->where('payment_gateway_id', $gatewayRecord->id))
-                ->where('status', 'pending')
                 ->latest('created_at')
                 ->first();
 
-            if ($order) {
-                $order->update([
+            if ($scheduledDowngradeOrder && $isDowngrade) {
+                $targetPackagePrice = $scheduledDowngradeOrder->metadata['target_package_price'] ?? $package->price;
+
+                $scheduledDowngradeOrder->update([
                     'status'         => 'completed',
+                    'amount'          => $targetPackagePrice, // Update from 0 to actual charged amount
+                    'transaction_id'  => $transactionId,
+                    'completed_at'    => now(),
+                    'metadata'        => array_merge($scheduledDowngradeOrder->metadata ?? [], [
+                        'activated_at' => now()->toISOString(),
+                        'payment_processed_at' => now()->toISOString(),
+                        'gateway' => $gatewayRecord?->name,
+                        'raw_payload' => $payload,
+                    ]),
+                ]);
+
+                $order = $scheduledDowngradeOrder;
+
+                Log::info('[PaymentService] Scheduled downgrade order activated and payment processed', [
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'package' => $package->name,
+                    'amount_charged' => $targetPackagePrice,
                     'transaction_id' => $transactionId,
                 ]);
             } else {
-                $order = Order::create([
-                    'user_id'            => $user->id,
-                    'package_id'         => $package->id,
-                    'amount'             => $package->price,
-                    'currency'           => $package->currency ?? 'USD',
-                    'payment_gateway_id' => $gatewayRecord?->id,
-                    'status'             => 'completed',
-                    'order_type'         => $isUpgrade ? 'upgrade' : 'new',
-                    'transaction_id'     => $transactionId,
-                    'metadata'           => [
-                        'source'      => 'gateway_success_callback',
-                        'gateway'     => $gatewayRecord?->name,
-                        'raw_payload' => $payload,
-                    ],
+                // Regular order processing (new subscription or upgrade)
+                $order = Order::query()
+                    ->where('user_id', $user->id)
+                    ->where('package_id', $package->id)
+                    ->when($gatewayRecord, fn ($q) => $q->where('payment_gateway_id', $gatewayRecord->id))
+                    ->where('status', 'pending')
+                    ->latest('created_at')
+                    ->first();
+
+                if ($order) {
+                    $order->update([
+                        'status'         => 'completed',
+                        'transaction_id' => $transactionId,
+                    ]);
+                } else {
+                    $order = Order::create([
+                        'user_id'            => $user->id,
+                        'package_id'         => $package->id,
+                        'amount'             => $package->price,
+                        'currency'           => $package->currency ?? 'USD',
+                        'payment_gateway_id' => $gatewayRecord?->id,
+                        'status'             => 'completed',
+                        'order_type'         => $isUpgrade ? 'upgrade' : 'new',
+                        'transaction_id'     => $transactionId,
+                        'metadata'           => [
+                            'source'      => 'gateway_success_callback',
+                            'gateway'     => $gatewayRecord?->name,
+                            'raw_payload' => $payload,
+                        ],
+                    ]);
+                }
+            }
+
+            $paymentGatewayId = $gatewayRecord?->id ?? $user->payment_gateway_id;
+
+            if (!$user->payment_gateway_id && $gatewayRecord) {
+                $paymentGatewayId = $gatewayRecord->id;
+                Log::info('[PaymentService::processSuccessCallback] Setting user payment gateway on first payment', [
+                    'user_id' => $user->id,
+                    'gateway_id' => $gatewayRecord->id,
+                    'gateway_name' => $gatewayRecord->name,
                 ]);
             }
 
             $user->update([
                 'package_id'         => $package->id,
-                'payment_gateway_id' => $gatewayRecord?->id ?? $user->payment_gateway_id,
+                'payment_gateway_id' => $paymentGatewayId,
                 'is_subscribed'      => true,
             ]);
 
@@ -193,9 +307,10 @@ class PaymentService
                         'package_id'    => $package->id,
                         'gateway_id'    => $gatewayRecord?->id,
                         'transaction_id'=> $transactionId,
+                        'tenant_id'     => $user->tenant_id
                     ]);
 
-                    throw new \RuntimeException('license_api_failed');
+                    throw new \RuntimeException('THIRD_PARTY_API_ERROR');
                 }
             } catch (\Throwable $e) {
                 Log::error('Exception while creating license after payment success', [
@@ -204,7 +319,12 @@ class PaymentService
                     'gateway_id'    => $gatewayRecord?->id,
                     'transaction_id'=> $transactionId,
                     'error'         => $e->getMessage(),
+                    'trace'         => $e->getTraceAsString()
                 ]);
+
+                if (str_contains($e->getMessage(), 'THIRD_PARTY_API_ERROR')) {
+                    throw new \RuntimeException('THIRD_PARTY_API_ERROR');
+                }
 
                 throw new \RuntimeException('license_api_failed');
             }
@@ -222,12 +342,15 @@ class PaymentService
 
     public function createFreePlanOrder(User $user, Package $package): Order
     {
+        $paymentGatewayId = $user->payment_gateway_id;
+
         return Order::create([
             'user_id' => $user->id,
             'package_id' => $package->id,
             'amount' => 0,
             'currency' => 'USD',
             'status' => 'completed',
+            'payment_gateway_id' => $paymentGatewayId,
             'transaction_id' => 'FREE-' . Str::random(10),
             'metadata' => [
                 'source' => 'free_plan_immediate_assignment',
@@ -335,11 +458,99 @@ class PaymentService
     }
 
     // handle package cancellation
+    /**
+     * Cancel any scheduled cancellation orders for a user
+     * Used when user upgrades/downgrades to override scheduled cancellation
+     *
+     * @param User $user
+     * @param string $reason Reason for cancelling the scheduled cancellation (e.g., 'upgrade', 'downgrade')
+     * @return void
+     */
+    public function cancelScheduledCancellation(User $user, string $reason = 'subscription_change'): void
+    {
+        $scheduledCancellationOrder = Order::where('user_id', $user->id)
+            ->where('status', 'cancelled')
+            ->whereJsonContains('metadata->cancellation_scheduled', true)
+            ->latest('created_at')
+            ->first();
+
+        if ($scheduledCancellationOrder) {
+            Log::info('[PaymentService::cancelScheduledCancellation] Found scheduled cancellation, cancelling it', [
+                'user_id' => $user->id,
+                'cancellation_order_id' => $scheduledCancellationOrder->id,
+                'reason' => $reason,
+            ]);
+
+            $scheduledCancellationOrder->update([
+                'metadata' => array_merge($scheduledCancellationOrder->metadata ?? [], [
+                    'cancelled_reason' => "User {$reason} subscription",
+                    'cancelled_at' => now()->toISOString(),
+                    'cancelled_by' => $reason,
+                    'overwritten_at' => now()->toISOString(),
+                    'cancellation_scheduled' => false, // Mark as no longer scheduled
+                ]),
+            ]);
+
+            // Update license status if it was set to cancelled_at_period_end
+            $activeLicense = $user->userLicence;
+            if ($activeLicense && $activeLicense->status === 'cancelled_at_period_end') {
+                $activeLicense->update([
+                    'status' => 'active',
+                ]);
+
+                Log::info('[PaymentService::cancelScheduledCancellation] License status updated from cancelled_at_period_end to active', [
+                    'user_id' => $user->id,
+                    'license_id' => $activeLicense->id,
+                ]);
+            }
+
+            Log::info('[PaymentService::cancelScheduledCancellation] Scheduled cancellation cancelled successfully', [
+                'user_id' => $user->id,
+                'cancellation_order_id' => $scheduledCancellationOrder->id,
+            ]);
+        }
+    }
+
     public function handleSubscriptionCancellation(User $user): array
     {
         Log::info('[PaymentService::handleSubscriptionCancellation] Starting cancellation', [
             'user_id' => $user->id,
         ]);
+
+        // Check for scheduled downgrade and cancel it immediately
+        $scheduledDowngradeOrder = Order::with('package')
+            ->where('user_id', $user->id)
+            ->where('order_type', 'downgrade')
+            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
+            ->latest('created_at')
+            ->first();
+
+        if ($scheduledDowngradeOrder) {
+            $targetPackageName = $scheduledDowngradeOrder->package->name ?? 'Unknown';
+
+            Log::info('[PaymentService::handleSubscriptionCancellation] Found scheduled downgrade, cancelling it immediately', [
+                'user_id' => $user->id,
+                'downgrade_order_id' => $scheduledDowngradeOrder->id,
+                'target_package' => $targetPackageName,
+            ]);
+
+            // Cancel the scheduled downgrade by updating its status to cancelled
+            $scheduledDowngradeOrder->update([
+                'status' => 'cancelled',
+                'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
+                    'cancelled_reason' => 'User requested subscription cancellation',
+                    'cancelled_at' => now()->toISOString(),
+                    'cancelled_by' => 'subscription_cancellation',
+                    'original_status' => $scheduledDowngradeOrder->status,
+                ]),
+            ]);
+
+            Log::info('[PaymentService::handleSubscriptionCancellation] Scheduled downgrade cancelled successfully', [
+                'user_id' => $user->id,
+                'downgrade_order_id' => $scheduledDowngradeOrder->id,
+                'target_package' => $targetPackageName,
+            ]);
+        }
 
         $activeLicense = $user->userLicence;
 
@@ -398,6 +609,146 @@ class PaymentService
         ]);
 
         return $gateway->handleCancellation($user, $subscriptionId);
+    }
+
+    public function handlePayProGlobalAuthToken(string $authToken, $request = null): ?\App\Models\User
+    {
+        $userId = \Illuminate\Support\Facades\Cache::get("paypro_auth_token_{$authToken}");
+        if (!$userId) {
+            return null;
+        }
+
+        $user = \App\Models\User::find($userId);
+        if ($user && method_exists($user, 'hasRole') && $user->hasRole('User')) {
+            \Illuminate\Support\Facades\Auth::guard('web')->login($user, true);
+            if ($request && method_exists($request, 'session')) {
+                $request->session()->save();
+            }
+            \Illuminate\Support\Facades\Log::info('[PaymentService] User authenticated via auth token', [
+                'user_id' => $user->id,
+                'auth_token' => $authToken
+            ]);
+            \Illuminate\Support\Facades\Cache::forget("paypro_auth_token_{$authToken}");
+            return $user;
+        }
+
+        return null;
+    }
+
+    public function extractGatewayFromRequest(array $requestData, ?string $successUrl = null): ?string
+    {
+        $gateway = $requestData['gateway'] ?? $requestData['gateway'] ?? null;
+
+        if (empty($gateway) && $successUrl) {
+            $queryString = parse_url($successUrl, PHP_URL_QUERY);
+            if ($queryString) {
+                parse_str($queryString, $queryParams);
+                $gateway = $queryParams['gateway'] ?? null;
+            }
+        }
+
+        return $gateway;
+    }
+
+    public function prepareSuccessCallbackPayload(array $requestData, array $queryData): array
+    {
+        return array_merge(
+            $requestData,
+            $queryData,
+            ['transaction_id' => $queryData['transaction_id'] ?? $requestData['transaction_id'] ?? null]
+        );
+    }
+
+    public function handleSuccessResponse(array $result, string $gateway): \Illuminate\Http\RedirectResponse
+    {
+        if (!$result['success']) {
+            return redirect()->route('subscription')->with('error', $result['error'] ?? 'Payment processing failed');
+        }
+
+        if (isset($result['already_completed'])) {
+            if (!\Illuminate\Support\Facades\Auth::check()) {
+                return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your dashboard.');
+            }
+            return redirect()->route('user.dashboard')->with('success', 'Subscription active');
+        }
+
+        if (!\Illuminate\Support\Facades\Auth::check()) {
+            return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your dashboard.');
+        }
+
+        $message = $result['is_upgrade']
+            ? 'Subscription upgraded successfully!'
+            : 'Payment successful! Your subscription is now active.';
+
+        return redirect()->route('user.dashboard')->with('success', $message);
+    }
+
+    public function getHttpStatusCode(string $errorMessage): int
+    {
+        return match(true) {
+            str_contains($errorMessage, 'not authenticated') => 401,
+            str_contains($errorMessage, 'not found') => 400,
+            str_contains($errorMessage, 'restricted') => 403,
+            str_contains($errorMessage, 'unavailable') => 409,
+            default => 500
+        };
+    }
+
+    public function getUserFriendlyErrorMessage(string $message): string
+    {
+        if (str_contains($message, 'THIRD_PARTY_API_ERROR')) {
+            return 'We are experiencing some issues, please try later';
+        }
+
+        return match(true) {
+            str_contains($message, 'not authenticated') => 'User not authenticated',
+            str_contains($message, 'not found') => 'Resource not found',
+            str_contains($message, 'restricted') => 'Plan Change Restricted',
+            str_contains($message, 'configuration') => 'License Configuration Issue',
+            str_contains($message, 'unavailable') => 'Licenses temporarily unavailable',
+            str_contains($message, 'required') => 'Subscription Required',
+            default => 'We are experiencing some issues, please try later'
+        };
+    }
+
+    public function processSuccessCallbackWithAuth(array $requestData, array $queryData, ?string $successUrl = null, $request = null): array
+    {
+        $authToken = $requestData['auth_token'] ?? $queryData['auth_token'] ?? null;
+        if ($authToken && !\Illuminate\Support\Facades\Auth::check()) {
+            $this->handlePayProGlobalAuthToken($authToken, $request);
+        }
+
+        $gateway = $this->extractGatewayFromRequest($requestData, $successUrl);
+        if (empty($gateway)) {
+            \Illuminate\Support\Facades\Log::error('No gateway specified in success callback', [
+                'request_data' => $requestData,
+                'query_data' => $queryData,
+                'success_url' => $successUrl
+            ]);
+            throw new \InvalidArgumentException('Invalid payment gateway');
+        }
+
+        $payload = $this->prepareSuccessCallbackPayload($requestData, $queryData);
+        $result = $this->processSuccessCallback($gateway, $payload);
+
+        if (!isset($result['success'])) {
+            \Illuminate\Support\Facades\Log::error('Invalid response from processSuccessCallback', [
+                'result' => $result,
+                'gateway' => $gateway
+            ]);
+            throw new \RuntimeException('Payment processing failed: Invalid response from payment service');
+        }
+
+        return array_merge($result, ['gateway' => $gateway]);
+    }
+
+    public function processAddonSuccessWithValidation($user, ?string $orderId, ?string $addon): array
+    {
+        if (!$orderId || !$addon) {
+            throw new \InvalidArgumentException('Invalid add-on payment parameters');
+        }
+
+        return $this->processAddonSuccess($user, $orderId, $addon);
     }
 }
 
