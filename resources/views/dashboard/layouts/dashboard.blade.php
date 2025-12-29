@@ -271,9 +271,6 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
         }
     </script>
 
-    <!-- PaddleJS -->
-    @paddleJS
-
     @stack('scripts')
 </body>
 

@@ -713,11 +713,6 @@ class PaymentService
 
     public function processSuccessCallbackWithAuth(array $requestData, array $queryData, ?string $successUrl = null, $request = null): array
     {
-        $authToken = $requestData['auth_token'] ?? $queryData['auth_token'] ?? null;
-        if ($authToken && !\Illuminate\Support\Facades\Auth::check()) {
-            $this->handlePayProGlobalAuthToken($authToken, $request);
-        }
-
         $gateway = $this->extractGatewayFromRequest($requestData, $successUrl);
         if (empty($gateway)) {
             \Illuminate\Support\Facades\Log::error('No gateway specified in success callback', [
@@ -726,6 +721,34 @@ class PaymentService
                 'success_url' => $successUrl
             ]);
             throw new \InvalidArgumentException('Invalid payment gateway');
+        }
+
+        // Try to authenticate user if not already authenticated
+        if (!\Illuminate\Support\Facades\Auth::check()) {
+            $authToken = $requestData['auth_token'] ?? $queryData['auth_token'] ?? null;
+
+            // Try auth token first (for Pay Pro Global)
+            if ($authToken) {
+                $this->handlePayProGlobalAuthToken($authToken, $request);
+            }
+
+            // Fallback: For Pay Pro Global, try to authenticate using user_id from query parameters
+            if (!\Illuminate\Support\Facades\Auth::check() && strtolower($gateway) === 'payproglobal') {
+                $userId = $requestData['user_id'] ?? $queryData['user_id'] ?? null;
+                if ($userId) {
+                    $user = \App\Models\User::find($userId);
+                    if ($user && method_exists($user, 'hasRole') && $user->hasRole('User')) {
+                        \Illuminate\Support\Facades\Auth::guard('web')->login($user, true);
+                        if ($request && method_exists($request, 'session')) {
+                            $request->session()->save();
+                        }
+                        \Illuminate\Support\Facades\Log::info('[PaymentService] User authenticated via user_id fallback for Pay Pro Global', [
+                            'user_id' => $user->id,
+                            'gateway' => $gateway
+                        ]);
+                    }
+                }
+            }
         }
 
         $payload = $this->prepareSuccessCallbackPayload($requestData, $queryData);
