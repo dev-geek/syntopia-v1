@@ -93,7 +93,6 @@
                                             <th>User Agent</th>
                                             <th>Status</th>
                                             <th>Created At</th>
-                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -107,9 +106,85 @@
                                                 {{ $attempt->email ?? '<span class="text-muted">N/A</span>' }}
                                             </td>
                                             <td>
-                                                <span class="text-muted small" title="{{ $attempt->user_agent }}">
-                                                    {{ Str::limit($attempt->user_agent, 50) }}
-                                                </span>
+                                                @php
+                                                    $ua = $attempt->user_agent ?? '';
+                                                    $browser = 'Unknown';
+                                                    $browserIcon = 'fa-globe';
+                                                    $os = 'Unknown';
+                                                    $osIcon = 'fa-desktop';
+                                                    $deviceType = 'Desktop';
+
+                                                    // Detect Browser
+                                                    if (preg_match('/Chrome\/([0-9.]+)/i', $ua, $matches) && !preg_match('/Edg/i', $ua)) {
+                                                        $browser = 'Chrome ' . explode('.', $matches[1])[0];
+                                                        $browserIcon = 'fa-chrome';
+                                                    } elseif (preg_match('/Edg\/([0-9.]+)/i', $ua, $matches)) {
+                                                        $browser = 'Edge ' . explode('.', $matches[1])[0];
+                                                        $browserIcon = 'fa-edge';
+                                                    } elseif (preg_match('/Firefox\/([0-9.]+)/i', $ua, $matches)) {
+                                                        $browser = 'Firefox ' . explode('.', $matches[1])[0];
+                                                        $browserIcon = 'fa-firefox';
+                                                    } elseif (preg_match('/Safari\/([0-9.]+)/i', $ua, $matches) && !preg_match('/Chrome/i', $ua)) {
+                                                        $browser = 'Safari ' . explode('.', $matches[1])[0];
+                                                        $browserIcon = 'fa-safari';
+                                                    } elseif (preg_match('/Opera|OPR\/([0-9.]+)/i', $ua, $matches)) {
+                                                        $browser = 'Opera ' . (isset($matches[1]) ? explode('.', $matches[1])[0] : '');
+                                                        $browserIcon = 'fa-opera';
+                                                    } elseif (preg_match('/MSIE|Trident/i', $ua)) {
+                                                        $browser = 'Internet Explorer';
+                                                        $browserIcon = 'fa-internet-explorer';
+                                                    }
+
+                                                    // Detect OS
+                                                    if (preg_match('/Windows NT 10.0/i', $ua)) {
+                                                        $os = 'Windows 10/11';
+                                                        $osIcon = 'fa-windows';
+                                                    } elseif (preg_match('/Windows NT 6.3/i', $ua)) {
+                                                        $os = 'Windows 8.1';
+                                                        $osIcon = 'fa-windows';
+                                                    } elseif (preg_match('/Windows NT 6.2/i', $ua)) {
+                                                        $os = 'Windows 8';
+                                                        $osIcon = 'fa-windows';
+                                                    } elseif (preg_match('/Windows NT 6.1/i', $ua)) {
+                                                        $os = 'Windows 7';
+                                                        $osIcon = 'fa-windows';
+                                                    } elseif (preg_match('/Windows/i', $ua)) {
+                                                        $os = 'Windows';
+                                                        $osIcon = 'fa-windows';
+                                                    } elseif (preg_match('/Mac OS X ([0-9_]+)/i', $ua, $matches)) {
+                                                        $os = 'macOS';
+                                                        $osIcon = 'fa-apple';
+                                                    } elseif (preg_match('/Linux/i', $ua)) {
+                                                        $os = 'Linux';
+                                                        $osIcon = 'fa-linux';
+                                                    } elseif (preg_match('/Android ([0-9.]+)/i', $ua, $matches)) {
+                                                        $os = 'Android ' . $matches[1];
+                                                        $osIcon = 'fa-android';
+                                                        $deviceType = 'Mobile';
+                                                    } elseif (preg_match('/iPhone|iPad|iPod/i', $ua)) {
+                                                        $os = 'iOS';
+                                                        $osIcon = 'fa-apple';
+                                                        $deviceType = preg_match('/iPad/i', $ua) ? 'Tablet' : 'Mobile';
+                                                    }
+                                                @endphp
+
+                                                <div class="user-agent-info">
+                                                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                                        <div class="d-flex align-items-center gap-1">
+                                                            <i class="fas {{ $browserIcon }} text-primary" title="Browser"></i>
+                                                            <span class="small font-weight-semibold">{{ $browser }}</span>
+                                                        </div>
+                                                        <span class="text-muted">•</span>
+                                                        <div class="d-flex align-items-center gap-1">
+                                                            <i class="fab {{ $osIcon }} text-info" title="Operating System"></i>
+                                                            <span class="small">{{ $os }}</span>
+                                                        </div>
+                                                        <span class="badge badge-secondary badge-sm">{{ $deviceType }}</span>
+                                                    </div>
+                                                    <small class="text-muted d-block" style="font-size: 0.7rem; word-break: break-all;" title="{{ $ua }}">
+                                                        <i class="fas fa-info-circle"></i> {{ Str::limit($ua, 60) }}
+                                                    </small>
+                                                </div>
                                             </td>
                                             <td>
                                                 @if($attempt->is_blocked)
@@ -122,31 +197,10 @@
                                                 @endif
                                             </td>
                                             <td>{{ $attempt->created_at->format('Y-m-d H:i:s') }}</td>
-                                            <td>
-                                                <div class="btn-group" role="group">
-                                                    <a href="{{ route('admin.free-plan-attempts.show', $attempt) }}" class="btn btn-sm btn-info">
-                                                        <i class="fas fa-eye"></i>
-                                                    </a>
-                                                    @if($attempt->is_blocked)
-                                                        <form id="unblockForm-{{ $attempt->id }}" method="POST" action="{{ route('admin.free-plan-attempts.unblock') }}" class="d-inline">
-                                                            @csrf
-                                                            <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
-                                                            <button type="button" class="btn btn-sm btn-success ml-1" onclick="confirmUnblockAttempt('unblockForm-{{ $attempt->id }}')">
-                                                                <i class="fas fa-unlock"></i>
-                                                            </button>
-                                                        </form>
-                                                    @else
-                                                        <form method="POST" action="{{ route('admin.free-plan-attempts.block') }}" class="d-inline">
-                                                            @csrf
-                                                            <input type="hidden" name="ids[]" value="{{ $attempt->id }}">
-                                                        </form>
-                                                    @endif
-                                                </div>
-                                            </td>
                                         </tr>
                                         @empty
                                         <tr>
-                                            <td colspan="7" class="text-center text-muted py-4">
+                                            <td colspan="6" class="text-center text-muted py-4">
                                                 <i class="fas fa-inbox fa-2x mb-2"></i><br>
                                                 No attempts found.
                                             </td>
@@ -169,76 +223,6 @@
 <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
 
-<!-- Dashboard Cards Styling -->
-<style>
-    .dashboard-card {
-        border: none;
-        border-radius: 1.2rem;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.07);
-        color: #fff;
-        overflow: hidden;
-        transition: transform 0.25s, box-shadow 0.25s;
-        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
-        position: relative;
-    }
-    .dashboard-card .card-meta { margin-top: 0.75rem; }
-    .badge-soft {
-        display: inline-block;
-        padding: 0.25rem 0.5rem;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.18);
-        border: 1px solid rgba(255,255,255,0.25);
-        color: #fff;
-        font-size: 0.8rem;
-        font-weight: 600;
-    }
-    @media (max-width: 575.98px) {
-        .dashboard-card .card-number { font-size: 1.75rem; }
-        .dashboard-card .icon { font-size: 2rem; }
-    }
-    .dashboard-card .card-body {
-        padding: 2rem 1.5rem 1.5rem 1.5rem;
-    }
-    .dashboard-card,
-    .dashboard-card .card-body,
-    .dashboard-card .icon,
-    .dashboard-card .card-title,
-    .dashboard-card .card-number,
-    .dashboard-card .card-meta,
-    .dashboard-card .badge-soft {
-        color: #fff !important;
-    }
-    .dashboard-card .icon {
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
-        display: inline-block;
-        transition: transform 0.3s;
-    }
-    .dashboard-card .card-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        letter-spacing: 0.5px;
-    }
-    .dashboard-card .card-number {
-        font-size: 2.1rem;
-        font-weight: 700;
-        letter-spacing: 1px;
-        margin-bottom: 0;
-    }
-    .dashboard-card.bg-gradient-blue { background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%); }
-    .dashboard-card.bg-gradient-red { background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%); }
-    .dashboard-card.bg-gradient-green { background: linear-gradient(135deg, #198754 0%, #20c997 100%); }
-    .dashboard-card.bg-gradient-yellow { background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); }
-    .dashboard-card:hover {
-        transform: translateY(-6px) scale(1.03);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.13);
-        z-index: 2;
-    }
-    .dashboard-card:hover .icon {
-        transform: scale(1.18) rotate(-8deg);
-    }
-</style>
 
 <x-datatable
     tableId="example1"

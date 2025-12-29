@@ -228,6 +228,19 @@ body {
 }
 
 /* Responsive Design */
+@media (max-width: 1200px) {
+    .auth-container-box {
+        max-width: 500px;
+    }
+}
+
+@media (max-width: 992px) {
+    .auth-container-box {
+        max-width: 480px;
+        padding: 28px 24px;
+    }
+}
+
 @media (max-width: 768px) {
     body {
         padding: 16px;
@@ -235,6 +248,11 @@ body {
 
     .auth-container-box {
         padding: 24px 20px;
+        max-width: 100%;
+    }
+
+    .auth-heading-text {
+        font-size: 22px;
     }
 
     .auth-heading-text.large {
@@ -249,15 +267,98 @@ body {
     .auth-flex-container {
         min-height: 75vh;
     }
+
+    .auth-form-control {
+        font-size: 14px;
+        padding: 12px;
+    }
+
+    .auth-primary-button {
+        font-size: 14px;
+        padding: 12px;
+    }
+
+    .auth-email-text {
+        font-size: 12px;
+    }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 576px) {
+    body {
+        padding: 12px;
+    }
+
     .auth-container-box {
         padding: 20px 15px;
+        border-radius: 8px;
     }
 
     .auth-heading-text {
         font-size: 20px;
+        padding-bottom: 15px;
+    }
+
+    .auth-heading-text.large {
+        font-size: 32px;
+    }
+
+    .auth-logo-container {
+        margin-top: 15px;
+        margin-bottom: 15px;
+    }
+
+    .auth-logo-container img {
+        width: 120px;
+    }
+
+    .auth-form-control {
+        font-size: 13px;
+        padding: 10px;
+        margin: 8px 0 15px;
+    }
+
+    .auth-primary-button {
+        font-size: 13px;
+        padding: 10px;
+        margin-bottom: 15px;
+    }
+
+    .auth-email-text {
+        font-size: 11px;
+        margin-bottom: 15px;
+    }
+
+    .auth-footer-text {
+        font-size: 10px;
+        margin-top: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-container-box {
+        padding: 18px 12px;
+    }
+
+    .auth-heading-text {
+        font-size: 18px;
+    }
+
+    .auth-heading-text.large {
+        font-size: 28px;
+    }
+
+    .auth-logo-container img {
+        width: 100px;
+    }
+
+    .auth-form-control {
+        font-size: 12px;
+        padding: 9px;
+    }
+
+    .auth-primary-button {
+        font-size: 12px;
+        padding: 9px;
     }
 }
 
