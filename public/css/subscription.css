@@ -1387,3 +1387,91 @@ body.layout-navbar-fixed .wrapper .content-wrapper {
         margin-top: 0.75rem;
     }
 }
+
+/* Additional Subscription Responsive Styles */
+@media (max-width: 1200px) {
+    .subscription-card .card-body {
+        padding: 2rem 1.5rem;
+    }
+
+    .subscription-card .card-header {
+        padding: 1.25rem 1.5rem;
+    }
+
+    .info-card-title {
+        padding: 1rem 1.25rem;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 992px) {
+    .subscription-card .card-body {
+        padding: 1.75rem 1.25rem;
+    }
+
+    .subscription-card .card-header h1 {
+        font-size: 1.3rem;
+    }
+
+    .info-item {
+        grid-template-columns: 140px 1fr;
+        gap: 1.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .subscription-card {
+        margin-bottom: 1.5rem;
+        border-radius: 16px !important;
+    }
+
+    .subscription-card .card-body {
+        padding: 1.25rem 0.875rem;
+    }
+
+    .subscription-card .card-header {
+        padding: 1rem 0.875rem;
+        font-size: 1rem;
+    }
+
+    .subscription-card .card-header h1 {
+        font-size: 1.2rem;
+    }
+
+    .info-card-title {
+        padding: 0.75rem 0.875rem;
+        font-size: 0.85rem;
+    }
+
+    .info-card > div:not(.info-card-title) {
+        padding: 0.875rem 0.875rem 0.75rem;
+    }
+
+    .info-item {
+        padding: 0.75rem 0;
+    }
+
+    .info-label {
+        font-size: 0.75rem;
+    }
+
+    .info-value {
+        font-size: 0.8125rem;
+    }
+
+    .subscription-notice {
+        padding: 1rem !important;
+    }
+
+    .notice-heading {
+        font-size: 1rem !important;
+    }
+
+    .notice-text {
+        font-size: 0.9rem !important;
+    }
+
+    .notice-text-small {
+        font-size: 0.85rem !important;
+    }
+}
