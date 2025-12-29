@@ -161,3 +161,209 @@ a {
         padding-right: 40px !important;
     }
 }
+
+/* General App Responsive Styles */
+@media (max-width: 1200px) {
+    .pricing_design .single-pricing {
+        padding: 50px 35px;
+    }
+
+    .section-title h2 {
+        font-size: 40px;
+    }
+
+    .price-head h2 {
+        font-size: 24px;
+    }
+
+    .price-head h1 {
+        font-size: 2.5rem;
+    }
+}
+
+@media (max-width: 992px) {
+    .pricing_design {
+        margin: 8px 12px;
+    }
+
+    .pricing_design .single-pricing {
+        padding: 45px 30px;
+        border-radius: 25px;
+    }
+
+    .section-title h2 {
+        font-size: 36px;
+        margin-bottom: 50px;
+    }
+
+    .price-head h2 {
+        font-size: 22px;
+    }
+
+    .price-head h1 {
+        font-size: 2.2rem;
+        margin-top: 25px;
+    }
+
+    .confirm-plan {
+        font-size: 22px;
+    }
+}
+
+@media (max-width: 768px) {
+    .pricing_design {
+        margin: 6px 10px;
+    }
+
+    .pricing_design .single-pricing {
+        padding: 35px 25px;
+        border-radius: 20px;
+    }
+
+    .section-title {
+        margin-bottom: 40px;
+    }
+
+    .section-title h2 {
+        font-size: 32px;
+    }
+
+    .price-head h2 {
+        font-size: 20px;
+        margin-bottom: 15px;
+    }
+
+    .price-head h1 {
+        font-size: 2rem;
+        margin-top: 20px;
+    }
+
+    .single-pricing ul {
+        margin-top: 25px;
+    }
+
+    .single-pricing ul li {
+        line-height: 32px;
+        font-size: 14px;
+    }
+
+    .price_btn {
+        padding: 9px 25px;
+        font-size: 14px;
+        margin-top: 18px;
+    }
+
+    .confirm-plan {
+        font-size: 20px;
+    }
+}
+
+@media (max-width: 576px) {
+    .pricing_design {
+        margin: 5px 8px;
+    }
+
+    .pricing_design .single-pricing {
+        padding: 30px 20px;
+        border-radius: 15px;
+    }
+
+    .section-title {
+        margin-bottom: 30px;
+    }
+
+    .section-title h2 {
+        font-size: 28px;
+    }
+
+    .price-head h2 {
+        font-size: 18px;
+        margin-bottom: 12px;
+    }
+
+    .price-head h1 {
+        font-size: 1.8rem;
+        margin-top: 18px;
+    }
+
+    .single-pricing ul {
+        margin-top: 20px;
+    }
+
+    .single-pricing ul li {
+        line-height: 28px;
+        font-size: 13px;
+    }
+
+    .single-pricing ul li i {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+        line-height: 18px;
+    }
+
+    .price_btn {
+        padding: 8px 20px;
+        font-size: 13px;
+        margin-top: 15px;
+    }
+
+    .confirm-plan {
+        font-size: 18px;
+    }
+}
+
+@media (max-width: 480px) {
+    .pricing_design {
+        margin: 4px 6px;
+    }
+
+    .pricing_design .single-pricing {
+        padding: 25px 16px;
+        border-radius: 12px;
+    }
+
+    .section-title {
+        margin-bottom: 25px;
+    }
+
+    .section-title h2 {
+        font-size: 24px;
+    }
+
+    .price-head h2 {
+        font-size: 16px;
+    }
+
+    .price-head h1 {
+        font-size: 1.6rem;
+        margin-top: 15px;
+    }
+
+    .single-pricing ul {
+        margin-top: 18px;
+    }
+
+    .single-pricing ul li {
+        line-height: 26px;
+        font-size: 12px;
+    }
+
+    .single-pricing ul li i {
+        width: 16px;
+        height: 16px;
+        font-size: 9px;
+        line-height: 16px;
+        margin-right: 5px;
+    }
+
+    .price_btn {
+        padding: 7px 18px;
+        font-size: 12px;
+        margin-top: 12px;
+    }
+
+    .confirm-plan {
+        font-size: 16px;
+    }
+}

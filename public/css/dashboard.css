@@ -66,6 +66,41 @@
     transform: scale(1.18) rotate(-8deg);
 }
 
+.dashboard-card .card-meta {
+    margin-top: 0.75rem;
+}
+
+.badge-soft {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.dashboard-card,
+.dashboard-card .card-body,
+.dashboard-card .icon,
+.dashboard-card .card-title,
+.dashboard-card .card-number,
+.dashboard-card .card-meta,
+.dashboard-card .badge-soft {
+    color: #fff !important;
+}
+
+@media (max-width: 575.98px) {
+    .dashboard-card .card-number {
+        font-size: 1.75rem;
+    }
+
+    .dashboard-card .icon {
+        font-size: 2rem;
+    }
+}
+
 /* Sidebar Styles */
 .sidebar-content .nav-link.active {
     background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%) !important;
@@ -381,6 +416,96 @@
 
     .login-to-software-notification-message {
         font-size: 0.7rem;
+    }
+}
+
+/* General Dashboard Responsive Styles */
+@media (max-width: 1200px) {
+    .dashboard-card .card-body {
+        padding: 1.75rem 1.25rem 1.25rem 1.25rem;
+    }
+
+    .dashboard-card .card-number {
+        font-size: 1.9rem;
+    }
+
+    .dashboard-card .card-title {
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 992px) {
+    .dashboard-card .card-body {
+        padding: 1.5rem 1rem 1rem 1rem;
+    }
+
+    .dashboard-card .icon {
+        font-size: 2.2rem;
+    }
+
+    .dashboard-card .card-number {
+        font-size: 1.8rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-card {
+        margin-bottom: 1.5rem;
+    }
+
+    .dashboard-card .card-body {
+        padding: 1.5rem 1rem 1rem 1rem;
+    }
+
+    .dashboard-card .icon {
+        font-size: 2rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .dashboard-card .card-title {
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .dashboard-card .card-number {
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .dashboard-card .card-body {
+        padding: 1.25rem 0.875rem 0.875rem 0.875rem;
+    }
+
+    .dashboard-card .icon {
+        font-size: 1.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .dashboard-card .card-title {
+        font-size: 0.95rem;
+    }
+
+    .dashboard-card .card-number {
+        font-size: 1.4rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-card .card-body {
+        padding: 1rem 0.75rem 0.75rem 0.75rem;
+    }
+
+    .dashboard-card .icon {
+        font-size: 1.5rem;
+    }
+
+    .dashboard-card .card-title {
+        font-size: 0.9rem;
+    }
+
+    .dashboard-card .card-number {
+        font-size: 1.2rem;
     }
 }
 

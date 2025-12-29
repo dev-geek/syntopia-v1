@@ -13,12 +13,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
-use Laravel\Paddle\Billable;
 
 #[ObservedBy([\App\Observers\SubAdminObserver::class])]
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes, Billable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -540,37 +539,4 @@ class User extends Authenticatable implements MustVerifyEmail
             ->exists();
     }
 
-    /**
-     * Create a Paddle checkout for a single charge
-     *
-     * @param string $priceId Paddle price ID (e.g., 'pri_product_id')
-     * @return \Laravel\Paddle\Checkout
-     */
-    public function createPaddleCheckout(string $priceId)
-    {
-        return $this->checkout($priceId);
-    }
-
-    /**
-     * Create a Paddle subscription
-     *
-     * @param string $priceId Paddle price ID (e.g., 'price_monthly')
-     * @param string $name Subscription name (e.g., 'main')
-     * @return \Laravel\Paddle\Subscription
-     */
-    public function createPaddleSubscription(string $priceId, string $name = 'main')
-    {
-        return $this->subscribe($priceId, $name);
-    }
-
-    /**
-     * Get the user's Paddle subscription by name
-     *
-     * @param string $name Subscription name (default: 'main')
-     * @return \Laravel\Paddle\Subscription|null
-     */
-    public function getPaddleSubscription(string $name = 'main')
-    {
-        return $this->subscription($name);
-    }
 }
