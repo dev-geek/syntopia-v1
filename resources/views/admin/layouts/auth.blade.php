@@ -33,6 +33,27 @@
   <x-tiktok-pixel />
   
   @stack('styles')
+  
+  <!-- Ensure Admin Login Styles Override AdminLTE -->
+  @if(request()->is('admin-login'))
+  <style>
+    /* Force override AdminLTE login page styles */
+    body.hold-transition.login-page,
+    body.login-page {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      background-image: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') !important;
+      background-size: cover !important;
+      background-position: center !important;
+      background-repeat: no-repeat !important;
+      background-attachment: fixed !important;
+    }
+    
+    body.hold-transition.login-page .login-box .card,
+    body.login-page .login-box .card {
+      display: none !important;
+    }
+  </style>
+  @endif
 </head>
 <body class="hold-transition @yield('body-class', 'login-page')">
   @yield('content')

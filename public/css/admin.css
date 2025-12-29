@@ -414,39 +414,59 @@ small {
 }
 
 /* Admin Login Page - Syntopia Theme Styles */
-body.hold-transition.login-page {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    background-image: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    min-height: 100vh;
-    padding: 20px;
-    margin: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* Override AdminLTE default login page styles */
+body.hold-transition.login-page,
+body.login-page {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background-image: url('https://syntopia.ai/wp-content/uploads/2025/01/Clip-path-group.webp') !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-attachment: fixed !important;
+    min-height: 100vh !important;
+    padding: 20px !important;
+    margin: 0 !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
-body.hold-transition.login-page .login-box {
-    width: 100%;
-    max-width: 480px;
-    margin: 0 auto;
+body.hold-transition.login-page .wrapper,
+body.login-page .wrapper {
+    display: none !important;
 }
 
-body.hold-transition.login-page .container-box {
-    width: 100%;
-    padding: 40px;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    border-radius: 16px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    position: relative;
-    overflow: hidden;
-    animation: fadeInUp 0.6s ease-out;
+body.hold-transition.login-page .login-box,
+body.login-page .login-box {
+    width: 100% !important;
+    max-width: 480px !important;
+    margin: 0 auto !important;
+    position: relative !important;
+    padding: 0 !important;
+}
+
+body.hold-transition.login-page .login-box .card,
+body.login-page .login-box .card {
+    display: none !important;
+}
+
+body.hold-transition.login-page .container-box,
+body.login-page .container-box {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 40px !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    position: relative !important;
+    overflow: hidden !important;
+    animation: fadeInUp 0.6s ease-out !important;
+    margin: 0 auto !important;
+    display: block !important;
 }
 
 body.hold-transition.login-page .container-box::before {
@@ -459,57 +479,86 @@ body.hold-transition.login-page .container-box::before {
     background: linear-gradient(90deg, #3e57da, #667eea);
 }
 
-body.hold-transition.login-page .logo-container {
-    text-align: center;
-    margin-bottom: 32px;
-    display: flex;
-    justify-content: center;
+body.hold-transition.login-page .logo-container,
+body.login-page .logo-container {
+    text-align: center !important;
+    margin-bottom: 32px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
 }
 
-body.hold-transition.login-page .logo-container img {
-    width: 140px;
-    height: auto;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+body.hold-transition.login-page .logo-container img,
+body.login-page .logo-container img {
+    width: 140px !important;
+    height: auto !important;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1)) !important;
+    max-width: 100% !important;
 }
 
-body.hold-transition.login-page .heading-text {
-    font-size: 28px;
-    font-weight: 700;
-    color: #1a1a1a;
-    margin-bottom: 8px;
-    letter-spacing: -0.5px;
-    text-align: center;
+body.hold-transition.login-page .heading-text,
+body.login-page .heading-text,
+body.hold-transition.login-page h1.heading-text,
+body.login-page h1.heading-text {
+    font-size: 28px !important;
+    font-weight: 700 !important;
+    color: #1a1a1a !important;
+    margin-bottom: 8px !important;
+    letter-spacing: -0.5px !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
 }
 
-body.hold-transition.login-page .form-group {
-    margin-bottom: 24px;
-    position: relative;
+body.hold-transition.login-page .form-group,
+body.login-page .form-group {
+    margin-bottom: 24px !important;
+    position: relative !important;
+    width: 100% !important;
+    display: block !important;
 }
 
-body.hold-transition.login-page .input-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
+body.hold-transition.login-page .input-wrapper,
+body.login-page .input-wrapper {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
 }
 
-body.hold-transition.login-page .form-control {
-    background: #f8fafc;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 14px;
-    padding: 14px 16px 14px 48px;
-    height: auto;
-    transition: all 0.2s ease;
-    font-weight: 500;
-    width: 100%;
-    box-sizing: border-box;
+body.hold-transition.login-page .form-control,
+body.login-page .form-control,
+body.hold-transition.login-page .input-wrapper .form-control,
+body.login-page .input-wrapper .form-control,
+body.hold-transition.login-page input.form-control,
+body.login-page input.form-control {
+    background: #f8fafc !important;
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    font-size: 14px !important;
+    padding: 14px 16px 14px 48px !important;
+    height: auto !important;
+    min-height: auto !important;
+    transition: all 0.2s ease !important;
+    font-weight: 500 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    line-height: 1.5 !important;
+    display: block !important;
+    margin: 0 !important;
 }
 
-body.hold-transition.login-page .form-control:focus {
-    background: #ffffff;
-    border-color: #3e57da;
-    box-shadow: 0 0 0 3px rgba(62, 87, 218, 0.1);
-    outline: none;
+body.hold-transition.login-page .form-control:focus,
+body.login-page .form-control:focus,
+body.hold-transition.login-page input.form-control:focus,
+body.login-page input.form-control:focus {
+    background: #ffffff !important;
+    border-color: #3e57da !important;
+    box-shadow: 0 0 0 3px rgba(62, 87, 218, 0.1) !important;
+    outline: none !important;
 }
 
 body.hold-transition.login-page .form-control::placeholder {
@@ -527,12 +576,16 @@ body.hold-transition.login-page .form-control.is-invalid:focus {
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
 }
 
-body.hold-transition.login-page .input-icon {
-    position: absolute;
-    left: 16px;
-    color: #6b7280;
-    z-index: 1;
-    pointer-events: none;
+body.hold-transition.login-page .input-icon,
+body.login-page .input-icon {
+    position: absolute !important;
+    left: 16px !important;
+    color: #6b7280 !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    font-size: 16px !important;
 }
 
 body.hold-transition.login-page .invalid-feedback {
@@ -543,26 +596,37 @@ body.hold-transition.login-page .invalid-feedback {
     font-weight: 500;
 }
 
-body.hold-transition.login-page .primary-button {
-    width: 100%;
-    padding: 14px 20px;
-    font-size: 14px;
-    font-weight: 600;
-    background: linear-gradient(135deg, #3e57da 0%, #4f46e5 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    margin: 8px 0 24px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
+body.hold-transition.login-page .primary-button,
+body.login-page .primary-button,
+body.hold-transition.login-page button.primary-button,
+body.login-page button.primary-button,
+body.hold-transition.login-page .primary-button[type="submit"],
+body.login-page .primary-button[type="submit"] {
+    width: 100% !important;
+    padding: 14px 20px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    background: linear-gradient(135deg, #3e57da 0%, #4f46e5 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    margin: 8px 0 24px !important;
+    transition: all 0.2s ease !important;
+    position: relative !important;
+    overflow: hidden !important;
+    display: block !important;
+    text-align: center !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
 }
 
 body.hold-transition.login-page .primary-button:hover {
-    background: linear-gradient(135deg, #344ca8 0%, #4338ca 100%);
-    transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(62, 87, 218, 0.3);
+    background: linear-gradient(135deg, #344ca8 0%, #4338ca 100%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 20px rgba(62, 87, 218, 0.3) !important;
+    color: white !important;
 }
 
 body.hold-transition.login-page .primary-button:active {
@@ -588,11 +652,13 @@ body.hold-transition.login-page .forgot-password-link:hover {
     text-decoration: underline;
 }
 
-body.hold-transition.login-page .forgot-password-wrapper {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
+body.hold-transition.login-page .forgot-password-wrapper,
+body.login-page .forgot-password-wrapper {
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    margin-bottom: 8px !important;
+    width: 100% !important;
 }
 
 body.hold-transition.login-page .alert {
