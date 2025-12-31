@@ -64,13 +64,10 @@
     <!-- Global Spinner Utilities -->
     <script src="{{ asset('js/spinner-utils.js') }}"></script>
 
-    <!-- PaddleJS -->
-    @paddleJS
-
     <!-- Stack for scripts from components -->
     @stack('scripts')
 
-    <!-- Your custom scripts -->
+    <!-- custom scripts -->
     @yield('scripts')
 </body>
 </html>

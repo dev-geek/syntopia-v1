@@ -667,20 +667,20 @@ class PaymentService
 
         if (isset($result['already_completed'])) {
             if (!\Illuminate\Support\Facades\Auth::check()) {
-                return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your dashboard.');
+                return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your subscription.');
             }
-            return redirect()->route('user.dashboard')->with('success', 'Subscription active');
+            return redirect()->route('user.subscription.details')->with('success', 'Subscription active');
         }
 
         if (!\Illuminate\Support\Facades\Auth::check()) {
-            return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your dashboard.');
+            return redirect()->route('login')->with('info', 'Payment successful! Please log in to access your subscription.');
         }
 
         $message = $result['is_upgrade']
             ? 'Subscription upgraded successfully!'
             : 'Payment successful! Your subscription is now active.';
 
-        return redirect()->route('user.dashboard')->with('success', $message);
+        return redirect()->route('user.subscription.details')->with('success', $message);
     }
 
     public function getHttpStatusCode(string $errorMessage): int

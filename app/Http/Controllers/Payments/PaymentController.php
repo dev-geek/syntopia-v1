@@ -104,4 +104,51 @@ class PaymentController extends Controller
         }
     }
 
+    public function handlePayProGlobalThankYou(Request $request)
+    {
+        Log::info('[PaymentController::handlePayProGlobalThankYou] PayProGlobal thank you page accessed', [
+            'query_params' => $request->query(),
+            'all_params' => $request->all(),
+        ]);
+
+        $orderId = $request->query('OrderId')
+            ?? $request->query('orderId')
+            ?? $request->query('ORDER_ID')
+            ?? $request->input('OrderId')
+            ?? $request->input('orderId')
+            ?? $request->input('ORDER_ID');
+
+        $externalOrderId = $request->query('ExternalOrderId')
+            ?? $request->query('externalOrderId')
+            ?? $request->query('EXTERNAL_ORDER_ID')
+            ?? $request->input('ExternalOrderId')
+            ?? $request->input('externalOrderId')
+            ?? $request->input('EXTERNAL_ORDER_ID');
+
+        if (!$orderId && !$externalOrderId) {
+            Log::warning('[PaymentController::handlePayProGlobalThankYou] No OrderId or ExternalOrderId found', [
+                'query_params' => $request->query(),
+                'all_input' => $request->all(),
+            ]);
+            return redirect()->route('subscription')->with('error', 'Invalid payment confirmation. Please contact support.');
+        }
+
+        $successParams = [
+            'gateway' => 'payproglobal',
+        ];
+
+        if ($orderId) {
+            $successParams['OrderId'] = $orderId;
+        }
+        if ($externalOrderId) {
+            $successParams['ExternalOrderId'] = $externalOrderId;
+        }
+
+        Log::info('[PaymentController::handlePayProGlobalThankYou] Redirecting to success handler', [
+            'success_params' => $successParams,
+        ]);
+
+        return redirect()->route('payments.success', $successParams);
+    }
+
 }

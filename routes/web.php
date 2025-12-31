@@ -35,6 +35,7 @@ Route::get('/subscription', [SubscriptionController::class, 'index'])->name('sub
 */
 Route::match(['get', 'post'], '/payments/success', [PaymentController::class, 'handleSuccess'])->name('payments.success');
 Route::match(['get', 'post'], '/payments/addon-success', [PaymentController::class, 'handleAddonSuccess'])->name('payments.addon-success');
+Route::get('/payments/payproglobal-thankyou', [PaymentController::class, 'handlePayProGlobalThankYou'])->name('payments.payproglobal-thankyou');
 
 // Token decryption routes (for software auto-login - public)
 Route::prefix('api/token')->name('token.')->group(function () {
