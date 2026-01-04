@@ -31,7 +31,7 @@ use App\Http\Controllers\{
 */
 Route::middleware(['auth', 'verified.custom', 'role:User'])->group(function () {
     // Dashboard
-    Route::match(['get', 'post'], '/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('user.dashboard');
 
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'profile'])->name('user.profile');

@@ -49,8 +49,10 @@ return [
         'Paddle' => [
             'api_key' => env('PADDLE_API_KEY', ''),
             'public_key' => env('PADDLE_PUBLIC_KEY', ''),
-            'api_url' => env('PADDLE_API_URL', 'https://api.paddle.com/'),
-            'environment' => env('PADDLE_SANDBOX', true) ? 'sandbox' : 'production',
+            // if sandbox environment, use https://sandbox-api.paddle.com/
+            // if production environment, use https://api.paddle.com/
+            'api_url' => env('PADDLE_API_URL', filter_var(env('PADDLE_SANDBOX', true), FILTER_VALIDATE_BOOLEAN) ? 'https://sandbox-api.paddle.com/' : 'https://api.paddle.com/'),
+            'environment' => filter_var(env('PADDLE_SANDBOX', true), FILTER_VALIDATE_BOOLEAN) ? 'sandbox' : 'production',
             'product_ids' => [
                 'free' => (int)env('PADDLE_PRODUCT_FREE', 0),
                 'starter' => (int)env('PADDLE_PRODUCT_STARTER', 1),

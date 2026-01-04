@@ -673,6 +673,17 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
     public function createOrGetCustomer(User $user): ?string
     {
+//         dd($user->toArray());
+//         array:8 [▼ // app\Services\Payment\Gateways\PaddlePaymentGateway.php:675
+        //   "email" => "qetatab@mailinator.com"
+        //   "name" => "Dillon Manning"
+        //   "verification_code" => "504164"
+        //   "email_verified_at" => null
+        //   "status" => 0
+        //   "updated_at" => "2026-01-02T14:05:04.000000Z"
+        //   "created_at" => "2026-01-02T14:05:04.000000Z"
+        //   "id" => 4
+        // ]
         if ($user->paddle_customer_id) {
             return $user->paddle_customer_id;
         }
@@ -687,7 +698,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             $response = $this->makeApiRequest('post', $url, [
                 'email' => $user->email,
                 'name' => $name,
-            ]);
+            ]); dd($response->json());
 
             if ($response && $response->successful()) {
                 $data = $response->json();
