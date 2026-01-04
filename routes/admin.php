@@ -64,12 +64,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:Super Admin|Su
     });
 });
 
-// Regular user dashboard route
-Route::prefix('user')->name('user.')->middleware(['auth', 'verified.custom', 'role:User'])->group(function () {
-    Route::get('/dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
-    Route::get('/profile', [ProfileController::class, 'profile'])->name('profile');
-});
-
 
 // Root dashboard route that redirects based on role
 Route::middleware(['auth', 'verified.custom'])->group(function () {
