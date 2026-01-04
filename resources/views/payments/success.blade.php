@@ -17,6 +17,12 @@
             const isPopup = urlParams.get('popup') === 'true';
             const gateway = urlParams.get('gateway');
 
+            alert(urlParams.get('order_id'));
+            alert(urlParams.get('user_id'));
+            alert(urlParams.get('package'));
+            alert(isPopup);
+            alert(gateway);
+
             if (isPopup && gateway === 'payproglobal') {
                 // Set success flag in parent window's sessionStorage
                 if (window.opener) {
@@ -92,7 +98,8 @@
                     text: '{{ session("success", "Your payment has been processed successfully.") }}',
                     confirmButtonText: 'Go to Dashboard'
                 }).then(() => {
-                    window.location.href = '/user/dashboard';
+                    alert('redirecting to dashboard');
+                    // window.location.href = '/user/dashboard';
                 });
             @endif
         });
