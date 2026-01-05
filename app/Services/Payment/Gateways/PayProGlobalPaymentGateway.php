@@ -509,6 +509,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 'amount' => 0,
                 'currency' => 'USD',
                 'status' => 'cancelled',
+                'order_type' => 'cancellation',
                 'transaction_id' => 'PPG-CANCEL-' . Str::random(10),
                 'metadata' => [
                     'subscription_id' => $subscriptionId,

@@ -350,6 +350,7 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                     'amount' => 0,
                     'currency' => 'USD',
                     'status' => 'cancelled',
+                    'order_type' => 'cancellation',
                     'transaction_id' => 'FS-CANCEL-' . Str::random(10),
                     'metadata' => [
                         'subscription_id' => $subscriptionId,
@@ -426,6 +427,7 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                     'amount' => 0,
                     'currency' => 'USD',
                     'status' => 'cancelled',
+                    'order_type' => 'cancellation',
                     'transaction_id' => 'FS-CANCEL-LOCAL-' . Str::random(10),
                     'metadata' => [
                         'cancellation_scheduled' => true,

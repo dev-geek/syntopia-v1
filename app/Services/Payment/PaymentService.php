@@ -288,6 +288,11 @@ class PaymentService
                     $order->update([
                         'status'         => 'completed',
                         'transaction_id' => $transactionId,
+                        'metadata'       => [
+                            'source'      => 'gateway_success_callback',
+                            'gateway'     => $gatewayRecord?->name,
+                            'raw_payload' => $payload,
+                        ],
                     ]);
                 } else {
                     $order = Order::create([
