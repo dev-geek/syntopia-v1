@@ -702,7 +702,7 @@ class LicenseApiService
 
         $hasPendingOrScheduledDowngrade = Order::where('user_id', $user->id)
             ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
+            ->whereIn('status', ['pending', 'scheduled_downgrade'])
             ->exists();
 
         if ($hasPendingOrScheduledDowngrade) {

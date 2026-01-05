@@ -14,6 +14,7 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         '/verify-code',
         '/payments/success',
+        '/public/submit',
         'payment/webhook/fastspring',
         'payment/webhook/payproglobal',
         'webhooks/paddle',

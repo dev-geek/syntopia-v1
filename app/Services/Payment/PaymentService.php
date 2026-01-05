@@ -12,6 +12,7 @@ use App\Models\{
 };
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\License\LicenseApiService;
@@ -190,7 +191,10 @@ class PaymentService
             throw new \RuntimeException('Package not found for success callback');
         }
 
-        $transactionId = $payload['transaction_id'] ?? $payload['orderId'] ?? null;
+        $transactionId = $payload['transaction_id']
+            ?? $payload['orderId']
+            ?? $payload['ORDER_ID']
+            ?? null;
         if (!$transactionId) {
             throw new \InvalidArgumentException('Transaction ID missing from success callback');
         }
@@ -208,6 +212,14 @@ class PaymentService
                 $this->cancelScheduledCancellation($user, $isUpgrade ? 'upgrade' : 'downgrade');
             }
 
+            // Check if there's a scheduled cancellation that should take precedence
+            $scheduledCancellationOrder = Order::query()
+                ->where('user_id', $user->id)
+                ->where('status', 'cancelled')
+                ->whereJsonContains('metadata->cancellation_scheduled', true)
+                ->latest('created_at')
+                ->first();
+
             $scheduledDowngradeOrder = Order::query()
                 ->where('user_id', $user->id)
                 ->where('package_id', $package->id)
@@ -215,6 +227,27 @@ class PaymentService
                 ->when($gatewayRecord, fn ($q) => $q->where('payment_gateway_id', $gatewayRecord->id))
                 ->latest('created_at')
                 ->first();
+
+            // If there's a scheduled cancellation, cancel the scheduled downgrade and don't process it
+            if ($scheduledDowngradeOrder && $scheduledCancellationOrder) {
+                Log::info('[PaymentService::processSuccessCallback] Scheduled cancellation found, cancelling scheduled downgrade', [
+                    'user_id' => $user->id,
+                    'downgrade_order_id' => $scheduledDowngradeOrder->id,
+                    'cancellation_order_id' => $scheduledCancellationOrder->id,
+                ]);
+
+                $scheduledDowngradeOrder->update([
+                    'status' => 'cancelled',
+                    'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
+                        'cancelled_reason' => 'Scheduled cancellation takes precedence over downgrade',
+                        'cancelled_at' => now()->toISOString(),
+                        'cancelled_by' => 'scheduled_cancellation_precedence',
+                        'original_status' => $scheduledDowngradeOrder->status,
+                    ]),
+                ]);
+
+                $scheduledDowngradeOrder = null;
+            }
 
             if ($scheduledDowngradeOrder && $isDowngrade) {
                 $targetPackagePrice = $scheduledDowngradeOrder->metadata['target_package_price'] ?? $package->price;
@@ -327,6 +360,27 @@ class PaymentService
                 }
 
                 throw new \RuntimeException('license_api_failed');
+            }
+
+            // Call public route after successful PayProGlobal payment
+            if (strtolower($gatewayRecord?->name ?? '') === 'pay pro global') {
+                try {
+                    Http::post(route('public.submit'), [
+                        'gateway' => 'payproglobal',
+                        'user_id' => $user->id,
+                        'order_id' => $order->id,
+                        'transaction_id' => $transactionId,
+                        'package' => $package->name,
+                        'amount' => $order->amount,
+                        'status' => 'completed',
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('[PaymentService] Failed to call public route after PayProGlobal payment', [
+                        'user_id' => $user->id,
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
             return [
@@ -517,38 +571,36 @@ class PaymentService
             'user_id' => $user->id,
         ]);
 
-        // Check for scheduled downgrade and cancel it immediately
-        $scheduledDowngradeOrder = Order::with('package')
+        // Cancel ALL scheduled downgrades before processing cancellation
+        $scheduledDowngradeOrders = Order::with('package')
             ->where('user_id', $user->id)
             ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
-            ->latest('created_at')
-            ->first();
+            ->whereIn('status', ['pending', 'scheduled_downgrade'])
+            ->get();
 
-        if ($scheduledDowngradeOrder) {
-            $targetPackageName = $scheduledDowngradeOrder->package->name ?? 'Unknown';
+        if ($scheduledDowngradeOrders->isNotEmpty()) {
+            $cancelledCount = 0;
+            foreach ($scheduledDowngradeOrders as $scheduledDowngradeOrder) {
+                $targetPackageName = $scheduledDowngradeOrder->package->name ?? 'Unknown';
 
-            Log::info('[PaymentService::handleSubscriptionCancellation] Found scheduled downgrade, cancelling it immediately', [
+                // Cancel the scheduled downgrade by updating its status to cancelled
+                $scheduledDowngradeOrder->update([
+                    'status' => 'cancelled',
+                    'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
+                        'cancelled_reason' => 'User requested subscription cancellation - cancellation takes precedence over downgrade',
+                        'cancelled_at' => now()->toISOString(),
+                        'cancelled_by' => 'subscription_cancellation',
+                        'original_status' => $scheduledDowngradeOrder->status,
+                    ]),
+                ]);
+
+                $cancelledCount++;
+            }
+
+            Log::info('[PaymentService::handleSubscriptionCancellation] Cancelled all scheduled downgrades', [
                 'user_id' => $user->id,
-                'downgrade_order_id' => $scheduledDowngradeOrder->id,
-                'target_package' => $targetPackageName,
-            ]);
-
-            // Cancel the scheduled downgrade by updating its status to cancelled
-            $scheduledDowngradeOrder->update([
-                'status' => 'cancelled',
-                'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
-                    'cancelled_reason' => 'User requested subscription cancellation',
-                    'cancelled_at' => now()->toISOString(),
-                    'cancelled_by' => 'subscription_cancellation',
-                    'original_status' => $scheduledDowngradeOrder->status,
-                ]),
-            ]);
-
-            Log::info('[PaymentService::handleSubscriptionCancellation] Scheduled downgrade cancelled successfully', [
-                'user_id' => $user->id,
-                'downgrade_order_id' => $scheduledDowngradeOrder->id,
-                'target_package' => $targetPackageName,
+                'cancelled_count' => $cancelledCount,
+                'downgrade_order_ids' => $scheduledDowngradeOrders->pluck('id')->toArray(),
             ]);
         }
 
@@ -652,11 +704,46 @@ class PaymentService
 
     public function prepareSuccessCallbackPayload(array $requestData, array $queryData): array
     {
-        return array_merge(
+        $payload = array_merge(
             $requestData,
-            $queryData,
-            ['transaction_id' => $queryData['transaction_id'] ?? $requestData['transaction_id'] ?? null]
+            $queryData
         );
+
+        // Extract transaction_id
+        $transactionId = $queryData['transaction_id']
+            ?? $requestData['transaction_id']
+            ?? $requestData['ORDER_ID']
+            ?? $queryData['ORDER_ID']
+            ?? $requestData['orderId']
+            ?? $queryData['orderId']
+            ?? null;
+
+        if ($transactionId) {
+            $payload['transaction_id'] = $transactionId;
+            $payload['orderId'] = $transactionId;
+        }
+
+        // Extract package name
+        $packageName = $payload['package'] ?? $payload['package_name'] ?? null;
+        if (!$packageName || $packageName === '{package}') {
+            $customData = $requestData['custom'] ?? $queryData['custom'] ?? null;
+            if ($customData) {
+                try {
+                    $custom = is_string($customData) ? json_decode($customData, true) : $customData;
+                    if (is_array($custom) && isset($custom['package'])) {
+                        $payload['package'] = $custom['package'];
+                        $payload['package_name'] = $custom['package'];
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('[PaymentService] Failed to parse custom field for package name', [
+                        'custom' => $customData,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+        }
+
+        return $payload;
     }
 
     public function handleSuccessResponse(array $result, string $gateway): \Illuminate\Http\RedirectResponse
@@ -732,11 +819,29 @@ class PaymentService
                 $this->handlePayProGlobalAuthToken($authToken, $request);
             }
 
-            // Fallback: For Pay Pro Global, try to authenticate using user_id from query parameters
             if (!\Illuminate\Support\Facades\Auth::check() && strtolower($gateway) === 'payproglobal') {
                 $userId = $requestData['user_id'] ?? $queryData['user_id'] ?? null;
-                if ($userId) {
-                    $user = \App\Models\User::find($userId);
+
+                // If user_id is a placeholder or not found, try to extract from custom field
+                if (!$userId || $userId === '{user_id}' || !is_numeric($userId)) {
+                    $customData = $requestData['custom'] ?? $queryData['custom'] ?? null;
+                    if ($customData) {
+                        try {
+                            $custom = is_string($customData) ? json_decode($customData, true) : $customData;
+                            if (is_array($custom) && isset($custom['user_id'])) {
+                                $userId = $custom['user_id'];
+                            }
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning('[PaymentService] Failed to parse custom field for user_id', [
+                                'custom' => $customData,
+                                'error' => $e->getMessage()
+                            ]);
+                        }
+                    }
+                }
+
+                if ($userId && is_numeric($userId) && $userId !== '{user_id}') {
+                    $user = \App\Models\User::find((int) $userId);
                     if ($user && method_exists($user, 'hasRole') && $user->hasRole('User')) {
                         \Illuminate\Support\Facades\Auth::guard('web')->login($user, true);
                         if ($request && method_exists($request, 'session')) {

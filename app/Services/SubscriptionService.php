@@ -85,18 +85,6 @@ class SubscriptionService
             }
 
             return DB::transaction(function () use ($user, $package) {
-                $paddleCustomerId = null;
-
-                try {
-                    $paddleGateway = app(PaddlePaymentGateway::class);
-                    $paddleCustomerId = $paddleGateway->createOrGetCustomer($user);
-                } catch (\Exception $e) {
-                    Log::warning('Failed to create Paddle customer for free plan user', [
-                        'user_id' => $user->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-
                 $activeGateway = $this->getAppropriatePaymentGateway($user);
 
                 $updateData = [
@@ -104,12 +92,24 @@ class SubscriptionService
                     'is_subscribed' => true,
                 ];
 
-                if ($paddleCustomerId) {
-                    $updateData['paddle_customer_id'] = $paddleCustomerId;
-                }
-
                 if ($activeGateway) {
                     $updateData['payment_gateway_id'] = $activeGateway->id;
+
+                    if (strtolower($activeGateway->name) === 'paddle') {
+                        $paddleCustomerId = null;
+                        try {
+                            $paddleGateway = app(PaddlePaymentGateway::class);
+                            $paddleCustomerId = $paddleGateway->createOrGetCustomer($user);
+                            if ($paddleCustomerId) {
+                                $updateData['paddle_customer_id'] = $paddleCustomerId;
+                            }
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to create Paddle customer for free plan user', [
+                                'user_id' => $user->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
                 }
 
                 $user->update($updateData);
@@ -336,7 +336,7 @@ class SubscriptionService
 
         $pendingDowngrade = Order::where('user_id', $user->id)
             ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'pending_downgrade', 'scheduled_downgrade'])
+            ->whereIn('status', ['pending', 'scheduled_downgrade'])
             ->where('created_at', '>=', now()->subDays(30))
             ->latest()
             ->first();

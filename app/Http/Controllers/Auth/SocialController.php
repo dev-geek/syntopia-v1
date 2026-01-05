@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Services\SubscriptionService;
+use App\Services\Auth\RegistrationService;
 use App\Models\{Package, PaymentGateways};
 use App\Factories\PaymentGatewayFactory;
 
@@ -26,7 +27,7 @@ class SocialController extends Controller
         return Socialite::driver('google')->redirect();
     }
 
-    public function googleAuthentication(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService)
+    public function googleAuthentication(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService, RegistrationService $registrationService)
     {
         try {
             // Get the user information from Google
@@ -213,28 +214,7 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
-                        if ($paddleGateway) {
-                            try {
-                                $paddlePaymentGateway = app(PaymentGatewayFactory::class)->create('Paddle');
-                                $paddlePaymentGateway->setUser($userData);
-                                $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($userData);
-                                
-                                if ($paddleCustomerId) {
-                                    Log::info('[googleAuthentication] Paddle customer ID created for new Google user', [
-                                        'user_id' => $userData->id,
-                                        'email' => $userData->email,
-                                        'paddle_customer_id' => $paddleCustomerId
-                                    ]);
-                                }
-                            } catch (\Exception $e) {
-                                Log::warning('[googleAuthentication] Failed to create Paddle customer ID during Google registration', [
-                                    'user_id' => $userData->id,
-                                    'email' => $userData->email,
-                                    'error' => $e->getMessage()
-                                ]);
-                            }
-                        }
+                        $registrationService->assignPaymentGatewayToUser($userData, '[googleAuthentication]');
 
                         // Create tenant and bind password using TenantAssignmentService with retry logic
                         Log::info('[googleAuthentication] Calling TenantAssignmentService for new Google user with retry logic', ['user_id' => $userData->id]);
@@ -350,7 +330,7 @@ class SocialController extends Controller
         return Socialite::driver('facebook')->redirect();
     }
 
-    public function handleFacebookCallback(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService)
+    public function handleFacebookCallback(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService, RegistrationService $registrationService)
     {
         try {
             $facebookUser = Socialite::driver('facebook')->user();
@@ -528,28 +508,7 @@ class SocialController extends Controller
 
                         $userData->assignRole('User');
 
-                        $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
-                        if ($paddleGateway) {
-                            try {
-                                $paddlePaymentGateway = app(PaymentGatewayFactory::class)->create('Paddle');
-                                $paddlePaymentGateway->setUser($userData);
-                                $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($userData);
-                                
-                                if ($paddleCustomerId) {
-                                    Log::info('[handleFacebookCallback] Paddle customer ID created for new Facebook user', [
-                                        'user_id' => $userData->id,
-                                        'email' => $userData->email,
-                                        'paddle_customer_id' => $paddleCustomerId
-                                    ]);
-                                }
-                            } catch (\Exception $e) {
-                                Log::warning('[handleFacebookCallback] Failed to create Paddle customer ID during Facebook registration', [
-                                    'user_id' => $userData->id,
-                                    'email' => $userData->email,
-                                    'error' => $e->getMessage()
-                                ]);
-                            }
-                        }
+                        $registrationService->assignPaymentGatewayToUser($userData, '[handleFacebookCallback]');
 
                         // Create tenant and bind password using TenantAssignmentService with retry logic
                         Log::info('[handleFacebookCallback] Calling TenantAssignmentService for new Facebook user with retry logic', ['user_id' => $userData->id]);

@@ -156,28 +156,7 @@ class RegistrationService
                 'has_subscriber_password' => !empty($user->subscriber_password)
             ]);
 
-            $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
-            if ($paddleGateway) {
-                try {
-                    $paddlePaymentGateway = $this->paymentGatewayFactory->create('Paddle');
-                    $paddlePaymentGateway->setUser($user);
-                    $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($user);
-
-                    if ($paddleCustomerId) {
-                        Log::info('Paddle customer ID created for new user', [
-                            'user_id' => $user->id,
-                            'email' => $user->email,
-                            'paddle_customer_id' => $paddleCustomerId
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Failed to create Paddle customer ID during registration', [
-                        'user_id' => $user->id,
-                        'email' => $user->email,
-                        'error' => $e->getMessage()
-                    ]);
-                }
-            }
+            $this->assignPaymentGatewayToUser($user);
 
             DB::commit();
 
@@ -212,6 +191,43 @@ class RegistrationService
                 'trace' => $e->getTraceAsString()
             ]);
             throw $e;
+        }
+    }
+
+    public function assignPaymentGatewayToUser(User $user, string $logPrefix = ''): void
+    {
+        $paddleGateway = PaymentGateways::active()->byName('Paddle')->first();
+        if ($paddleGateway) {
+            try {
+                $paddlePaymentGateway = $this->paymentGatewayFactory->create('Paddle');
+                $paddlePaymentGateway->setUser($user);
+                $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($user);
+
+                if ($paddleCustomerId) {
+                    Log::info(($logPrefix ? $logPrefix . ' ' : '') . 'Paddle customer ID created for new user', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'paddle_customer_id' => $paddleCustomerId
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning(($logPrefix ? $logPrefix . ' ' : '') . 'Failed to create Paddle customer ID during registration', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        $activeGateway = PaymentGateways::where('is_active', true)->first();
+        if ($activeGateway && !$user->payment_gateway_id) {
+            $user->update(['payment_gateway_id' => $activeGateway->id]);
+            Log::info(($logPrefix ? $logPrefix . ' ' : '') . 'Active payment gateway assigned to new user during registration', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'gateway_id' => $activeGateway->id,
+                'gateway_name' => $activeGateway->name
+            ]);
         }
     }
 }
