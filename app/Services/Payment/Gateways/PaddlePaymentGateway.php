@@ -698,7 +698,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             $response = $this->makeApiRequest('post', $url, [
                 'email' => $user->email,
                 'name' => $name,
-            ]); dd($response->json());
+            ]);
 
             if ($response && $response->successful()) {
                 $data = $response->json();
