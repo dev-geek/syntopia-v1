@@ -25,6 +25,7 @@ class PaymentService
     public function __construct(
         private PaymentGatewayFactory $gatewayFactory,
         private LicenseApiService $licenseApiService,
+        private PackageGatewayService $packageGatewayService,
     ) {}
 
     public function processPayment(array $paymentData, string $gatewayName, bool $returnRedirect = true): array
@@ -91,7 +92,7 @@ class PaymentService
                 'payment_gateway_id' => $gatewayRecord?->id,
                 'status'             => 'pending',
                 'order_type'         => $isUpgrade ? 'upgrade' : 'new',
-                'transaction_id'     => strtoupper($gatewayName) . '-PENDING-' . Str::uuid(),
+                'transaction_id'     => null, // Will be set when transaction is created
             ]);
 
             $paymentData['order'] = $this->order;
@@ -182,6 +183,30 @@ class PaymentService
         }
 
         $packageName = $payload['package_name'] ?? $payload['package'] ?? null;
+
+        // If package name is missing, try to retrieve it from the order using transaction_id
+        if (!$packageName) {
+            $transactionId = $payload['transaction_id']
+                ?? $payload['orderId']
+                ?? $payload['ORDER_ID']
+                ?? null;
+
+            if ($transactionId) {
+                $order = Order::where('transaction_id', $transactionId)
+                    ->where('user_id', $user->id)
+                    ->first();
+
+                if ($order && $order->package) {
+                    $packageName = $order->package->name;
+                    Log::info('[PaymentService::processSuccessCallback] Retrieved package name from order', [
+                        'transaction_id' => $transactionId,
+                        'package_name' => $packageName,
+                        'order_id' => $order->id
+                    ]);
+                }
+            }
+        }
+
         if (!$packageName) {
             throw new \InvalidArgumentException('Package name missing from success callback');
         }
@@ -402,6 +427,124 @@ class PaymentService
     public function createFreePlanOrder(User $user, Package $package): Order
     {
         $paymentGatewayId = $user->payment_gateway_id;
+        $gateway = $paymentGatewayId ? PaymentGateways::find($paymentGatewayId) : null;
+
+        $paddleTransactionId = null;
+        $paddleStatus = null;
+        $paddleSubscriptionId = null;
+        $paddleInvoiceId = null;
+        $paddleInvoiceNumber = null;
+
+        if ($gateway && strtolower($gateway->name) === 'paddle' && $user->paddle_customer_id) {
+            try {
+                $apiKey = config('payment.gateways.Paddle.api_key');
+                $apiBaseUrl = rtrim(config('payment.gateways.Paddle.api_url', 'https://sandbox-api.paddle.com/'), '/');
+
+                $paddleGateway = app(\App\Services\Payment\Gateways\PaddlePaymentGateway::class);
+
+                Log::info('[PaymentService::createFreePlanOrder] Getting Paddle price ID', [
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                ]);
+
+                $priceId = $this->packageGatewayService->getPaddlePriceId($package, $paddleGateway);
+
+                Log::info('[PaymentService::createFreePlanOrder] Paddle price ID result', [
+                    'user_id' => $user->id,
+                    'package_name' => $package->name,
+                    'price_id' => $priceId,
+                ]);
+                $transactionData = [
+                    'items' => [
+                        [
+                            'price_id' => $priceId,
+                            'quantity' => 1
+                        ]
+                    ],
+                    'customer_id' => $user->paddle_customer_id,
+                    'currency_code' => 'USD',
+                    'collection_mode' => 'automatic',
+                    'address_id' => null,
+                    'business_id' => null,
+                    'discount_id' => null,
+                    'custom_data' => [
+                        'user_id' => $user->id,
+                        'package_id' => $package->id,
+                        'package_name' => $package->name,
+                        'source' => 'free_plan_assignment'
+                    ],
+                ];
+
+                $url = $apiBaseUrl . '/transactions';
+                $response = Http::withToken($apiKey)
+                    ->withHeaders([
+                        'accept' => 'application/json',
+                        'content-type' => 'application/json'
+                    ])
+                    ->post($url, $transactionData);
+
+                if ($response && $response->successful()) {
+                    $responseData = $response->json();
+                    $transactionData = $responseData['data'] ?? [];
+                    $paddleTransactionId = $transactionData['id'] ?? null;
+                    $paddleStatus = $transactionData['status'] ?? null;
+                    $paddleSubscriptionId = $transactionData['subscription_id'] ?? null;
+                    $paddleInvoiceId = $transactionData['invoice_id'] ?? null;
+                    $paddleInvoiceNumber = $transactionData['invoice_number'] ?? null;
+
+                    Log::info('[PaymentService::createFreePlanOrder] Paddle transaction created for free plan', [
+                        'user_id' => $user->id,
+                        'paddle_transaction_id' => $paddleTransactionId,
+                        'paddle_status' => $paddleStatus,
+                        'paddle_subscription_id' => $paddleSubscriptionId,
+                        'paddle_invoice_id' => $paddleInvoiceId,
+                        'paddle_customer_id' => $user->paddle_customer_id
+                    ]);
+                } else {
+                    Log::warning('[PaymentService::createFreePlanOrder] Failed to create Paddle transaction for free plan', [
+                        'user_id' => $user->id,
+                        'status' => $response?->status(),
+                        'response' => $response?->body()
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('[PaymentService::createFreePlanOrder] Exception creating Paddle transaction', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        if (
+            $gateway
+            && strtolower($gateway->name) === 'paddle'
+            && app()->environment('local')
+            && !$paddleTransactionId
+        ) {
+            throw new \RuntimeException('[PaymentService::createFreePlanOrder] Paddle transaction_id is missing for free plan in local environment');
+        }
+
+        $metadata = [
+            'source' => 'free_plan_immediate_assignment',
+            'assigned_at' => now()->toISOString()
+        ];
+
+        if ($paddleTransactionId) {
+            $metadata['paddle_transaction_id'] = $paddleTransactionId;
+            if ($paddleStatus) {
+                $metadata['paddle_status'] = $paddleStatus;
+            }
+            if ($paddleSubscriptionId) {
+                $metadata['paddle_subscription_id'] = $paddleSubscriptionId;
+            }
+            if ($paddleInvoiceId) {
+                $metadata['paddle_invoice_id'] = $paddleInvoiceId;
+            }
+            if ($paddleInvoiceNumber) {
+                $metadata['paddle_invoice_number'] = $paddleInvoiceNumber;
+            }
+        }
 
         return Order::create([
             'user_id' => $user->id,
@@ -410,11 +553,8 @@ class PaymentService
             'currency' => 'USD',
             'status' => 'completed',
             'payment_gateway_id' => $paymentGatewayId,
-            'transaction_id' => 'FREE-' . Str::random(10),
-            'metadata' => [
-                'source' => 'free_plan_immediate_assignment',
-                'assigned_at' => now()->toISOString()
-            ]
+            'transaction_id' => $paddleTransactionId ? $paddleTransactionId : 'FREE-' . Str::random(10),
+            'metadata' => $metadata
         ]);
     }
 

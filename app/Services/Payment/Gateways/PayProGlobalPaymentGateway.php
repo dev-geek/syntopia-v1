@@ -12,7 +12,8 @@ use App\Models\{
 use App\Services\{
     License\LicenseApiService,
     FirstPromoterService,
-    TenantAssignmentService
+    TenantAssignmentService,
+    Payment\PackageGatewayService,
 };
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -34,6 +35,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
         private LicenseApiService $licenseApiService,
         private FirstPromoterService $firstPromoterService,
         private TenantAssignmentService $tenantAssignmentService,
+        private PackageGatewayService $packageGatewayService,
     ) {
         $this->apiSecretKey = (string) config('payment.gateways.PayProGlobal.api_secret_key', '');
         $this->vendorAccountId = (string) config('payment.gateways.PayProGlobal.vendor_account_id', '');
@@ -165,6 +167,31 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             'action' => $action,
         ]);
 
+        // Update order with metadata
+        if ($this->order) {
+            $currentPackage = $this->user->package;
+            $metadata = array_merge($this->order->metadata ?? [], [
+                'source' => 'payproglobal_checkout_creation',
+                'action' => $action,
+                'checkout_url' => $checkoutUrl,
+                'product_id' => $productId,
+                'created_at' => now()->toISOString(),
+                'current_subscription' => [
+                    'package_id' => $currentPackage?->id,
+                    'package_name' => $currentPackage?->name,
+                    'package_price' => $currentPackage?->price ?? 0,
+                    'subscription_id' => $this->user->subscription_id,
+                ],
+                'target_package' => [
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'package_price' => $package->price,
+                ],
+            ]);
+
+            $this->order->update(['metadata' => $metadata]);
+        }
+
         return [
             'success' => true,
             'checkout_url' => $checkoutUrl,
@@ -241,27 +268,45 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             }
 
             // Create scheduled downgrade order with amount = 0
-            // Payment will be processed automatically by the gateway when the downgrade becomes active
-            // at the end of the current billing period (scheduled_activation_date)
-            $order = Order::create([
+            // No checkout/transaction is created immediately - it will only be created when:
+            // 1. The current active package expires (at scheduled_activation_date)
+            // 2. The downgrade activates at that time
+            // At that point, a PayProGlobal transaction will be created for the target package
+            $orderData = [
                 'user_id' => $this->user->id,
                 'package_id' => $targetPackage->id,
-                'amount' => 0, // No immediate payment - will be charged when downgrade becomes active
+                'amount' => 0,
                 'currency' => 'USD',
                 'status' => 'scheduled_downgrade',
                 'order_type' => 'downgrade',
-                'transaction_id' => 'PPG-DOWNGRADE-' . Str::random(10),
+                'payment_gateway_id' => $this->order?->payment_gateway_id ?? $this->user->payment_gateway_id,
+                'transaction_id' => null,
                 'metadata' => [
+                    'source' => 'payproglobal_downgrade_scheduling',
                     'subscription_id' => $activeLicense->subscription_id,
-                    'original_package_name' => $currentPackage->name,
-                    'original_package_price' => $currentPackage->price,
-                    'target_package_name' => $targetPackageName,
-                    'target_package_price' => $targetPackage->price, // Price to charge when downgrade becomes active
                     'product_id' => $newProductId,
                     'scheduled_activation_date' => $effectiveDate,
                     'scheduled_at' => now()->toISOString(),
+                    'applies_at_period_end' => $appliesAtPeriodEnd,
+                    'original_package_name' => $currentPackage->name,
+                    'original_package_price' => $currentPackage->price,
+                    'target_package_name' => $targetPackageName,
+                    'target_package_price' => $targetPackage->price,
+                    'current_subscription' => [
+                        'package_id' => $currentPackage->id,
+                        'package_name' => $currentPackage->name,
+                        'package_price' => $currentPackage->price,
+                        'subscription_id' => $activeLicense->subscription_id,
+                    ],
+                    'target_package' => [
+                        'package_id' => $targetPackage->id,
+                        'package_name' => $targetPackage->name,
+                        'package_price' => $targetPackage->price,
+                    ],
                 ],
-            ]);
+            ];
+
+            $order = $this->createOrUpdateOrder($orderData, 'downgrade', ['pending', 'scheduled_downgrade'], true);
 
             $logMessage = $isExpired
                 ? '[PayProGlobalPaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
@@ -323,13 +368,57 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 return ['success' => false, 'error' => 'Invalid subscription ID format'];
             }
 
+            $currentPackage = $this->user->package;
             $result = $this->changeProduct($subscriptionIdInt, (int) $newProductId);
 
             if ($result['success']) {
+                // Create or update order with metadata for upgrade
+                $orderData = [
+                    'user_id' => $this->user->id,
+                    'package_id' => $targetPackage->id,
+                    'amount' => $targetPackage->price,
+                    'currency' => 'USD',
+                    'status' => 'pending',
+                    'order_type' => $action,
+                    'payment_gateway_id' => $this->order?->payment_gateway_id ?? $this->user->payment_gateway_id,
+                    'transaction_id' => null,
+                    'metadata' => [
+                        'source' => 'payproglobal_subscription_product_change',
+                        'action' => $action,
+                        'subscription_id' => $subscriptionId,
+                        'product_id' => $newProductId,
+                        'scheduled_at' => now()->toISOString(),
+                        'original_package_name' => $currentPackage?->name,
+                        'original_package_price' => $currentPackage?->price ?? 0,
+                        'target_package_name' => $targetPackageName,
+                        'target_package_price' => $targetPackage->price,
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $subscriptionId,
+                        ],
+                        'target_package' => [
+                            'package_id' => $targetPackage->id,
+                            'package_name' => $targetPackage->name,
+                            'package_price' => $targetPackage->price,
+                        ],
+                    ],
+                ];
+
+                $order = $this->createOrUpdateOrder($orderData, $action, ['pending'], false);
+
+                Log::info("[PayProGlobalPaymentGateway::changeSubscriptionProduct] {$action} order created/updated", [
+                    'user_id' => $this->user->id,
+                    'order_id' => $order->id,
+                    'action' => $action,
+                ]);
+
                 return [
                     'success' => true,
                     'message' => "Subscription {$action}d successfully",
                     'subscription_id' => $subscriptionId,
+                    'order_id' => $order->id,
                 ];
             }
 
@@ -424,7 +513,7 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
 
     private function getProductIdForPackage(Package $package): ?int
     {
-        $productId = $package->getGatewayProductId('PayProGlobal');
+        $productId = $this->packageGatewayService->getGatewayProductId($package, 'PayProGlobal');
         if ($productId) {
             return (int) $productId;
         }
@@ -500,26 +589,37 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             }
 
             $activeLicense->update([
-'status' => 'cancelled_at_period_end'
+                'status' => 'cancelled_at_period_end'
             ]);
 
-            $order = Order::create([
+            $currentPackage = $user->package;
+            $orderData = [
                 'user_id' => $user->id,
                 'package_id' => $user->package_id,
                 'amount' => 0,
                 'currency' => 'USD',
                 'status' => 'cancelled',
                 'order_type' => 'cancellation',
+                'payment_gateway_id' => $user->payment_gateway_id,
                 'transaction_id' => 'PPG-CANCEL-' . Str::random(10),
                 'metadata' => [
+                    'source' => 'payproglobal_cancellation_scheduling',
                     'subscription_id' => $subscriptionId,
                     'reason_text' => $reasonText,
                     'scheduled_activation_date' => $effectiveDate,
                     'scheduled_at' => now()->toISOString(),
                     'cancelled_at' => now()->toISOString(),
                     'cancellation_scheduled' => true,
-                ]
-            ]);
+                    'current_subscription' => [
+                        'package_id' => $currentPackage?->id,
+                        'package_name' => $currentPackage?->name,
+                        'package_price' => $currentPackage?->price ?? 0,
+                        'subscription_id' => $subscriptionId,
+                    ],
+                ],
+            ];
+
+            $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
 
             Log::info('[PayProGlobalPaymentGateway::handleCancellation] Cancellation scheduled successfully', [
                 'user_id' => $user->id,
@@ -549,5 +649,25 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 'message' => 'An error occurred while scheduling the cancellation: ' . $e->getMessage()
             ];
         }
+    }
+
+    private function createOrUpdateOrder(array $orderData, string $orderType, array $allowedStatuses = ['pending'], bool $mergeMetadata = false): Order
+    {
+        // Check if we can reuse existing order
+        if ($this->order
+            && in_array($this->order->status, $allowedStatuses)
+            && $this->order->order_type === $orderType
+        ) {
+            // Merge metadata if requested
+            if ($mergeMetadata && isset($orderData['metadata'])) {
+                $orderData['metadata'] = array_merge($this->order->metadata ?? [], $orderData['metadata']);
+            }
+
+            $this->order->update($orderData);
+            return $this->order;
+        }
+
+        // Create new order
+        return Order::create($orderData);
     }
 }

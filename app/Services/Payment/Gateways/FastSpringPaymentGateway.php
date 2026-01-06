@@ -144,6 +144,32 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
         }
 
         $checkoutUrl = "https://{$this->storefront}/{$paymentData['package']}?" . http_build_query($queryParams);
+
+        // Update order with metadata
+        if ($this->order) {
+            $package = Package::whereRaw('LOWER(name) = ?', [strtolower($paymentData['package'])])->first();
+            $currentPackage = $this->user->package;
+            $metadata = array_merge($this->order->metadata ?? [], [
+                'source' => 'fastspring_checkout_creation',
+                'action' => $isUpgrade ? 'upgrade' : 'new',
+                'checkout_url' => $checkoutUrl,
+                'created_at' => now()->toISOString(),
+                'current_subscription' => [
+                    'package_id' => $currentPackage?->id,
+                    'package_name' => $currentPackage?->name,
+                    'package_price' => $currentPackage?->price ?? 0,
+                    'subscription_id' => $this->user->subscription_id,
+                ],
+                'target_package' => $package ? [
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'package_price' => $package->price,
+                ] : null,
+            ]);
+
+            $this->order->update(['metadata' => $metadata]);
+        }
+
         return [
             'success' => true,
             'checkout_url' => $checkoutUrl,
@@ -251,25 +277,45 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
         $gatewayRecord = PaymentGateways::whereRaw('LOWER(name) = ?', [strtolower('FastSpring')])->first();
 
-        $order = Order::create([
+        // Create scheduled downgrade order with amount = 0
+        // No checkout/transaction is created immediately - it will only be created when:
+        // 1. The current active package expires (at scheduled_activation_date)
+        // 2. The downgrade activates at that time
+        // At that point, a FastSpring transaction will be created for the target package
+        $orderData = [
             'user_id' => $this->user->id,
             'package_id' => $targetPackage->id,
-            'amount' => 0, // No immediate payment - will be updated to target_package_price when downgrade becomes active
+            'amount' => 0,
             'currency' => 'USD',
             'status' => 'scheduled_downgrade',
             'order_type' => 'downgrade',
             'payment_gateway_id' => $gatewayRecord?->id,
-            'transaction_id' => 'FS-DOWNGRADE-' . Str::random(10),
+            'transaction_id' => null,
             'metadata' => [
+                'source' => 'fastspring_downgrade_scheduling',
                 'subscription_id' => $activeLicense->subscription_id,
                 'original_package_name' => $currentPackage->name,
                 'original_package_price' => $currentPackage->price,
                 'target_package_name' => $targetPackageName,
-                'target_package_price' => $targetPackage->price, // Price that will be automatically charged when downgrade becomes active
+                'target_package_price' => $targetPackage->price,
                 'scheduled_activation_date' => $effectiveDate,
                 'scheduled_at' => now()->toISOString(),
+                'applies_at_period_end' => $appliesAtPeriodEnd,
+                'current_subscription' => [
+                    'package_id' => $currentPackage->id,
+                    'package_name' => $currentPackage->name,
+                    'package_price' => $currentPackage->price,
+                    'subscription_id' => $activeLicense->subscription_id,
+                ],
+                'target_package' => [
+                    'package_id' => $targetPackage->id,
+                    'package_name' => $targetPackage->name,
+                    'package_price' => $targetPackage->price,
+                ],
             ],
-        ]);
+        ];
+
+        $order = $this->createOrUpdateOrder($orderData, 'downgrade', ['pending', 'scheduled_downgrade'], true);
 
         $logMessage = $isExpired
             ? '[FastSpringPaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
@@ -344,20 +390,31 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                     ]);
                 }
 
-                $order = Order::create([
+                $currentPackage = $user->package;
+                $orderData = [
                     'user_id' => $user->id,
                     'package_id' => $user->package_id,
                     'amount' => 0,
                     'currency' => 'USD',
                     'status' => 'cancelled',
                     'order_type' => 'cancellation',
+                    'payment_gateway_id' => $user->payment_gateway_id,
                     'transaction_id' => 'FS-CANCEL-' . Str::random(10),
                     'metadata' => [
+                        'source' => 'fastspring_cancellation_scheduling',
                         'subscription_id' => $subscriptionId,
                         'cancelled_at' => now()->toISOString(),
                         'cancellation_scheduled' => true,
-                    ]
-                ]);
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $subscriptionId,
+                        ],
+                    ],
+                ];
+
+                $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
 
                 return [
                     'success' => true,
@@ -421,21 +478,32 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                     ]);
                 }
 
-                $order = Order::create([
+                $currentPackage = $user->package;
+                $orderData = [
                     'user_id' => $user->id,
                     'package_id' => $user->package_id,
                     'amount' => 0,
                     'currency' => 'USD',
                     'status' => 'cancelled',
                     'order_type' => 'cancellation',
+                    'payment_gateway_id' => $user->payment_gateway_id,
                     'transaction_id' => 'FS-CANCEL-LOCAL-' . Str::random(10),
                     'metadata' => [
+                        'source' => 'fastspring_cancellation_scheduling',
                         'cancellation_scheduled' => true,
                         'subscription_id' => $subscriptionId,
                         'cancelled_at' => now()->toISOString(),
-                        'note' => 'Subscription not found in FastSpring, cancelled locally'
-                    ]
-                ]);
+                        'note' => 'Subscription not found in FastSpring, cancelled locally',
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $subscriptionId,
+                        ],
+                    ],
+                ];
+
+                $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
 
                 return [
                     'success' => true,
@@ -471,5 +539,25 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
                 'message' => 'An error occurred while cancelling the subscription: ' . $e->getMessage()
             ];
         }
+    }
+
+    private function createOrUpdateOrder(array $orderData, string $orderType, array $allowedStatuses = ['pending'], bool $mergeMetadata = false): Order
+    {
+        // Check if we can reuse existing order
+        if ($this->order
+            && in_array($this->order->status, $allowedStatuses)
+            && $this->order->order_type === $orderType
+        ) {
+            // Merge metadata if requested
+            if ($mergeMetadata && isset($orderData['metadata'])) {
+                $orderData['metadata'] = array_merge($this->order->metadata ?? [], $orderData['metadata']);
+            }
+
+            $this->order->update($orderData);
+            return $this->order;
+        }
+
+        // Create new order
+        return Order::create($orderData);
     }
 }

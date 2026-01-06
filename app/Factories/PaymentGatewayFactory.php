@@ -4,6 +4,7 @@ namespace App\Factories;
 use App\Services\Payment\Gateways\FastSpringPaymentGateway;
 use App\Services\Payment\Gateways\PaddlePaymentGateway;
 use App\Services\Payment\Gateways\PayProGlobalPaymentGateway;
+use App\Services\Payment\PackageGatewayService;
 use App\Services\License\LicenseApiService;
 use App\Services\FirstPromoterService;
 use App\Services\TenantAssignmentService;
@@ -18,6 +19,7 @@ class PaymentGatewayFactory
         protected FirstPromoterService $firstPromoterService,
         protected TenantAssignmentService $tenantAssignmentService,
         protected PasswordBindingService $passwordBindingService,
+        protected PackageGatewayService $packageGatewayService,
     ) {
     }
 
@@ -33,12 +35,14 @@ class PaymentGatewayFactory
             'paddle' => new PaddlePaymentGateway(
                 $this->licenseApiService,
                 $this->firstPromoterService,
-                $this->tenantAssignmentService
+                $this->tenantAssignmentService,
+                $this->packageGatewayService,
             ),
             'payproglobal', 'pay pro global' => new PayProGlobalPaymentGateway(
                 $this->licenseApiService,
                 $this->firstPromoterService,
-                $this->tenantAssignmentService
+                $this->tenantAssignmentService,
+                $this->packageGatewayService,
             ),
             default => throw new \InvalidArgumentException("Unsupported payment gateway: {$gatewayName}")
         };

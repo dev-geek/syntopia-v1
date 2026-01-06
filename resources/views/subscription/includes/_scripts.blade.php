@@ -17,6 +17,21 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
+        // Check for Paddle transaction ID in URL parameters (_ptxn) and redirect to success page
+        const urlParams = new URLSearchParams(window.location.search);
+        const ptxn = urlParams.get('_ptxn');
+        if (ptxn) {
+            console.log('=== PADDLE TRANSACTION ID DETECTED IN URL ===', {
+                transactionId: ptxn,
+                currentUrl: window.location.href
+            });
+            // Redirect to success page with transaction ID
+            const successUrl = `/payments/success?gateway=paddle&transaction_id=${ptxn}`;
+            console.log('Redirecting to success URL:', successUrl);
+            window.location.href = successUrl;
+            return; // Stop execution to prevent other code from running
+        }
+
         // Track Facebook Pixel CompleteRegistration event for newly verified users
         @if (session('success') && str_contains(session('success'), 'verified'))
             if (typeof fbq !== 'undefined') {
@@ -66,7 +81,6 @@
         }
 
         // Auto-popup functionality for package_name in URL
-        const urlParams = new URLSearchParams(window.location.search);
         const packageNameFromUrl = urlParams.get('package_name');
 
         if (packageNameFromUrl) {
@@ -511,13 +525,25 @@
                     } else if (selectedGateway === 'FastSpring') {
                         processFastSpring(packageName, action);
                     } else if (selectedGateway === 'Paddle') {
-                        console.log(
-                            'Executing Paddle checkout with transaction ID from upgrade response...');
-                        // Use the transaction ID from the upgrade response directly
+                        console.log('Executing Paddle checkout with transaction ID from response...');
+                        console.log('Checkout data received:', {
+                            checkout_url: data.checkout_url,
+                            transaction_id: data.transaction_id,
+                            success: data.success
+                        });
+                        // Use Paddle.Checkout.open() with transaction ID to open checkout
                         if (data.transaction_id) {
+                            console.log('Opening Paddle checkout with transaction ID:', data.transaction_id);
+                            hideSpinner();
                             openPaddleCheckout(data.transaction_id, action);
+                        } else if (data.checkout_url) {
+                            console.log('No transaction_id, redirecting to checkout URL:', data.checkout_url);
+                            hideSpinner();
+                            // Fallback: redirect to checkout URL if no transaction_id
+                            window.location.href = data.checkout_url;
                         } else {
-                            // Fallback to the old processPaddle method if no transaction_id
+                            console.error('No transaction_id or checkout_url in response, falling back to processPaddle');
+                            // Fallback to the old processPaddle method
                             processPaddle(packageName, action);
                         }
                     } else if (selectedGateway === 'Pay Pro Global') {
@@ -634,16 +660,20 @@
                         return;
                     }
 
-                    if (!data.success || !data.transaction_id) {
-                        throw new Error(data.error || 'No transaction ID provided');
+                    if (!data.success || !data.checkout_url) {
+                        throw new Error(data.error || 'No checkout URL provided');
                     }
                     console.log('Paddle checkout data received:', data);
 
                     // Hide spinner when checkout is opened
                     hideSpinner();
 
-                    // Use the new openPaddleCheckout function
-                    openPaddleCheckout(data.transaction_id, action);
+                    // Redirect to Paddle checkout in the same window
+                    if (data.checkout_url) {
+                        window.location.href = data.checkout_url;
+                    } else {
+                        throw new Error('Checkout URL not provided');
+                    }
                 })
                 .catch(error => {
                     console.error('Paddle processing error:', error);

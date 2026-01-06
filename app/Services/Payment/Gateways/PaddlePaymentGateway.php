@@ -13,6 +13,7 @@ use App\Services\{
     License\LicenseApiService,
     FirstPromoterService,
     TenantAssignmentService,
+    Payment\PackageGatewayService,
 };
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -26,29 +27,30 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
     private string $webhookSecret;
     private ?User $user = null;
     private ?Order $order = null;
+    private array $apiHeaders;
 
     public function __construct(
         private LicenseApiService $licenseApiService,
         private FirstPromoterService $firstPromoterService,
         private TenantAssignmentService $tenantAssignmentService,
+        private PackageGatewayService $packageGatewayService,
     ) {
         $this->storefront = (string) config('payment.gateways.Paddle.checkout_url', 'https://sandbox-checkout.paddle.com');
         $this->apiKey = (string) config('payment.gateways.Paddle.api_key', '');
-        $this->apiBaseUrl = (string) config('payment.gateways.Paddle.api_url', 'https://api.paddle.com');
+        $this->apiBaseUrl = rtrim((string) config('payment.gateways.Paddle.api_url', 'https://api.paddle.com'), '/');
         $this->webhookSecret = (string) config('payment.gateways.Paddle.webhook_secret', '');
+        $this->apiHeaders = ['accept' => 'application/json', 'content-type' => 'application/json'];
     }
 
     public function setUser(User $user): PaymentGatewayInterface
     {
         $this->user = $user;
-
         return $this;
     }
 
     public function setOrder(Order $order): PaymentGatewayInterface
     {
         $this->order = $order;
-
         return $this;
     }
 
@@ -56,10 +58,9 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
     {
         return $this->createCheckout($paymentData, $returnRedirect);
     }
+
     public function createCheckout(array $paymentData, bool $returnRedirect = true): array
     {
-        Log::info('[PaddlePaymentGateway::createCheckout] called', ['paymentData' => $paymentData, 'returnRedirect' => $returnRedirect]);
-
         $isUpgrade = (bool) ($paymentData['is_upgrade'] ?? false);
 
         if (!$paymentData['user']->tenant_id) {
@@ -96,48 +97,96 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             ];
         }
 
-        $secureHash = hash_hmac(
-            'sha256',
-            $paymentData['user']->id . $paymentData['package'] . time(),
-            $this->webhookSecret
-        );
-
-        $baseSuccessUrl = route('payments.success');
-
-        $queryParams = [
-            'referrer' => $paymentData['user']->id,
-            'contactEmail' => $this->user->email,
-            'contactFirstName' => $this->user->first_name ?? '',
-            'contactLastName' => $paymentData['user']->last_name ?? '',
-            'tags' => json_encode([
-                'user_id'     => $paymentData['user']->id,
-                'package'     => $paymentData['package'],
-                'package_id'  => $this->order->package_id,
-                'secure_hash' => $secureHash,
-                'action'      => $isUpgrade ? 'upgrade' : 'new'
-            ]),
-            'mode' => 'popup',
-            'successUrl' => $baseSuccessUrl . '?' . http_build_query([
-                'gateway' => 'paddle',
-                'success-url' => $baseSuccessUrl,
-                'transaction_id' => '{orderReference}',
-                'popup' => 'true',
-                'package_name' => $paymentData['package'],
-                'payment_gateway_id' => $this->order->payment_gateway_id,
-            ]),
-            'cancelUrl' => route('subscription'),
-        ];
-
-        if ($paymentData['is_upgrade'] && $this->user->subscription_id) {
-            $queryParams['subscription_id'] = $this->user->subscription_id;
+        $package = $this->findPackageByName($paymentData['package']);
+        if (!$package) {
+            return ['success' => false, 'error' => 'Package not found'];
         }
 
-        $checkoutUrl = "https://{$this->storefront}/{$paymentData['package']}?" . http_build_query($queryParams);
+        $priceId = $this->packageGatewayService->getPaddlePriceId($package, $this);
+        if (!$priceId) {
+            return ['success' => false, 'error' => 'Price ID not found for package'];
+        }
 
-        return [
-            'success' => true,
-            'checkout_url' => $checkoutUrl,
+        $secureHash = hash_hmac('sha256', $paymentData['user']->id . $paymentData['package'] . time(), $this->webhookSecret);
+
+        $transactionData = [
+            'items' => [['price_id' => $priceId, 'quantity' => 1]],
+            'customer_id' => $this->user->paddle_customer_id,
+            'currency_code' => 'USD',
+            'collection_mode' => 'automatic',
+            'custom_data' => [
+                'user_id' => $paymentData['user']->id,
+                'package' => $paymentData['package'],
+                'package_id' => $package->id,
+                'secure_hash' => $secureHash,
+                'action' => $isUpgrade ? 'upgrade' : 'new'
+            ],
+            'checkout' => [
+                'settings' => ['display_mode' => 'overlay'],
+                'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']),
+                'cancel_url' => route('payments.popup-cancel')
+            ]
         ];
+
+        try {
+            $response = Http::withToken($this->apiKey)
+                ->withHeaders($this->apiHeaders)
+                ->post("{$this->apiBaseUrl}/transactions", $transactionData);
+
+            if ($response && $response->successful()) {
+                $transaction = $response->json()['data'] ?? [];
+                $checkoutUrl = $transaction['checkout']['url'] ?? null;
+
+                if (!$checkoutUrl) {
+                    Log::error('[PaddlePaymentGateway::createCheckout] No checkout URL in transaction response', [
+                        'transaction_id' => $transaction['id'] ?? null,
+                    ]);
+                    return ['success' => false, 'error' => 'Failed to get checkout URL from Paddle'];
+                }
+
+                if ($this->order && isset($transaction['id'])) {
+                    $currentPackage = $this->user->package;
+                    $metadata = array_merge($this->order->metadata ?? [], [
+                        'source' => 'paddle_checkout_creation',
+                        'action' => $isUpgrade ? 'upgrade' : 'new',
+                        'transaction_id' => $transaction['id'],
+                        'transaction_status' => $transaction['status'] ?? null,
+                        'checkout_url' => $checkoutUrl,
+                        'created_at' => now()->toISOString(),
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $this->user->subscription_id,
+                        ],
+                        'target_package' => [
+                            'package_id' => $package->id,
+                            'package_name' => $package->name,
+                            'package_price' => $package->price,
+                        ],
+                    ]);
+
+                    $this->order->update([
+                        'transaction_id' => $transaction['id'],
+                        'metadata' => $metadata,
+                    ]);
+                }
+
+                return [
+                    'success' => true,
+                    'checkout_url' => $checkoutUrl,
+                    'transaction_id' => $transaction['id'] ?? $this->order?->transaction_id,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'error' => 'Failed to create Paddle transaction: ' . $this->extractErrorMessage($response)
+            ];
+        } catch (\Exception $e) {
+            Log::error('[PaddlePaymentGateway::createCheckout] Exception', ['error' => $e->getMessage()]);
+            return ['success' => false, 'error' => 'Failed to create transaction: ' . $e->getMessage()];
+        }
     }
 
     public function handleUpgrade(array $paymentData, bool $returnRedirect = true): array
@@ -162,11 +211,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             return ['success' => false, 'error' => 'User context not set for downgrade'];
         }
 
-        $subscriptionId = $this->user->subscription_id;
-        if (!$subscriptionId) {
-            return ['success' => false, 'error' => 'No active subscription found to downgrade'];
-        }
-
         $currentPackage = $this->user->package;
         $targetPackageName = $paymentData['package'] ?? null;
 
@@ -174,88 +218,66 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             return ['success' => false, 'error' => 'Current or target package missing for downgrade'];
         }
 
-        $targetPackage = Package::where('name', $targetPackageName)->first();
+        $targetPackage = $this->findPackageByName($targetPackageName);
         if (!$targetPackage) {
             return ['success' => false, 'error' => 'Target package not found'];
         }
 
+        $activeLicense = $this->user->userLicence;
+        if (!$activeLicense) {
+            return ['success' => false, 'error' => 'No active license found to schedule a downgrade'];
+        }
+
         try {
-            $subscription = $this->getSubscription($subscriptionId);
-            if (!$subscription) {
-                return ['success' => false, 'error' => 'Failed to retrieve current subscription'];
-            }
+            [$effectiveDate, $appliesAtPeriodEnd] = $this->calculateEffectiveDate($activeLicense);
 
-            $activeLicense = $this->user->userLicence;
-            if (!$activeLicense) {
-                return ['success' => false, 'error' => 'No active license found to schedule a downgrade'];
-            }
-
-            $nextBilledAt = $subscription['data']['next_billed_at'] ?? null;
-            $expiresAt = $activeLicense->expires_at;
-            $isExpired = $expiresAt && $expiresAt->isPast();
-
-            if ($isExpired) {
-                $effectiveDate = now();
-                $appliesAtPeriodEnd = false;
-            } elseif ($nextBilledAt) {
-                $effectiveDate = \Carbon\Carbon::parse($nextBilledAt);
-                $appliesAtPeriodEnd = true;
-            } elseif ($expiresAt) {
-                $effectiveDate = $expiresAt;
-                $appliesAtPeriodEnd = true;
-            } elseif ($activeLicense->activated_at) {
-                try {
-                    $effectiveDate = $activeLicense->activated_at->copy()->addMonth();
-                } catch (\Throwable $e) {
-                    $effectiveDate = now()->addMonth();
-                }
-                $appliesAtPeriodEnd = true;
-            } else {
-                $effectiveDate = now()->addMonth();
-                $appliesAtPeriodEnd = true;
-            }
-
-            // Create scheduled downgrade order with amount = 0
-            // Payment will be processed automatically by the gateway when the downgrade becomes active
-            // at the end of the current billing period (scheduled_activation_date)
-            $order = Order::create([
+            $orderData = [
                 'user_id' => $this->user->id,
                 'package_id' => $targetPackage->id,
-                'amount' => 0, // No immediate payment - will be charged when downgrade becomes active
+                'amount' => 0,
                 'currency' => 'USD',
                 'status' => 'scheduled_downgrade',
                 'order_type' => 'downgrade',
-                'transaction_id' => 'PADDLE-DOWNGRADE-' . Str::random(10),
+                'payment_gateway_id' => $this->order?->payment_gateway_id ?? $this->user->payment_gateway_id,
+                'transaction_id' => null,
                 'metadata' => [
-                    'subscription_id' => $subscriptionId,
+                    'source' => 'paddle_downgrade_scheduling',
+                    'subscription_id' => $activeLicense->subscription_id,
+                    'scheduled_activation_date' => $effectiveDate->toDateTimeString(),
+                    'scheduled_at' => now()->toISOString(),
+                    'applies_at_period_end' => $appliesAtPeriodEnd,
                     'original_package_name' => $currentPackage->name,
                     'original_package_price' => $currentPackage->price,
                     'target_package_name' => $targetPackageName,
-                    'target_package_price' => $targetPackage->price, // Price to charge when downgrade becomes active
-                    'scheduled_activation_date' => $effectiveDate->toDateTimeString(),
-                    'scheduled_at' => now()->toISOString(),
+                    'target_package_price' => $targetPackage->price,
+                    'current_subscription' => [
+                        'package_id' => $currentPackage->id,
+                        'package_name' => $currentPackage->name,
+                        'package_price' => $currentPackage->price,
+                        'subscription_id' => $activeLicense->subscription_id,
+                    ],
+                    'target_package' => [
+                        'package_id' => $targetPackage->id,
+                        'package_name' => $targetPackage->name,
+                        'package_price' => $targetPackage->price,
+                    ],
                 ],
-            ]);
+            ];
 
-            $logMessage = $isExpired
-                ? '[PaddlePaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
-                : '[PaddlePaymentGateway::handleDowngrade] Downgrade scheduled successfully';
+            $order = $this->createOrUpdateOrder($orderData, 'downgrade', ['pending', 'scheduled_downgrade'], true);
 
-            Log::info($logMessage, [
+            Log::info('[PaddlePaymentGateway::handleDowngrade] Downgrade scheduled', [
                 'user_id' => $this->user->id,
-                'subscription_id' => $subscriptionId,
                 'order_id' => $order->id,
                 'effective_date' => $effectiveDate->toDateTimeString(),
-                'is_expired' => $isExpired,
+                'order_updated' => isset($this->order) && $this->order->id === $order->id,
             ]);
-
-            $message = $isExpired
-                ? 'Downgrade processed successfully. Your subscription has been updated immediately.'
-                : 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.';
 
             return [
                 'success' => true,
-                'message' => $message,
+                'message' => $appliesAtPeriodEnd
+                    ? 'Downgrade scheduled successfully. It will take effect at the end of your current billing period.'
+                    : 'Downgrade processed successfully. Your subscription has been updated immediately.',
                 'current_package' => $currentPackage->name,
                 'target_package' => $targetPackageName,
                 'effective_date' => $effectiveDate->toDateTimeString(),
@@ -263,11 +285,9 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                 'order_id' => $order->id,
             ];
         } catch (\Exception $e) {
-            Log::error('[PaddlePaymentGateway::handleDowngrade] Exception during downgrade', [
+            Log::error('[PaddlePaymentGateway::handleDowngrade] Exception', [
                 'user_id' => $this->user->id,
-                'subscription_id' => $subscriptionId,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return ['success' => false, 'error' => 'An error occurred while scheduling the downgrade: ' . $e->getMessage()];
@@ -281,15 +301,20 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             return ['success' => false, 'error' => "Target package missing for {$action}"];
         }
 
-        $targetPackage = Package::where('name', $targetPackageName)->first();
+        $targetPackage = $this->findPackageByName($targetPackageName);
         if (!$targetPackage) {
             return ['success' => false, 'error' => 'Target package not found'];
         }
 
         try {
-            $subscription = $this->getSubscription($subscriptionId);
-            if (!$subscription) {
-                return ['success' => false, 'error' => 'Failed to retrieve current subscription'];
+            $latestOrder = $this->getLatestTransactionOrder($this->user, $this->order?->payment_gateway_id);
+
+            if (!$latestOrder?->transaction_id) {
+                Log::warning("[PaddlePaymentGateway::changeSubscriptionPlan] No transaction ID found for {$action}", [
+                    'user_id' => $this->user->id,
+                ]);
+                $paymentData['is_upgrade'] = ($action === 'upgrade');
+                return $this->createCheckout($paymentData, true);
             }
 
             $newPriceId = $this->getPriceIdForPackage($targetPackage);
@@ -298,16 +323,63 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             }
 
             $currentPackage = $this->user->package;
-            $currentPriceId = $currentPackage ? $this->getPriceIdForPackage($currentPackage) : null;
-            $items = $this->buildSubscriptionItems($subscription['data']['items'] ?? [], $currentPriceId, $newPriceId);
-
-            $result = $this->updateSubscription($subscriptionId, $items, 'prorated_immediately');
+            $result = $this->updateTransaction(
+                $latestOrder->transaction_id,
+                [['price_id' => $newPriceId, 'quantity' => 1]],
+                $action,
+                $targetPackage->id
+            );
 
             if ($result['success']) {
+                // Create or update order with metadata for upgrade/downgrade
+                $orderData = [
+                    'user_id' => $this->user->id,
+                    'package_id' => $targetPackage->id,
+                    'amount' => $targetPackage->price,
+                    'currency' => 'USD',
+                    'status' => 'pending',
+                    'order_type' => $action,
+                    'payment_gateway_id' => $this->order?->payment_gateway_id ?? $this->user->payment_gateway_id,
+                    'transaction_id' => $latestOrder->transaction_id,
+                    'metadata' => [
+                        'source' => 'paddle_subscription_plan_change',
+                        'action' => $action,
+                        'subscription_id' => $subscriptionId,
+                        'transaction_id' => $latestOrder->transaction_id,
+                        'checkout_url' => $result['checkout_url'] ?? null,
+                        'scheduled_at' => now()->toISOString(),
+                        'original_package_name' => $currentPackage?->name,
+                        'original_package_price' => $currentPackage?->price ?? 0,
+                        'target_package_name' => $targetPackage->name,
+                        'target_package_price' => $targetPackage->price,
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $subscriptionId,
+                        ],
+                        'target_package' => [
+                            'package_id' => $targetPackage->id,
+                            'package_name' => $targetPackage->name,
+                            'package_price' => $targetPackage->price,
+                        ],
+                    ],
+                ];
+
+                $order = $this->createOrUpdateOrder($orderData, $action, ['pending'], false);
+
+                Log::info("[PaddlePaymentGateway::changeSubscriptionPlan] {$action} order created/updated", [
+                    'user_id' => $this->user->id,
+                    'order_id' => $order->id,
+                    'action' => $action,
+                ]);
+
                 return [
                     'success' => true,
-                    'message' => "Subscription {$action}d successfully",
-                    'subscription_id' => $subscriptionId,
+                    'message' => "Package {$action}d successfully",
+                    'transaction_id' => $latestOrder->transaction_id,
+                    'checkout_url' => $result['checkout_url'] ?? null,
+                    'order_id' => $order->id,
                 ];
             }
 
@@ -315,285 +387,196 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
         } catch (\Exception $e) {
             Log::error("[PaddlePaymentGateway::changeSubscriptionPlan] Exception during {$action}", [
                 'user_id' => $this->user->id,
-                'subscription_id' => $subscriptionId,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
-            return ['success' => false, 'error' => "An error occurred while {$action}ing the subscription: {$e->getMessage()}"];
+            return ['success' => false, 'error' => "An error occurred while {$action}ing the package: {$e->getMessage()}"];
         }
-    }
-
-    private function buildSubscriptionItems(array $existingItems, ?string $currentPriceId, string $newPriceId): array
-    {
-        $items = [];
-        $basePlanReplaced = false;
-
-        foreach ($existingItems as $item) {
-            $priceId = $item['price']['id'] ?? null;
-            if (!$priceId) {
-                continue;
-            }
-
-            if ($currentPriceId && $priceId === $currentPriceId && !$basePlanReplaced) {
-                $items[] = ['price_id' => $newPriceId, 'quantity' => 1];
-                $basePlanReplaced = true;
-            } else {
-                $items[] = ['price_id' => $priceId, 'quantity' => $item['quantity'] ?? 1];
-            }
-        }
-
-        if (!$basePlanReplaced) {
-            $items = empty($items)
-                ? [['price_id' => $newPriceId, 'quantity' => 1]]
-                : [['price_id' => $newPriceId, 'quantity' => 1], ...array_slice($items, 1)];
-        }
-
-        return $items;
     }
 
     public function handleCancellation(User $user, ?string $subscriptionId = null, bool $cancelImmediately = false): array
     {
+        $activeLicense = $user->userLicence;
+
+        if (!$activeLicense) {
+            Log::error('[PaddlePaymentGateway::handleCancellation] No active license found', ['user_id' => $user->id]);
+            return ['success' => false, 'message' => 'No active subscription found to cancel'];
+        }
+
+        $transactionDetails = null;
         if (!$subscriptionId) {
-            $activeLicense = $user->userLicence;
+            $latestOrder = $this->getLatestTransactionOrder($user, $user->payment_gateway_id);
 
-            if (!$activeLicense || !$activeLicense->subscription_id) {
-                Log::error('[PaddlePaymentGateway::cancelSubscription] No subscription ID found', [
-                    'user_id' => $user->id,
-                    'has_license' => $activeLicense !== null,
-                ]);
-
-                return [
-                    'success' => false,
-                    'message' => 'No active subscription found to cancel'
-                ];
+            if (!$latestOrder?->transaction_id) {
+                Log::error('[PaddlePaymentGateway::handleCancellation] No transaction ID found', ['user_id' => $user->id]);
+                return ['success' => false, 'message' => 'No active transaction found to cancel subscription'];
             }
 
-            $subscriptionId = $activeLicense->subscription_id;
-        }
-
-        try {
-            $subscription = $this->getSubscription($subscriptionId);
-            if (!$subscription) {
-                return [
-                    'success' => false,
-                    'message' => 'Failed to retrieve subscription details'
-                ];
-            }
-
-            $subscriptionData = $subscription['data'] ?? [];
-            $subscriptionStatus = $subscriptionData['status'] ?? null;
-
-            if (!in_array($subscriptionStatus, ['active', 'paused'])) {
-                return [
-                    'success' => false,
-                    'message' => "Cannot cancel subscription with status: {$subscriptionStatus}. Only active or paused subscriptions can be canceled."
-                ];
-            }
-
-            if ($subscriptionStatus === 'past_due') {
-                return [
-                    'success' => false,
-                    'message' => 'Cannot cancel a subscription with past due transactions. Please resolve payment issues first.'
-                ];
-            }
-
-            if ($cancelImmediately) {
-                $unbilledCharges = $this->checkUnbilledCharges($subscriptionId);
-                if ($unbilledCharges) {
-                    return [
-                        'success' => false,
-                        'message' => 'Cannot cancel immediately. Subscription has unbilled charges that will be forgiven if canceled at period end.'
-                    ];
+            try {
+                $transaction = $this->getTransaction($latestOrder->transaction_id);
+                if (!$transaction) {
+                    return ['success' => false, 'message' => 'Failed to retrieve transaction details'];
                 }
-            }
 
-            $effectiveFrom = $cancelImmediately ? 'immediately' : 'next_billing_period';
-            $url = rtrim($this->apiBaseUrl, '/') . "/subscriptions/{$subscriptionId}/cancel";
-            $response = $this->makeApiRequest('post', $url, [
-                'effective_from' => $effectiveFrom,
-            ]);
-
-            if ($response && $response->successful()) {
-                $responseData = $response->json();
-                $updatedSubscription = $responseData['data'] ?? [];
-
-                Log::info('[PaddlePaymentGateway::cancelSubscription] Subscription cancelled successfully', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'effective_from' => $effectiveFrom,
-                ]);
-
-                $scheduledChange = $updatedSubscription['scheduled_change'] ?? null;
-                $canceledAt = $updatedSubscription['canceled_at'] ?? null;
-                $nextBilledAt = $updatedSubscription['next_billed_at'] ?? null;
-                $effectiveAt = $scheduledChange['effective_at'] ?? $canceledAt;
-
-                $activeLicense = $user->userLicence;
-                if ($activeLicense) {
-                    $activeLicense->update([
-                        'status' => $cancelImmediately ? 'cancelled' : 'cancelled_at_period_end',
-                        'cancelled_at' => $canceledAt ? \Carbon\Carbon::parse($canceledAt) : now(),
+                $subscriptionId = $transaction['subscription_id'] ?? null;
+                if (!$subscriptionId) {
+                    Log::error('[PaddlePaymentGateway::handleCancellation] No subscription_id in transaction', [
+                        'user_id' => $user->id,
+                        'transaction_id' => $latestOrder->transaction_id,
                     ]);
+                    return ['success' => false, 'message' => 'No subscription found in transaction. Cannot cancel subscription.'];
                 }
 
-                $order = Order::create([
+                $transactionDetails = [
+                    'transaction_id' => $latestOrder->transaction_id,
+                    'transaction_status' => $transaction['status'] ?? null,
+                    'invoice_id' => $transaction['invoice_id'] ?? null,
+                    'invoice_number' => $transaction['invoice_number'] ?? null,
+                    'billing_period' => $transaction['billing_period'] ?? null,
+                    'currency_code' => $transaction['currency_code'] ?? null,
+                ];
+            } catch (\Exception $e) {
+                Log::error('[PaddlePaymentGateway::handleCancellation] Exception getting transaction', [
                     'user_id' => $user->id,
-                    'package_id' => $user->package_id,
-                    'amount' => 0,
-                    'currency' => 'USD',
-                    'status' => 'cancelled',
-                    'order_type' => 'cancellation',
-                    'transaction_id' => 'PADDLE-CANCEL-' . Str::random(10),
-                    'metadata' => [
-                        'subscription_id' => $subscriptionId,
-                        'subscription_status' => $updatedSubscription['status'] ?? null,
-                        'cancelled_at' => $canceledAt,
-                        'scheduled_change' => $scheduledChange,
-                        'effective_at' => $effectiveAt,
-                        'next_billed_at' => $nextBilledAt,
-                        'cancel_immediately' => $cancelImmediately,
-                        'cancelled_at_timestamp' => now()->toISOString(),
-                        'cancellation_scheduled' => !$cancelImmediately,
-                    ]
+                    'error' => $e->getMessage(),
                 ]);
+                return ['success' => false, 'message' => 'An error occurred while retrieving transaction: ' . $e->getMessage()];
+            }
+        }
 
-                $message = $cancelImmediately
-                    ? 'Subscription canceled successfully. Access has been revoked immediately.'
-                    : 'Subscription cancellation scheduled successfully. Your subscription will remain active until the end of the current billing period.';
+        if (!$subscriptionId || !preg_match('/^sub_[a-z\d]{26}$/', $subscriptionId)) {
+            Log::error('[PaddlePaymentGateway::handleCancellation] Invalid subscription ID', [
+                'user_id' => $user->id,
+                'subscription_id' => $subscriptionId,
+            ]);
+            return ['success' => false, 'message' => 'Invalid subscription ID format. Cannot cancel subscription.'];
+        }
 
+        try {
+            $response = $this->makeApiRequest('post', "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
+                'effective_from' => 'next_billing_period',
+            ]);
+
+            if (!$response || !$response->successful()) {
                 return [
-                    'success' => true,
-                    'message' => $message,
-                    'cancellation_type' => $cancelImmediately ? 'immediate' : 'end_of_billing_period',
-                    'order_id' => $order->id,
-                    'subscription_id' => $subscriptionId,
-                    'canceled_at' => $canceledAt,
-                    'effective_at' => $effectiveAt,
-                    'next_billed_at' => $nextBilledAt,
+                    'success' => false,
+                    'message' => 'Failed to cancel subscription: ' . $this->extractErrorMessage($response)
                 ];
             }
 
-            $errorMessage = $this->extractErrorMessage($response);
+            $updatedSubscription = $response->json()['data'] ?? [];
+            $scheduledChange = $updatedSubscription['scheduled_change'] ?? null;
+            $canceledAt = $updatedSubscription['canceled_at'] ?? null;
+            $effectiveAt = $scheduledChange['effective_at'] ?? $canceledAt;
 
-            Log::error('[PaddlePaymentGateway::cancelSubscription] Paddle API error', [
-                'user_id' => $user->id,
+            $activeLicense->update([
+                'status' => 'cancelled_at_period_end',
+                'cancelled_at' => $canceledAt ? \Carbon\Carbon::parse($canceledAt) : now(),
+            ]);
+
+            $currentPackage = $user->package;
+            $metadata = [
+                'source' => 'paddle_cancellation_scheduling',
                 'subscription_id' => $subscriptionId,
-                'status' => $response?->status(),
-                'error' => $errorMessage,
-                'response' => $response?->body(),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'Failed to cancel subscription: ' . $errorMessage
-            ];
-        } catch (\Exception $e) {
-            Log::error('[PaddlePaymentGateway::cancelSubscription] Exception during cancellation', [
-                'user_id' => $user->id,
-                'subscription_id' => $subscriptionId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'An error occurred while cancelling the subscription: ' . $e->getMessage()
-            ];
-        }
-    }
-
-    private function checkUnbilledCharges(string $subscriptionId): bool
-    {
-        try {
-            $url = rtrim($this->apiBaseUrl, '/') . "/subscriptions/{$subscriptionId}";
-            $response = $this->makeApiRequest('get', $url, [
-                'include' => 'next_transaction',
-            ]);
-
-            if ($response && $response->successful()) {
-                $data = $response->json();
-                $subscription = $data['data'] ?? [];
-                $nextTransaction = $subscription['next_transaction'] ?? null;
-
-                if ($nextTransaction) {
-                    $items = $nextTransaction['items'] ?? [];
-                    foreach ($items as $item) {
-                        $price = $item['price'] ?? null;
-                        if ($price && ($price['billing_cycle'] ?? null) === null) {
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            return false;
-        } catch (\Exception $e) {
-            Log::warning('[PaddlePaymentGateway::checkUnbilledCharges] Failed to check unbilled charges', [
-                'subscription_id' => $subscriptionId,
-                'error' => $e->getMessage(),
-            ]);
-            return false;
-        }
-    }
-
-    private function getSubscription(string $subscriptionId): ?array
-    {
-        $url = rtrim($this->apiBaseUrl, '/') . "/subscriptions/{$subscriptionId}";
-        $response = $this->makeApiRequest('get', $url);
-
-        if ($response && $response->successful()) {
-            return $response->json();
-        }
-
-        Log::error('[PaddlePaymentGateway::getSubscription] Failed to get subscription', [
-            'subscription_id' => $subscriptionId,
-            'status' => $response?->status(),
-            'response' => $response?->body(),
-        ]);
-
-        return null;
-    }
-
-    private function updateSubscription(string $subscriptionId, array $items, string $prorationBillingMode = 'prorated_immediately'): array
-    {
-        try {
-            $url = rtrim($this->apiBaseUrl, '/') . "/subscriptions/{$subscriptionId}";
-            $response = $this->makeApiRequest('patch', $url, [
-                'proration_billing_mode' => $prorationBillingMode,
-                'items' => $items,
-            ]);
-
-            if ($response && $response->successful()) {
-                $responseData = $response->json();
-                Log::info('[PaddlePaymentGateway::updateSubscription] Subscription updated successfully', [
+                'subscription_status' => $updatedSubscription['status'] ?? null,
+                'cancelled_at' => $canceledAt,
+                'scheduled_change' => $scheduledChange,
+                'effective_at' => $effectiveAt,
+                'next_billed_at' => $updatedSubscription['next_billed_at'] ?? null,
+                'cancelled_at_timestamp' => now()->toISOString(),
+                'cancellation_scheduled' => true,
+                'current_subscription' => [
+                    'package_id' => $currentPackage?->id,
+                    'package_name' => $currentPackage?->name,
+                    'package_price' => $currentPackage?->price ?? 0,
                     'subscription_id' => $subscriptionId,
-                ]);
+                ],
+            ];
 
-                return ['success' => true, 'data' => $responseData];
+            if ($transactionDetails) {
+                $metadata['transaction_details'] = $transactionDetails;
             }
 
-            $errorMessage = $this->extractErrorMessage($response);
-            Log::error('[PaddlePaymentGateway::updateSubscription] Paddle API error', [
-                'subscription_id' => $subscriptionId,
-                'status' => $response?->status(),
-                'error' => $errorMessage,
-            ]);
+            $orderData = [
+                'user_id' => $user->id,
+                'package_id' => $user->package_id,
+                'amount' => 0,
+                'currency' => 'USD',
+                'status' => 'cancelled',
+                'order_type' => 'cancellation',
+                'payment_gateway_id' => $user->payment_gateway_id,
+                'transaction_id' => 'PADDLE-CANCEL-' . Str::random(10),
+                'metadata' => $metadata,
+            ];
 
-            return ['success' => false, 'error' => $errorMessage];
-        } catch (\Exception $e) {
-            Log::error('[PaddlePaymentGateway::updateSubscription] Exception', [
+            $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
+
+            return [
+                'success' => true,
+                'message' => 'Subscription cancellation scheduled successfully. Your subscription will remain active until the end of your current billing period.',
+                'cancellation_type' => 'end_of_billing_period',
+                'order_id' => $order->id,
                 'subscription_id' => $subscriptionId,
+                'effective_at' => $effectiveAt,
+                'next_billed_at' => $updatedSubscription['next_billed_at'] ?? null,
+            ];
+        } catch (\Exception $e) {
+            Log::error('[PaddlePaymentGateway::handleCancellation] Exception', [
+                'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
 
-            return ['success' => false, 'error' => 'An error occurred while updating the subscription: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'An error occurred while scheduling the cancellation: ' . $e->getMessage()];
+        }
+    }
+
+    private function updateTransaction(string $transactionId, array $items, string $action = 'upgrade', ?int $packageId = null): array
+    {
+        try {
+            if (!$packageId) {
+                $packageId = $this->order?->package_id
+                    ?? $this->getLatestTransactionOrder($this->user, null, $transactionId)?->package_id;
+            }
+
+            $updateData = [
+                'collection_mode' => 'automatic',
+                'items' => $items,
+                'customer_id' => $this->user->paddle_customer_id,
+                'currency_code' => $this->order?->currency ?? 'USD',
+                'custom_data' => [
+                    'customer_reference_id' => (string)$this->user->id,
+                    'package_id' => $packageId,
+                    'action' => $action
+                ],
+                'billing_details' => [
+                    'enable_checkout' => false,
+                    'purchase_order_number' => null,
+                    'additional_information' => null,
+                    'payment_terms' => ['interval' => 'day', 'frequency' => 0]
+                ],
+                'checkout' => ['url' => null]
+            ];
+
+            $response = $this->makeApiRequest('patch', "{$this->apiBaseUrl}/transactions/{$transactionId}", $updateData);
+
+            if ($response && $response->successful()) {
+                $checkoutUrl = $response->json()['data']['checkout']['url'] ?? null;
+                return ['success' => true, 'data' => $response->json(), 'checkout_url' => $checkoutUrl];
+            }
+
+            return ['success' => false, 'error' => $this->extractErrorMessage($response)];
+        } catch (\Exception $e) {
+            Log::error('[PaddlePaymentGateway::updateTransaction] Exception', [
+                'transaction_id' => $transactionId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'error' => 'An error occurred while updating the transaction: ' . $e->getMessage()];
         }
     }
 
     private function getPriceIdForPackage(Package $package): ?string
     {
-        return $package->getPaddlePriceId($this)
+        return $this->packageGatewayService->getPaddlePriceId($package, $this)
             ?? $this->getPriceIdFromConfig($package);
     }
 
@@ -612,6 +595,10 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
     private function extractErrorMessage($response): string
     {
+        if (!$response) {
+            return 'Unknown error';
+        }
+
         try {
             $errorData = $response->json();
             return $errorData['error']['detail']
@@ -629,15 +616,13 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
         $packageKey = strtolower(str_replace([' ', '-'], '', $packageName));
         $productIds = config('payment.gateways.Paddle.product_ids', []);
 
-        if (!isset($productIds[$packageKey])) {
+        if (!isset($productIds[$packageKey]) || empty($productIds[$packageKey]) || $productIds[$packageKey] === 0) {
             return null;
         }
 
         try {
-            $url = rtrim($this->apiBaseUrl, '/') . "/products/{$productIds[$packageKey]}";
-            $response = $this->makeApiRequest('get', $url);
-
-            return $response ? ($response->json()['data'] ?? null) : null;
+            $response = $this->makeApiRequest('get', "{$this->apiBaseUrl}/products/{$productIds[$packageKey]}");
+            return $response && $response->successful() ? ($response->json()['data'] ?? null) : null;
         } catch (\Exception $e) {
             Log::error('[PaddlePaymentGateway::findProductByName] Exception', [
                 'package_name' => $packageName,
@@ -650,8 +635,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
     public function findActivePriceForProduct(string $productId): ?array
     {
         try {
-            $url = rtrim($this->apiBaseUrl, '/') . "/prices";
-            $response = $this->makeApiRequest('get', $url, [
+            $response = $this->makeApiRequest('get', "{$this->apiBaseUrl}/prices", [
                 'product_id' => $productId,
                 'status' => 'active',
                 'per_page' => 1,
@@ -674,36 +658,23 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
     public function createOrGetCustomer(User $user): ?string
     {
-//         dd($user->toArray());
-//         array:8 [▼ // app\Services\Payment\Gateways\PaddlePaymentGateway.php:675
-        //   "email" => "qetatab@mailinator.com"
-        //   "name" => "Dillon Manning"
-        //   "verification_code" => "504164"
-        //   "email_verified_at" => null
-        //   "status" => 0
-        //   "updated_at" => "2026-01-02T14:05:04.000000Z"
-        //   "created_at" => "2026-01-02T14:05:04.000000Z"
-        //   "id" => 4
-        // ]
         if ($user->paddle_customer_id) {
             return $user->paddle_customer_id;
         }
 
         try {
-            $url = rtrim($this->apiBaseUrl, '/') . '/customers';
             $name = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''));
             if (empty($name)) {
                 $name = $user->email;
             }
 
-            $response = $this->makeApiRequest('post', $url, [
+            $response = $this->makeApiRequest('post', "{$this->apiBaseUrl}/customers", [
                 'email' => $user->email,
                 'name' => $name,
             ]);
 
             if ($response && $response->successful()) {
-                $data = $response->json();
-                $customerId = $data['data']['id'] ?? null;
+                $customerId = $response->json()['data']['id'] ?? null;
 
                 if ($customerId) {
                     $user->update(['paddle_customer_id' => $customerId]);
@@ -718,7 +689,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             Log::warning('[PaddlePaymentGateway::createOrGetCustomer] Failed to create Paddle customer', [
                 'user_id' => $user->id,
                 'status' => $response?->status(),
-                'response' => $response?->body(),
             ]);
 
             return null;
@@ -738,8 +708,7 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
             return match ($method) {
                 'get' => $request->get($url, $params),
-                'post' => $request->withHeaders(['content-type' => 'application/json'])->post($url, $params),
-                'patch' => $request->withHeaders(['content-type' => 'application/json'])->patch($url, $params),
+                'post', 'patch' => $request->withHeaders(['content-type' => 'application/json'])->{$method}($url, $params),
                 'delete' => $request->delete($url),
                 default => null,
             };
@@ -751,5 +720,88 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             ]);
             return null;
         }
+    }
+
+    private function getLatestTransactionOrder(User $user, ?int $paymentGatewayId = null, ?string $transactionId = null): ?Order
+    {
+        $query = $user->orders()
+            ->where('status', 'completed')
+            ->whereNotNull('transaction_id')
+            ->where('transaction_id', 'like', 'txn_%');
+
+        if ($paymentGatewayId) {
+            $query->where('payment_gateway_id', $paymentGatewayId);
+        }
+
+        if ($transactionId) {
+            $query->where('transaction_id', $transactionId);
+        }
+
+        return $query->latest('created_at')->first();
+    }
+
+    private function getTransaction(string $transactionId): ?array
+    {
+        $response = $this->makeApiRequest('get', "{$this->apiBaseUrl}/transactions/{$transactionId}");
+
+        if (!$response || !$response->successful()) {
+            Log::error('[PaddlePaymentGateway::getTransaction] Failed to get transaction', [
+                'transaction_id' => $transactionId,
+                'status' => $response?->status(),
+                'error' => $this->extractErrorMessage($response),
+            ]);
+            return null;
+        }
+
+        return $response->json()['data'] ?? [];
+    }
+
+    private function findPackageByName(string $packageName): ?Package
+    {
+        return Package::where('name', $packageName)->first();
+    }
+
+    private function calculateEffectiveDate(UserLicence $activeLicense): array
+    {
+        $expiresAt = $activeLicense->expires_at;
+        $isExpired = $expiresAt && $expiresAt->isPast();
+
+        if ($isExpired) {
+            return [now(), false];
+        }
+
+        if ($expiresAt) {
+            return [$expiresAt, true];
+        }
+
+        if ($activeLicense->activated_at) {
+            try {
+                return [$activeLicense->activated_at->copy()->addMonth(), true];
+            } catch (\Throwable $e) {
+                return [now()->addMonth(), true];
+            }
+        }
+
+        return [now()->addMonth(), true];
+    }
+
+    private function createOrUpdateOrder(array $orderData, string $orderType, array $allowedStatuses = ['pending'], bool $mergeMetadata = false): Order
+    {
+        // Check if we can reuse existing order
+        if ($this->order
+            && in_array($this->order->status, $allowedStatuses)
+            && $this->order->order_type === $orderType
+        ) {
+            // Merge metadata
+            if ($mergeMetadata && isset($orderData['metadata'])) {
+                $orderData['metadata'] = array_merge($this->order->metadata ?? [], $orderData['metadata']);
+            }
+
+            $this->order->update($orderData);
+            return $this->order;
+        }
+
+        // Create new order
+        return Order::create($orderData);
     }
 }

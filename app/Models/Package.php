@@ -231,40 +231,4 @@ class Package extends Model
         return is_array($this->features) ? $this->features : [];
     }
 
-    /**
-     * Get the gateway product/price ID for a specific payment gateway
-     *
-     * @param string $gatewayName The gateway name (Paddle, FastSpring, PayProGlobal)
-     * @return string|null
-     */
-    public function getGatewayProductId(string $gatewayName): ?string
-    {
-        $packageKey = strtolower(str_replace([' ', '-'], '', $this->name));
-
-        $gatewayConfig = config("payment.gateways.{$gatewayName}.product_ids", []);
-
-        return $gatewayConfig[$packageKey] ?? null;
-    }
-
-    /**
-     * Get Paddle price ID for this package
-     * This method fetches the price ID from Paddle API by matching package name
-     *
-     * @param \App\Services\Payment\PaddlePaymentGateway|null $paddleGateway
-     * @return string|null
-     */
-    public function getPaddlePriceId($paddleGateway = null): ?string
-    {
-        if (!$paddleGateway) {
-            $paddleGateway = app(\App\Services\Payment\PaddlePaymentGateway::class);
-        }
-
-        $product = $paddleGateway->findProductByName($this->name);
-        if (!$product) {
-            return null;
-        }
-
-        $price = $paddleGateway->findActivePriceForProduct($product['id']);
-        return $price['id'] ?? null;
-    }
 }

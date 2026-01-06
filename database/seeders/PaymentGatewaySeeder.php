@@ -30,13 +30,13 @@ class PaymentGatewaySeeder extends Seeder
             ],
             [
                 'name' => 'FastSpring',
-                'is_active' => 1,
+                'is_active' => 0,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
                 'name' => 'Paddle',
-                'is_active' => 0,
+                'is_active' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],

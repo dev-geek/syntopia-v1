@@ -2,6 +2,7 @@
 
 namespace App\Services\Auth\Verification;
 
+use App\Models\Package;
 use App\Models\User;
 use App\Services\TenantAssignmentService;
 use App\Services\PasswordBindingService;
@@ -181,13 +182,13 @@ class VerificationService
         $user->refresh();
         // Only bind password if it wasn't already bound during tenant assignment
         $passwordAlreadyBound = $apiResponse['password_bound'] ?? false;
-        
+
         Log::info('[VerificationService] Checking password binding status', [
             'user_id' => $user->id,
             'has_subscriber_password' => !empty($user->subscriber_password),
             'password_bound_during_tenant_assignment' => $passwordAlreadyBound
         ]);
-        
+
         if ($user->subscriber_password && !$passwordAlreadyBound) {
             $passwordBindResult = $this->passwordBindingService->bindPasswordWithRetry($user, $user->subscriber_password);
 
@@ -232,7 +233,7 @@ class VerificationService
             $hasPaidPackage = $user->package && strtolower($user->package->name) !== 'free';
 
             if (!$hasPaidPackage) {
-                $freePackage = \App\Models\Package::where(function ($query) {
+                $freePackage = Package::where(function ($query) {
                     $query->where('price', 0)
                         ->orWhereRaw('LOWER(name) = ?', ['free']);
                 })->first();
