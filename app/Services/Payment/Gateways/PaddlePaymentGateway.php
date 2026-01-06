@@ -404,16 +404,35 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
         }
 
         $transactionDetails = null;
-        if (!$subscriptionId) {
-            $latestOrder = $this->getLatestTransactionOrder($user, $user->payment_gateway_id);
+        $transactionIdToFetch = null;
 
-            if (!$latestOrder?->transaction_id) {
-                Log::error('[PaddlePaymentGateway::handleCancellation] No transaction ID found', ['user_id' => $user->id]);
-                return ['success' => false, 'message' => 'No active transaction found to cancel subscription'];
+        // Check if subscriptionId is actually a transaction ID (starts with txn_)
+        if ($subscriptionId && preg_match('/^txn_[a-z\d]+$/', $subscriptionId)) {
+            $transactionIdToFetch = $subscriptionId;
+            $subscriptionId = null; // Reset to fetch from transaction
+            Log::info('[PaddlePaymentGateway::handleCancellation] Detected transaction ID, will fetch subscription ID', [
+                'user_id' => $user->id,
+                'transaction_id' => $transactionIdToFetch,
+            ]);
+        }
+
+        if (!$subscriptionId) {
+            // If we have a transaction ID, use it; otherwise get from latest order
+            if ($transactionIdToFetch) {
+                $transactionId = $transactionIdToFetch;
+            } else {
+                $latestOrder = $this->getLatestTransactionOrder($user, $user->payment_gateway_id);
+
+                if (!$latestOrder?->transaction_id) {
+                    Log::error('[PaddlePaymentGateway::handleCancellation] No transaction ID found', ['user_id' => $user->id]);
+                    return ['success' => false, 'message' => 'No active transaction found to cancel subscription'];
+                }
+
+                $transactionId = $latestOrder->transaction_id;
             }
 
             try {
-                $transaction = $this->getTransaction($latestOrder->transaction_id);
+                $transaction = $this->getTransaction($transactionId);
                 if (!$transaction) {
                     return ['success' => false, 'message' => 'Failed to retrieve transaction details'];
                 }
@@ -422,13 +441,13 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
                 if (!$subscriptionId) {
                     Log::error('[PaddlePaymentGateway::handleCancellation] No subscription_id in transaction', [
                         'user_id' => $user->id,
-                        'transaction_id' => $latestOrder->transaction_id,
+                        'transaction_id' => $transactionId,
                     ]);
                     return ['success' => false, 'message' => 'No subscription found in transaction. Cannot cancel subscription.'];
                 }
 
                 $transactionDetails = [
-                    'transaction_id' => $latestOrder->transaction_id,
+                    'transaction_id' => $transactionId,
                     'transaction_status' => $transaction['status'] ?? null,
                     'invoice_id' => $transaction['invoice_id'] ?? null,
                     'invoice_number' => $transaction['invoice_number'] ?? null,
