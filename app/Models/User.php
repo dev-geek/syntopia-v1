@@ -37,6 +37,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'pet',
         'verification_code',
+        'verification_code_sent_at',
         'payment_gateway_id',
         'package_id',
         'is_subscribed',
@@ -63,6 +64,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'last_login_at' => 'datetime',
         'has_used_free_plan' => 'boolean',
         'free_plan_used_at' => 'datetime',
+        'verification_code_sent_at' => 'datetime',
     ];
 
     public function package(): BelongsTo

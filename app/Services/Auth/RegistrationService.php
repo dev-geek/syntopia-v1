@@ -111,6 +111,7 @@ class RegistrationService
                     'password' => $request->password,
                     'subscriber_password' => $request->password,
                     'verification_code' => $verification_code,
+                    'verification_code_sent_at' => now(),
                     'email_verified_at' => null,
                     'status' => 0
                 ]);

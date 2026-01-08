@@ -20,10 +20,11 @@ class VerificationService
 
     public function verifyCode(User $user, string $verificationCode): array
     {
-        if (!$this->isValidVerificationCode($user, $verificationCode)) {
+        $validationResult = $this->isValidVerificationCode($user, $verificationCode);
+        if (!$validationResult['valid']) {
             return [
                 'success' => false,
-                'error' => 'Invalid verification code.'
+                'error' => $validationResult['error']
             ];
         }
 
@@ -60,7 +61,7 @@ class VerificationService
         }
     }
 
-    private function isValidVerificationCode(User $user, string $verificationCode): bool
+    private function isValidVerificationCode(User $user, string $verificationCode): array
     {
         if ($user->verification_code !== $verificationCode) {
             Log::error('[VerificationService] Invalid verification code', [
@@ -68,9 +69,40 @@ class VerificationService
                 'expected' => $user->verification_code,
                 'provided' => $verificationCode
             ]);
-            return false;
+            return [
+                'valid' => false,
+                'error' => 'Invalid verification code.'
+            ];
         }
-        return true;
+
+        if (!$user->verification_code_sent_at) {
+            Log::error('[VerificationService] Verification code sent timestamp missing', [
+                'user_id' => $user->id
+            ]);
+            return [
+                'valid' => false,
+                'error' => 'Verification code has expired. Please request a new code.'
+            ];
+        }
+
+        $expirationTime = $user->verification_code_sent_at->copy()->addMinutes(60);
+        if (now()->isAfter($expirationTime)) {
+            Log::error('[VerificationService] Verification code expired', [
+                'user_id' => $user->id,
+                'sent_at' => $user->verification_code_sent_at,
+                'expired_at' => $expirationTime,
+                'current_time' => now()
+            ]);
+            return [
+                'valid' => false,
+                'error' => 'Verification code has expired. Please request a new code.'
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'error' => null
+        ];
     }
 
     private function handleUserWithTenant(User $user): array
@@ -91,6 +123,7 @@ class VerificationService
             'email_verified_at' => now(),
             'status' => 1,
             'verification_code' => null,
+            'verification_code_sent_at' => null,
         ]);
 
         DB::commit();
@@ -167,6 +200,7 @@ class VerificationService
             'email_verified_at' => now(),
             'status' => 1,
             'verification_code' => null,
+            'verification_code_sent_at' => null,
         ]);
 
         $user->refresh();

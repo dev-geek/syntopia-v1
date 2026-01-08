@@ -43,7 +43,14 @@ class VerificationController extends Controller
             return redirect()->route('login')->with('success', 'Email already verified. Please login.');
         }
 
-        return view('auth.verify-code', ['email' => $email]);
+        $expirationTimestamp = $user->verification_code_sent_at 
+            ? $user->verification_code_sent_at->copy()->addMinutes(60)->timestamp 
+            : null;
+
+        return view('auth.verify-code', [
+            'email' => $email,
+            'expirationTimestamp' => $expirationTimestamp
+        ]);
     }
 
     public function verifyCode(

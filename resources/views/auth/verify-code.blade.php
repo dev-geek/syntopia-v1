@@ -258,6 +258,34 @@
         color: #0f5132;
     }
 
+    .expiration-notice {
+        background: linear-gradient(135deg, #3e57da 0%, #4f46e5 100%);
+        color: white;
+        padding: 14px 20px;
+        border-radius: 8px;
+        margin: -10px 0 24px 0;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(62, 87, 218, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .expiration-notice i {
+        font-size: 16px;
+    }
+
+    .expiration-notice strong {
+        font-weight: 600;
+    }
+
+    #countdown-timer {
+        font-weight: bold;
+        color: #dc2626;
+    }
+
     .form-control.is-invalid {
         border-color: #dc2626;
         background-color: #fef2f2;
@@ -441,6 +469,11 @@
             </div>
             <h1 class="heading-text">Check your Email</h1>
             <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>
+            
+            <div class="expiration-notice" id="expiration-notice">
+                <i class="fas fa-clock" style="margin-right: 8px;"></i>
+                <strong>Verification code expires in <span id="countdown-timer">60:00</span></strong>
+            </div>
 
             {{-- Display specific field errors --}}
             @if ($errors->has('email'))
@@ -582,6 +615,45 @@
         // Initial check
         toggleClearButton();
     });
+
+    // Countdown timer for verification code expiration
+    @if(isset($expirationTimestamp) && $expirationTimestamp)
+    (function() {
+        const expirationTimestamp = {{ $expirationTimestamp }};
+        const countdownElement = document.getElementById('countdown-timer');
+        const expirationNotice = document.getElementById('expiration-notice');
+        
+        if (!countdownElement || !expirationNotice) return;
+
+        function updateCountdown() {
+            const now = Math.floor(Date.now() / 1000);
+            const remaining = expirationTimestamp - now;
+
+            if (remaining <= 0) {
+                countdownElement.textContent = 'EXPIRED';
+                expirationNotice.style.background = 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)';
+                expirationNotice.innerHTML = '<i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i><strong>Verification code has expired. Please request a new code.</strong>';
+                return;
+            }
+
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            countdownElement.textContent = formattedTime;
+
+            // Change color when less than 5 minutes remaining
+            if (remaining < 300) {
+                expirationNotice.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+            }
+        }
+
+        // Update immediately
+        updateCountdown();
+
+        // Update every second
+        setInterval(updateCountdown, 1000);
+    })();
+    @endif
     </script>
 </div>
 @endsection

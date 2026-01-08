@@ -12,6 +12,7 @@ class VerificationEmailService
     public function resendVerificationCode(User $user): array
     {
         $user->verification_code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $user->verification_code_sent_at = now();
         $user->save();
 
         $mailResult = MailService::send($user->email, new VerifyEmail($user));

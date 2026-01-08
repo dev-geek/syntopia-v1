@@ -23,7 +23,7 @@
         {{ $code }}
     </div>
 
-    <p>This code will expire in 30 minutes.</p>
+    <p>This code will expire in 60 minutes.</p>
     <p>If you didn't create an account, please ignore this email.</p>
 
     <p>Best regards,<br>Syntopia Team</p>
