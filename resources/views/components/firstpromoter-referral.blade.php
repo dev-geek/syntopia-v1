@@ -7,14 +7,10 @@
                 if (typeof fpr !== 'undefined') {
                     fpr("referral", {email: email});
                 } else {
-                    setTimeout(trackReferral, 100);
+                    setTimeout(trackReferral, 50);
                 }
             }
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', trackReferral);
-            } else {
-                trackReferral();
-            }
+            trackReferral();
         })();
     </script>
 @elseif(session('email'))
@@ -25,14 +21,10 @@
                 if (typeof fpr !== 'undefined') {
                     fpr("referral", {email: email});
                 } else {
-                    setTimeout(trackReferral, 100);
+                    setTimeout(trackReferral, 50);
                 }
             }
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', trackReferral);
-            } else {
-                trackReferral();
-            }
+            trackReferral();
         })();
     </script>
 @endif
