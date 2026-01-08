@@ -376,11 +376,6 @@
             try {
                 Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
 
-                // FirstPromoter tracking function
-                function getFPTid() {
-                    return window.FPROM && window.FPROM.data && window.FPROM.data.tid;
-                }
-
                 // Global Paddle event callback for FirstPromoter referral tracking
                 const globalPaddleEventCallback = function(eventData) {
                     if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {

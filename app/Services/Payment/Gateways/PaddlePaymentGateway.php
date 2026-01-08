@@ -117,10 +117,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
             'action' => $isUpgrade ? 'upgrade' : 'new'
         ];
 
-        if (isset($paymentData['fp_tid']) && $paymentData['fp_tid']) {
-            $customData['fp_tid'] = $paymentData['fp_tid'];
-        }
-
         $transactionData = [
             'items' => [['price_id' => $priceId, 'quantity' => 1]],
             'customer_id' => $this->user->paddle_customer_id,

@@ -919,7 +919,7 @@ class PaymentService
         }
 
         $gatewayName = strtolower($gatewayRecord?->name ?? '');
-        if (!in_array($gatewayName, ['paddle', 'pay pro global'])) {
+        if ($gatewayName !== 'pay pro global') {
             return;
         }
 

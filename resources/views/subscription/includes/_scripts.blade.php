@@ -590,7 +590,7 @@
             const paddleEventCallback = function(eventData) {
                 console.log('Paddle event callback triggered:', eventData);
 
-                // Track referral when checkout is completed
+                // Track FirstPromoter referral when checkout is completed
                 if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {
                     const email = eventData.data?.customer?.email || userEmail;
                     const uid = eventData.data?.customer?.id || loggedInUserId;
