@@ -3,6 +3,14 @@
         @php
             $isCurrentPackage = $currentPackage == $package->name;
             $isAvailable = isset($packageAvailability[$package->name]) ? $packageAvailability[$package->name] : true;
+
+            // Disable Free plan selection once user has purchased any paid plan
+            $hasPaidPlan = isset($purchaseHistory['total_spent']) && $purchaseHistory['total_spent'] > 0;
+            $isFreePackage = strtolower($package->name) === 'free';
+            if ($isFreePackage && $hasPaidPlan) {
+                $isAvailable = false;
+            }
+
             $isDisabled = $isCurrentPackage || !$isAvailable;
             $cardClass = $loop->iteration % 2 == 1 ? 'card-dark' : 'card-light';
             if ($isDisabled && !$isCurrentPackage) {
@@ -21,6 +29,14 @@
             @php
                 $isCurrentPackage = $currentPackage == $package->name;
                 $isAvailable = isset($packageAvailability[$package->name]) ? $packageAvailability[$package->name] : true;
+
+                // Apply same Free plan disabling logic for button state
+                $hasPaidPlan = isset($purchaseHistory['total_spent']) && $purchaseHistory['total_spent'] > 0;
+                $isFreePackage = strtolower($package->name) === 'free';
+                if ($isFreePackage && $hasPaidPlan) {
+                    $isAvailable = false;
+                }
+
                 $isDisabled = $isCurrentPackage || !$isAvailable;
 
                 $buttonClass = $isCurrentPackage ? 'active' : ($isDisabled ? 'disabled' : 'dark');

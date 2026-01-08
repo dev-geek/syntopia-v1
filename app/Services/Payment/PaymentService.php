@@ -232,6 +232,10 @@ class PaymentService
 
             if ($isUpgrade || $isDowngrade) {
                 $this->cancelScheduledCancellation($user, $isUpgrade ? 'upgrade' : 'downgrade');
+
+                if ($isUpgrade) {
+                    $this->cancelScheduledDowngrades($user, 'upgrade');
+                }
             }
 
             // Check if there's a scheduled cancellation that should take precedence
@@ -627,6 +631,36 @@ class PaymentService
                     'status' => 'active',
                 ]);
             }
+        }
+    }
+
+    /**
+     * Cancel any pending or scheduled downgrade orders for a user.
+     * Used when an upgrade happens and should override previous downgrade scheduling.
+     *
+     * @param User $user
+     * @param string $reason
+     * @return void
+     */
+    public function cancelScheduledDowngrades(User $user, string $reason = 'subscription_change'): void
+    {
+        $scheduledDowngrades = Order::where('user_id', $user->id)
+            ->where('order_type', 'downgrade')
+            ->whereIn('status', ['pending', 'scheduled_downgrade'])
+            ->get();
+
+        foreach ($scheduledDowngrades as $downgradeOrder) {
+            $originalStatus = $downgradeOrder->status;
+
+            $downgradeOrder->update([
+                'status' => 'cancelled',
+                'metadata' => array_merge($downgradeOrder->metadata ?? [], [
+                    'cancelled_reason' => "User {$reason} subscription (upgrade overrides downgrade)",
+                    'cancelled_at' => now()->toISOString(),
+                    'cancelled_by' => $reason,
+                    'original_status' => $originalStatus,
+                ]),
+            ]);
         }
     }
 
