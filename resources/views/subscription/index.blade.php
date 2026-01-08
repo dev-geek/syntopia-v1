@@ -15,6 +15,9 @@
     <x-facebook-pixel />
 
     <x-tiktok-pixel />
+
+    <!-- FirstPromoter Referral Tracking -->
+    <x-firstpromoter-referral />
 </head>
 
 <body>

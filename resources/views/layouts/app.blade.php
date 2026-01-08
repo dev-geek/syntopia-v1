@@ -43,6 +43,9 @@
 
     <x-tiktok-pixel />
 
+    <!-- FirstPromoter Referral Tracking -->
+    <x-firstpromoter-referral />
+
  </head>
  <body>
     @include('components.spinner-overlay')

@@ -27,6 +27,9 @@
     <x-facebook-pixel />
     <x-tiktok-pixel />
 
+    <!-- FirstPromoter Referral Tracking -->
+    <x-firstpromoter-referral />
+
     <!-- Custom Styles -->
     <link rel="stylesheet" href="{{ asset('css/auth.css') }}">
     @stack('styles')

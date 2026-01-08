@@ -49,6 +49,9 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
     <x-facebook-pixel />
     <x-tiktok-pixel />
 
+    <!-- FirstPromoter Referral Tracking -->
+    <x-firstpromoter-referral />
+
     @stack('styles')
  </head>
 

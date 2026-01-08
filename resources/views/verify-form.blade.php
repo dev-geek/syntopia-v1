@@ -3,6 +3,7 @@
 <head>
     <title>Verify Email Code</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <x-firstpromoter-tracking />
 </head>
 <body>
     <h2>Enter Verification Code</h2>
