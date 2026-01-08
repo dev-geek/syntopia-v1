@@ -156,88 +156,26 @@ class PackagePaymentTest extends TestCase
     /** @test */
     public function paddle_checkout_charges_zero_for_free_package()
     {
-        $user = User::factory()->create([
-            'tenant_id' => 'test-tenant-123'
-        ]);
-        $freePackage = Package::factory()->create([
-            'name' => 'Free',
-            'price' => 100
-        ]);
-
-        PaymentGateways::create([
-            'name' => 'Paddle',
-            'is_active' => true
-        ]);
-
-        $this->mockLicenseApiService();
-
-        Http::fake([
+        $this->assertFreePackageCheckout('Paddle', 'paddle', [
             'sandbox-api.paddle.com/*' => Http::response(['data' => ['url' => 'https://checkout.paddle.com/test']], 200)
         ]);
-
-        $response = $this->actingAs($user)->postJson("/api/payments/paddle/checkout/free");
-
-        $order = Order::where('user_id', $user->id)->where('package_id', $freePackage->id)->first();
-        $this->assertNotNull($order);
-        $this->assertEquals(0, $order->amount);
     }
 
     /** @test */
     public function fastspring_checkout_charges_zero_for_free_package()
     {
-        $user = User::factory()->create([
-            'tenant_id' => 'test-tenant-123'
-        ]);
-        $freePackage = Package::factory()->create([
-            'name' => 'Free',
-            'price' => 200
-        ]);
-
-        PaymentGateways::create([
-            'name' => 'FastSpring',
-            'is_active' => true
-        ]);
-
-        $this->mockLicenseApiService();
-
-        $response = $this->actingAs($user)->postJson("/api/payments/fastspring/checkout/free");
-
-        $order = Order::where('user_id', $user->id)->where('package_id', $freePackage->id)->first();
-        $this->assertNotNull($order);
-        $this->assertEquals(0, $order->amount);
+        $this->assertFreePackageCheckout('FastSpring', 'fastspring');
     }
 
     /** @test */
     public function payproglobal_checkout_charges_zero_for_free_package()
     {
-        $user = User::factory()->create([
-            'tenant_id' => 'test-tenant-123'
-        ]);
-        $freePackage = Package::factory()->create([
-            'name' => 'Free',
-            'price' => 300
-        ]);
-
-        PaymentGateways::create([
-            'name' => 'Pay Pro Global',
-            'is_active' => true
-        ]);
-
-        $this->mockLicenseApiService();
-
-        Http::fake([
+        $this->assertFreePackageCheckout('Pay Pro Global', 'payproglobal', [
             '*.payproglobal.com/*' => Http::response(['checkout_url' => 'https://checkout.payproglobal.com/test'], 200)
         ]);
-
-        $response = $this->actingAs($user)->postJson("/api/payments/payproglobal/checkout/free");
-
-        $order = Order::where('user_id', $user->id)->where('package_id', $freePackage->id)->first();
-        $this->assertNotNull($order);
-        $this->assertEquals(0, $order->amount);
     }
 
-    /** @test */
-    public function all_gateways_charge_zero_for_free_package_regardless_of_price_field()
+    protected function assertFreePackageCheckout(string $gatewayName, string $gatewaySlug, array $httpFake = []): void
     {
         $user = User::factory()->create([
             'tenant_id' => 'test-tenant-123'
@@ -248,17 +186,17 @@ class PackagePaymentTest extends TestCase
         ]);
 
         PaymentGateways::create([
-            'name' => 'Paddle',
+            'name' => $gatewayName,
             'is_active' => true
         ]);
 
         $this->mockLicenseApiService();
 
-        Http::fake([
-            'sandbox-api.paddle.com/*' => Http::response(['data' => ['url' => 'https://checkout.paddle.com/test']], 200)
-        ]);
+        if (!empty($httpFake)) {
+            Http::fake($httpFake);
+        }
 
-        $response = $this->actingAs($user)->postJson("/api/payments/paddle/checkout/free");
+        $this->actingAs($user)->postJson("/api/payments/{$gatewaySlug}/checkout/free");
 
         $order = Order::where('user_id', $user->id)->where('package_id', $freePackage->id)->first();
         $this->assertNotNull($order);

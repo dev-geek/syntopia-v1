@@ -29,12 +29,6 @@ class FingerprintController extends Controller
 
             // Log the fingerprint data (without sensitive information)
             $loggableData = $request->except(['webgl_vendor', 'webgl_renderer', 'webgl_fp', 'canvas_fp', 'audio_fp']);
-            Log::info('Fingerprint data received', [
-                'fingerprint_id' => $fingerprintId,
-                'ip' => $request->ip(),
-                'data' => $loggableData
-            ]);
-
             // Store the fingerprint data in the database
             $attempt = new FreePlanAttempt([
                 'ip_address' => $request->ip(),

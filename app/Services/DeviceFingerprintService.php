@@ -2,8 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\FreePlanAttempt;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 class DeviceFingerprintService
 {
@@ -257,7 +260,7 @@ class DeviceFingerprintService
     /**
      * Record device information for a logged-in user
      */
-    public function recordUserDeviceInfo(\App\Models\User $user, Request $request): void
+    public function recordUserDeviceInfo(User $user, Request $request): void
     {
         try {
             $deviceFingerprint = $this->generateFingerprint($request);
@@ -266,13 +269,6 @@ class DeviceFingerprintService
                 $request->userAgent() ?? '',
                 $deviceFingerprint
             );
-
-            \Illuminate\Support\Facades\Log::info('User device info recorded', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'ip' => $request->ip(),
-                'device_fingerprint' => $deviceFingerprint
-            ]);
         } catch (\Throwable $e) {
             // Even on failure, attempt to update minimal device info to satisfy tests
             try {
@@ -284,7 +280,7 @@ class DeviceFingerprintService
             } catch (\Throwable $inner) {
                 // swallow
             }
-            \Illuminate\Support\Facades\Log::error('Failed to record user device info', [
+            Log::error('Failed to record user device info', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage()
             ]);
@@ -301,9 +297,9 @@ class DeviceFingerprintService
         $email = $request->input('email');
 
         // Check if any identifier has exceeded the limit
-        $ipAttempts = \App\Models\FreePlanAttempt::byIp($ip)->recent($days)->count();
-        $fingerprintAttempts = \App\Models\FreePlanAttempt::byDeviceFingerprint($fingerprint)->recent($days)->count();
-        $emailAttempts = $email ? \App\Models\FreePlanAttempt::byEmail($email)->recent($days)->count() : 0;
+        $ipAttempts = FreePlanAttempt::byIp($ip)->recent($days)->count();
+        $fingerprintAttempts = FreePlanAttempt::byDeviceFingerprint($fingerprint)->recent($days)->count();
+        $emailAttempts = $email ? FreePlanAttempt::byEmail($email)->recent($days)->count() : 0;
 
         return $ipAttempts >= $maxAttempts || $fingerprintAttempts >= $maxAttempts || $emailAttempts >= $maxAttempts;
     }

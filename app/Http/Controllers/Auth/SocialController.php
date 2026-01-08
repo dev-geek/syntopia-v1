@@ -68,7 +68,6 @@ class SocialController extends Controller
 
                         // Check if user has tenant_id, if not, create it
                         if (!$existingUser->tenant_id) {
-                            Log::info('[googleAuthentication] Existing user missing tenant_id, creating tenant', ['user_id' => $existingUser->id]);
                             $apiResponse = $tenantAssignmentService->assignTenant($existingUser, $compliantPassword);
 
                             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
@@ -158,8 +157,7 @@ class SocialController extends Controller
                                 $subscriptionService = app(SubscriptionService::class);
                                 try {
                                     $subscriptionService->assignFreePlanImmediately($existingUser, $freePackage);
-                                    Log::info('[googleAuthentication] Free package assigned to existing user after tenant creation', ['user_id' => $existingUser->id]);
-                                } catch (\Exception $e) {
+                                    } catch (\Exception $e) {
                                     Log::warning('[googleAuthentication] Failed to assign Free package to existing user', [
                                         'user_id' => $existingUser->id,
                                         'error' => $e->getMessage()
@@ -217,28 +215,15 @@ class SocialController extends Controller
                         $registrationService->assignPaymentGatewayToUser($userData, '[googleAuthentication]');
 
                         // Create tenant and bind password using TenantAssignmentService with retry logic
-                        Log::info('[googleAuthentication] Calling TenantAssignmentService for new Google user with retry logic', ['user_id' => $userData->id]);
-
                         $apiResponse = null;
                         $maxAttempts = 3;
                         $attempt = 0;
 
                         while ($attempt < $maxAttempts) {
                             $attempt++;
-                            Log::info('[googleAuthentication] Tenant assignment attempt', [
-                                'user_id' => $userData->id,
-                                'attempt' => $attempt,
-                                'max_attempts' => $maxAttempts
-                            ]);
-
                             $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
 
                             if ($apiResponse['success'] && !empty($apiResponse['data']['tenantId'])) {
-                                Log::info('[googleAuthentication] Tenant assignment succeeded', [
-                                    'user_id' => $userData->id,
-                                    'attempt' => $attempt,
-                                    'tenant_id' => $apiResponse['data']['tenantId']
-                                ]);
                                 break;
                             }
 
@@ -248,8 +233,6 @@ class SocialController extends Controller
                                 usleep($delay * 1000);
                             }
                         }
-
-                        Log::info('[googleAuthentication] TenantAssignmentService final response', ['user_id' => $userData->id, 'attempts' => $attempt, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                             Log::error('[googleAuthentication] API returned swal error - will retry tenant assignment later', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
@@ -292,8 +275,6 @@ class SocialController extends Controller
                         $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
 
                         DB::commit();
-                        Log::info('[googleAuthentication] New Google user created with tenant and Free package', ['user_id' => $userData->id]);
-
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
 
@@ -355,7 +336,6 @@ class SocialController extends Controller
 
                         // Check if user has tenant_id, if not, create it
                         if (!$existingUser->tenant_id) {
-                            Log::info('[handleFacebookCallback] Existing user missing tenant_id, creating tenant', ['user_id' => $existingUser->id]);
                             $apiResponse = $tenantAssignmentService->assignTenant($existingUser, $compliantPassword);
 
                             if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
@@ -452,8 +432,7 @@ class SocialController extends Controller
                                 $subscriptionService = app(SubscriptionService::class);
                                 try {
                                     $subscriptionService->assignFreePlanImmediately($existingUser, $freePackage);
-                                    Log::info('[handleFacebookCallback] Free package assigned to existing user after tenant creation', ['user_id' => $existingUser->id]);
-                                } catch (\Exception $e) {
+                                    } catch (\Exception $e) {
                                     Log::warning('[handleFacebookCallback] Failed to assign Free package to existing user', [
                                         'user_id' => $existingUser->id,
                                         'error' => $e->getMessage()
@@ -511,28 +490,15 @@ class SocialController extends Controller
                         $registrationService->assignPaymentGatewayToUser($userData, '[handleFacebookCallback]');
 
                         // Create tenant and bind password using TenantAssignmentService with retry logic
-                        Log::info('[handleFacebookCallback] Calling TenantAssignmentService for new Facebook user with retry logic', ['user_id' => $userData->id]);
-
                         $apiResponse = null;
                         $maxAttempts = 3;
                         $attempt = 0;
 
                         while ($attempt < $maxAttempts) {
                             $attempt++;
-                            Log::info('[handleFacebookCallback] Tenant assignment attempt', [
-                                'user_id' => $userData->id,
-                                'attempt' => $attempt,
-                                'max_attempts' => $maxAttempts
-                            ]);
-
                             $apiResponse = $tenantAssignmentService->assignTenant($userData, $compliantPassword);
 
                             if ($apiResponse['success'] && !empty($apiResponse['data']['tenantId'])) {
-                                Log::info('[handleFacebookCallback] Tenant assignment succeeded', [
-                                    'user_id' => $userData->id,
-                                    'attempt' => $attempt,
-                                    'tenant_id' => $apiResponse['data']['tenantId']
-                                ]);
                                 break;
                             }
 
@@ -542,8 +508,6 @@ class SocialController extends Controller
                                 usleep($delay * 1000);
                             }
                         }
-
-                        Log::info('[handleFacebookCallback] TenantAssignmentService final response', ['user_id' => $userData->id, 'attempts' => $attempt, 'apiResponse' => $apiResponse]);
 
                         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
                             Log::error('[handleFacebookCallback] API returned swal error - will retry tenant assignment later', ['user_id' => $userData->id, 'error' => $apiResponse['error_message']]);
@@ -581,8 +545,6 @@ class SocialController extends Controller
                         $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
 
                         DB::commit();
-                        Log::info('[handleFacebookCallback] New Facebook user created with tenant and Free package', ['user_id' => $userData->id]);
-
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Facebook');
 

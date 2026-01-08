@@ -23,20 +23,9 @@ class TenantAssignmentService
 
         while ($attempt < $maxAttempts) {
             $attempt++;
-            Log::info('Tenant assignment attempt', [
-                'user_id' => $user->id,
-                'attempt' => $attempt,
-                'max_attempts' => $maxAttempts
-            ]);
-
             $result = $this->assignTenant($user, $plainPassword);
 
             if ($result['success'] && !empty($result['data']['tenantId'])) {
-                Log::info('Tenant assignment succeeded', [
-                    'user_id' => $user->id,
-                    'attempt' => $attempt,
-                    'tenant_id' => $result['data']['tenantId']
-                ]);
                 return $result;
             }
 
@@ -48,21 +37,9 @@ class TenantAssignmentService
 
             if ($attempt < $maxAttempts) {
                 $delay = $attempt * 500;
-                Log::info('Waiting before tenant assignment retry', [
-                    'user_id' => $user->id,
-                    'attempt' => $attempt,
-                    'delay_ms' => $delay
-                ]);
                 usleep($delay * 1000);
             }
         }
-
-        Log::info('TenantAssignmentService final response', [
-            'user_id' => $user->id,
-            'attempts' => $attempt,
-            'success' => $lastError['success'] ?? false,
-            'apiResponse' => $lastError
-        ]);
 
         return $lastError ?? [
             'success' => false,
@@ -128,13 +105,6 @@ class TenantAssignmentService
                 ];
             }
 
-            Log::info('Tenant_id assigned successfully', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'tenant_id' => $apiResponse['data']['tenantId'],
-                'password_bound' => $apiResponse['password_bound'] ?? false
-            ]);
-
             return [
                 'success' => true,
                 'message' => 'Tenant_id assigned successfully',
@@ -177,24 +147,12 @@ class TenantAssignmentService
             $createJson = $createResponse->json();
 
             if (isset($createJson['code']) && $createJson['code'] == 730 && str_contains($createJson['message'], 'User is already registered in the system')) {
-                Log::info('Tenant already exists for user (idempotent operation)', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'api_code' => $createJson['code']
-                ]);
-
                 $existingUserWithTenant = User::where('email', $user->email)
                     ->whereNotNull('tenant_id')
                     ->where('id', '!=', $user->id)
                     ->first();
 
                 if ($existingUserWithTenant) {
-                    Log::info('Found existing user with tenant for same email, using existing tenant_id', [
-                        'current_user_id' => $user->id,
-                        'existing_user_id' => $existingUserWithTenant->id,
-                        'tenant_id' => $existingUserWithTenant->tenant_id
-                    ]);
-
                     $tenantId = $existingUserWithTenant->tenant_id;
                 } else {
                     $tenantId = $createJson['data']['tenantId'] ?? null;
@@ -215,19 +173,10 @@ class TenantAssignmentService
                     }
                 }
 
-                Log::info('Proceeding with password binding for existing tenant', [
-                    'user_id' => $user->id,
-                    'tenant_id' => $tenantId
-                ]);
-            } else {
+                } else {
                 if (!$createResponse->successful()) {
                     return $this->handleFailedTenantCreation($createResponse, $user);
                 }
-
-                Log::info('Tenant created successfully', [
-                    'user_id' => $user->id,
-                    'response' => $createResponse->json()
-                ]);
 
                 $tenantId = $createResponse->json()['data']['tenantId'] ?? null;
                 if (!$tenantId) {

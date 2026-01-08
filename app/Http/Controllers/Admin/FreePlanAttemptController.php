@@ -148,13 +148,6 @@ class FreePlanAttemptController extends Controller
         );
 
         if ($success) {
-            Log::info('Identifier blocked by admin', [
-                'admin_id' => auth()->id(),
-                'type' => $request->type,
-                'value' => $request->value,
-                'reason' => $request->reason
-            ]);
-
             return redirect()->back()
                 ->with('success', 'Identifier blocked successfully.');
         }
@@ -179,12 +172,6 @@ class FreePlanAttemptController extends Controller
         );
 
         if ($success) {
-            Log::info('Identifier unblocked by admin', [
-                'admin_id' => auth()->id(),
-                'type' => $request->type,
-                'value' => $request->value
-            ]);
-
             return redirect()->back()
                 ->with('success', 'Identifier unblocked successfully.');
         }

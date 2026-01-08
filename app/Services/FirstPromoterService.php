@@ -63,10 +63,6 @@ class FirstPromoterService
             $payload['uid'] = $data['uid'];
         }
 
-        if (!empty($data['uid'])) {
-            $payload['uid'] = $data['uid'];
-        }
-
         if (!empty($data['quantity'])) {
             $payload['quantity'] = $data['quantity'];
         }
@@ -101,11 +97,6 @@ class FirstPromoterService
         }
 
         try {
-            Log::info('FirstPromoter: Tracking sale', [
-                'account_id' => $this->accountId,
-                'payload' => $payload
-            ]);
-
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
@@ -137,14 +128,8 @@ class FirstPromoterService
                     }, $responseBody['commissions']);
                 }
 
-                Log::info('FirstPromoter: Sale tracked successfully', $logData);
                 return $responseBody;
             } elseif ($statusCode === 409) {
-                Log::info('FirstPromoter: Sale already tracked (409) - Duplicate event_id', [
-                    'status_code' => $statusCode,
-                    'event_id' => $payload['event_id'],
-                    'message' => $errorMessage
-                ]);
                 return ['duplicate' => true, 'message' => $errorMessage];
             } elseif ($statusCode === 404) {
                 $logData = [
@@ -161,7 +146,6 @@ class FirstPromoterService
                     $logData['uid'] = $payload['uid'];
                 }
 
-                Log::info('FirstPromoter: Sale not tracked (404) - Referral not found or promoter banned', $logData);
                 return null;
             } elseif ($statusCode === 400) {
                 Log::error('FirstPromoter: Validation error (400) - Invalid request data', [

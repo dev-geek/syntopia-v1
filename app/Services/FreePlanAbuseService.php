@@ -315,14 +315,7 @@ class FreePlanAbuseService
 
             DB::commit();
 
-            Log::info('Free plan attempt recorded', [
-                'attempt_id' => $attempt->id,
-                'user_id' => $user?->id,
-                'email' => $email,
-                'ip' => $request->ip()
-            ]);
-
-        } catch (\Exception $e) {
+            } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to record free plan attempt', [
                 'user_id' => $user?->id,
@@ -457,12 +450,6 @@ class FreePlanAbuseService
 
             DB::commit();
 
-            Log::info('Free plan assigned successfully', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'ip' => $request->ip()
-            ]);
-
             return [
                 'success' => true,
                 'message' => 'Free plan has been assigned successfully!',
@@ -551,7 +538,6 @@ class FreePlanAbuseService
                     'block_reason' => $reason,
                 ];
                 FreePlanAttempt::create($data);
-                Log::info('Created placeholder attempt for blocking', ['type' => $type, 'value' => $value]);
                 return true;
             }
             $blockedCount = 0;
@@ -560,13 +546,6 @@ class FreePlanAbuseService
                 $attempt->block($reason);
                 $blockedCount++;
             }
-
-            Log::info('Identifier blocked', [
-                'type' => $type,
-                'value' => $value,
-                'reason' => $reason,
-                'blocked_count' => $blockedCount
-            ]);
 
             return $blockedCount > 0;
 
@@ -613,12 +592,6 @@ class FreePlanAbuseService
                 $attempt->unblock();
                 $unblockedCount++;
             }
-
-            Log::info('Identifier unblocked', [
-                'type' => $type,
-                'value' => $value,
-                'unblocked_count' => $unblockedCount
-            ]);
 
             return $unblockedCount > 0;
 

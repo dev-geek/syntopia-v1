@@ -70,7 +70,6 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
     // then create a method to create a checkout
     public function createCheckout(array $paymentData, bool $returnRedirect = true): array
     {
-        Log::info('[FastSpringPaymentGateway::createCheckout] called', ['paymentData' => $paymentData, 'returnRedirect' => $returnRedirect]);
 
         $isUpgrade = (bool) ($paymentData['is_upgrade'] ?? false);
 
@@ -317,17 +316,6 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
         $order = $this->createOrUpdateOrder($orderData, 'downgrade', ['pending', 'scheduled_downgrade'], true);
 
-        $logMessage = $isExpired
-            ? '[FastSpringPaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
-            : '[FastSpringPaymentGateway::handleDowngrade] Downgrade scheduled successfully';
-
-        Log::info($logMessage, [
-            'user_id' => $this->user->id,
-            'subscription_id' => $activeLicense->subscription_id,
-            'order_id' => $order->id,
-            'effective_date' => $effectiveDate,
-            'is_expired' => $isExpired,
-        ]);
 
         $message = $isExpired
             ? 'Downgrade processed successfully. Your subscription has been updated immediately.'
@@ -376,12 +364,6 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
 
             if ($response->successful()) {
                 $responseData = $response->json();
-
-                Log::info('[FastSpringPaymentGateway::cancelSubscription] Subscription cancelled successfully', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'response' => $responseData,
-                ]);
 
                 $activeLicense = $user->userLicence;
                 if ($activeLicense) {
@@ -464,12 +446,6 @@ class FastSpringPaymentGateway implements PaymentGatewayInterface
             // but the local database still has the subscription_id
             // FastSpring returns result: "success" with error: "Subscription not found" when subscription doesn't exist
             if ($isSubscriptionNotFound) {
-                Log::info('[FastSpringPaymentGateway::cancelSubscription] Subscription not found in FastSpring (already cancelled), syncing local status', [
-                    'user_id' => $user->id,
-                    'subscription_id' => $subscriptionId,
-                    'status' => $response->status(),
-                    'response' => $responseBody,
-                ]);
 
                 $activeLicense = $user->userLicence;
                 if ($activeLicense) {

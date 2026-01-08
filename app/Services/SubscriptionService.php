@@ -44,12 +44,6 @@ class SubscriptionService
             $user->load('userLicence', 'package');
 
             if ($user->hasActiveSubscription() && (int) $user->package_id === (int) $package->id) {
-                Log::info('Skipping free plan assignment - user already has active subscription for this package', [
-                    'user_id' => $user->id,
-                    'package_id' => $package->id,
-                    'package_name' => $package->name,
-                    'user_license_id' => $user->userLicence?->id,
-                ]);
 
                 $existingOrderId = $user->orders()
                     ->where('package_id', $package->id)
@@ -148,13 +142,6 @@ class SubscriptionService
                     throw new \Exception('THIRD_PARTY_API_ERROR');
                 }
 
-                Log::info('Free plan assigned immediately without checkout', [
-                    'user_id' => $user->id,
-                    'package_id' => $package->id,
-                    'package_name' => $package->name,
-                    'order_id' => $order->id,
-                    'license_id' => $license->id
-                ]);
 
                 return [
                     'success' => true,
@@ -378,12 +365,6 @@ class SubscriptionService
         $canUpgrade = $this->canUpgradeSubscription($user);
 
         if ($activeLicense && $calculatedEndDate) {
-            Log::info('License expiration date retrieved', [
-                'user_id' => $user->id,
-                'package_name' => $package ? $package->name : 'Unknown',
-                'end_date' => $calculatedEndDate->toDateTimeString(),
-                'has_pending_upgrade' => $hasPendingUpgrade,
-            ]);
         }
 
         $hasScheduledCancellation = $this->hasScheduledCancellation($user);
@@ -459,24 +440,6 @@ class SubscriptionService
         }
 
         try {
-            Log::info('Subscription details resolution', [
-                'user_id' => $user->id,
-                'user_package' => $user->package?->name,
-                'active_license_package' => $activeLicense?->package?->name,
-                'active_license_expires_at' => $activeLicense?->expires_at?->toDateTimeString(),
-                'has_pending_upgrade' => $hasPendingUpgrade,
-                'has_pending_downgrade' => $hasPendingDowngrade,
-                'pending_downgrade_order' => $pendingDowngrade ? [
-                    'id' => $pendingDowngrade->id,
-                    'status' => $pendingDowngrade->status,
-                    'order_type' => $pendingDowngrade->order_type,
-                    'package' => $pendingDowngrade->package?->name,
-                    'metadata' => $pendingDowngrade->metadata ?? null,
-                    'scheduled_activation_date' => $pendingDowngrade->metadata['scheduled_activation_date'] ?? 'N/A',
-                ] : null,
-                'resolved_current_package' => $package?->name,
-                'pending_downgrade_details' => $pendingDowngradeDetails,
-            ]);
         } catch (\Throwable $e) {
         }
 
@@ -494,12 +457,6 @@ class SubscriptionService
                         ->orWhere('metadata', 'like', '%"addon"%');
                 })
                 ->count();
-
-            Log::info('[SubscriptionDetails] Purchased addons resolved', [
-                'user_id' => $user->id,
-                'count' => $debugPurchasedAddonsCount,
-                'addon_package_ids' => $addonPackageIds,
-            ]);
         } catch (\Throwable $e) {
         }
 
@@ -648,13 +605,6 @@ class SubscriptionService
             $order->update([
                 'status' => 'completed',
                 'completed_at' => now(),
-            ]);
-
-            Log::info('User subscription updated', [
-                'user_id' => $user->id,
-                'package_id' => $package->id,
-                'payment_gateway_id' => $paymentGateway->id,
-                'order_id' => $order->id,
             ]);
         });
     }

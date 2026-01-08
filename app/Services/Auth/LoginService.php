@@ -130,18 +130,10 @@ class LoginService
                 ->exists();
 
             if ($hasPaidPackageOrder) {
-                Log::info('Skipping Free package assignment - user has purchased paid packages', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                ]);
                 return;
             }
 
             if ($user->package && strtolower($user->package->name) !== 'free') {
-                Log::info('Skipping Free package assignment - user has paid package assigned', [
-                    'user_id' => $user->id,
-                    'package_name' => $user->package->name,
-                ]);
                 return;
             }
 
@@ -160,13 +152,7 @@ class LoginService
 
             $result = $this->subscriptionService->assignFreePlanImmediately($user, $freePackage);
 
-            Log::info('Default free plan ensured on login', [
-                'user_id' => $user->id,
-                'package_id' => $freePackage->id,
-                'license_id' => $result['license_id'] ?? null,
-                'order_id' => $result['order_id'] ?? null,
-            ]);
-        } catch (\Throwable $e) {
+            } catch (\Throwable $e) {
             Log::error('Failed to ensure default free plan on login', [
                 'user_id' => $user->id ?? null,
                 'email' => $user->email ?? null,

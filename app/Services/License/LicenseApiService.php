@@ -49,9 +49,6 @@ class LicenseApiService
         $cacheKey = $this->getCacheKey('subscription_summary', $tenantId);
 
         if ($bypassCache) {
-            Log::info('Making fresh license API call (bypassing cache)', [
-                'tenant_id' => $tenantId
-            ]);
             return $this->fetchSubscriptionSummary($tenantId);
         }
 
@@ -105,23 +102,12 @@ class LicenseApiService
             return ($license['remaining'] ?? 0) > 0;
         });
 
-        Log::info('License availability filtered', [
-            'total_licenses' => count($allLicenses),
-            'available_licenses' => count($availableLicenses),
-            'tenant_id' => $tenantId
-        ]);
-
         return array_values($availableLicenses);
     }
 
     public function addLicenseToTenant(string $tenantId, string $licenseKey): bool
     {
         if ($this->isTestEnvironment()) {
-            Log::info('Test environment: skipping external addLicenseToTenant call', [
-                'tenant_id' => $tenantId,
-                'license_key' => $licenseKey,
-            ]);
-
             return true;
         }
 
@@ -136,8 +122,6 @@ class LicenseApiService
                 ->post(self::API_BASE_URL . '/api/partner/tenant/subscription/license/add', $payload);
 
             $responseData = $response->json();
-            Log::info("License response", $responseData);
-
             if ($response->successful() && isset($responseData['code']) && $responseData['code'] === 200) {
                 return true;
             } else {
@@ -169,10 +153,6 @@ class LicenseApiService
                         if ($summary) {
                             foreach ($summary as $item) {
                                 if (($item['subscriptionCode'] ?? '') === $licenseKey) {
-                                    Log::info('License confirmed to exist in tenant subscription - proceeding with license record creation', [
-                                        'tenant_id' => $tenantId,
-                                        'license_key' => $licenseKey
-                                    ]);
                                     return true;
                                 }
                             }
@@ -330,7 +310,6 @@ class LicenseApiService
             return false;
         }
 
-        Log::info('License availability check passed', ['available' => true]);
         return true;
     }
 
@@ -356,12 +335,6 @@ class LicenseApiService
             ]);
             return null;
         }
-
-        Log::info('License key retrieved', [
-            'license_key' => $licenseKey,
-            'bypass_cache' => $bypassCache,
-            'tenant_id' => $tenantId
-        ]);
 
         return $licenseKey;
     }
@@ -437,30 +410,14 @@ class LicenseApiService
 
                 if ($latestOrder && $latestOrder->transaction_id) {
                     $subscriptionId = $latestOrder->transaction_id;
-                    Log::info('Using transaction_id from order as subscription_id', [
-                        'user_id' => $user->id,
-                        'package_name' => $package->name,
-                        'order_id' => $latestOrder->id,
-                        'transaction_id' => $subscriptionId
-                    ]);
-                }
+                    }
             }
 
             if (!$subscriptionId && !$isPayProGlobal && !$isFastSpring && !$isPaddle) {
-                Log::info('No subscription_id provided, skipping license record creation', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'payment_gateway' => $paymentGateway
-                    ]);
-
                 if (!empty($summaryData)) {
                     $firstLicenseKey = $summaryData[0]['subscriptionCode'] ?? null;
                     if ($firstLicenseKey) {
-                        Log::info('License key available but no record created (no subscription_id)', [
-                            'user_id' => $user->id,
-                            'license_key' => $firstLicenseKey
-                        ]);
-                    }
+                        }
                 }
 
                 DB::commit();
@@ -469,30 +426,15 @@ class LicenseApiService
 
             if (!$subscriptionId && $isPayProGlobal) {
                 $subscriptionId = 'PPG-ORDER-' . time() . '-' . $user->id;
-                Log::info('Generated subscription_id for PayProGlobal', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'generated_subscription_id' => $subscriptionId
-                ]);
-            }
+                }
 
             if (!$subscriptionId && $isFastSpring) {
                 $subscriptionId = 'FS-ORDER-' . time() . '-' . $user->id;
-                Log::info('Generated subscription_id for FastSpring', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'generated_subscription_id' => $subscriptionId
-                ]);
-            }
+                }
 
             if (!$subscriptionId && $isPaddle) {
                 $subscriptionId = 'PADDLE-ORDER-' . time() . '-' . $user->id;
-                Log::info('Generated subscription_id for Paddle', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'generated_subscription_id' => $subscriptionId
-                ]);
-            }
+                }
 
             $planNameToResolve = $package->name;
             $resolved = $this->resolvePlanLicense($user->tenant_id, $planNameToResolve, true);
@@ -602,15 +544,6 @@ class LicenseApiService
 
             DB::commit();
 
-            Log::info('Licenses created and activated successfully', [
-                'user_id' => $user->id,
-                'licenses_created' => count($createdLicenses),
-                'package_name' => $package->name,
-                'license_keys' => array_map(fn($l) => $l->license_key, $createdLicenses),
-                'user_license_id' => $firstLicense->id,
-                'expires_at' => $firstLicense->expires_at ? $firstLicense->expires_at->format('Y-m-d H:i:s') : 'Never (Free package)'
-            ]);
-
             return $firstLicense;
 
         } catch (\Exception $e) {
@@ -655,12 +588,6 @@ class LicenseApiService
                 'user_license_id' => $license->id
             ]);
 
-            Log::info('License activated successfully', [
-                'license_id' => $license->id,
-                'user_id' => $license->user_id,
-                'package_name' => $license->package->name
-            ]);
-
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to activate license', [
@@ -693,8 +620,7 @@ class LicenseApiService
             'user_license_id' => null
         ]);
 
-        Log::info('All licenses deactivated for user', ['user_id' => $user->id]);
-    }
+        }
 
     public function canUserChangePlan(User $user): bool
     {

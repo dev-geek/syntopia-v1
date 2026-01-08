@@ -20,11 +20,6 @@ class MailService
         try {
             Mail::to($to)->send($mailable);
 
-            Log::info('Email sent successfully', [
-                'to' => $to,
-                'mailable_class' => get_class($mailable)
-            ]);
-
             return [
                 'success' => true,
                 'message' => 'Email sent successfully'

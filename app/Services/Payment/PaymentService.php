@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\License\LicenseApiService;
+use App\Services\FirstPromoterService;
 
 class PaymentService
 {
@@ -26,6 +27,7 @@ class PaymentService
         private PaymentGatewayFactory $gatewayFactory,
         private LicenseApiService $licenseApiService,
         private PackageGatewayService $packageGatewayService,
+        private FirstPromoterService $firstPromoterService,
     ) {}
 
     public function processPayment(array $paymentData, string $gatewayName, bool $returnRedirect = true): array
@@ -198,11 +200,6 @@ class PaymentService
 
                 if ($order && $order->package) {
                     $packageName = $order->package->name;
-                    Log::info('[PaymentService::processSuccessCallback] Retrieved package name from order', [
-                        'transaction_id' => $transactionId,
-                        'package_name' => $packageName,
-                        'order_id' => $order->id
-                    ]);
                 }
             }
         }
@@ -255,11 +252,6 @@ class PaymentService
 
             // If there's a scheduled cancellation, cancel the scheduled downgrade and don't process it
             if ($scheduledDowngradeOrder && $scheduledCancellationOrder) {
-                Log::info('[PaymentService::processSuccessCallback] Scheduled cancellation found, cancelling scheduled downgrade', [
-                    'user_id' => $user->id,
-                    'downgrade_order_id' => $scheduledDowngradeOrder->id,
-                    'cancellation_order_id' => $scheduledCancellationOrder->id,
-                ]);
 
                 $scheduledDowngradeOrder->update([
                     'status' => 'cancelled',
@@ -291,14 +283,6 @@ class PaymentService
                 ]);
 
                 $order = $scheduledDowngradeOrder;
-
-                Log::info('[PaymentService] Scheduled downgrade order activated and payment processed', [
-                    'order_id' => $order->id,
-                    'user_id' => $user->id,
-                    'package' => $package->name,
-                    'amount_charged' => $targetPackagePrice,
-                    'transaction_id' => $transactionId,
-                ]);
             } else {
                 // Regular order processing (new subscription or upgrade)
                 $order = Order::query()
@@ -342,11 +326,6 @@ class PaymentService
 
             if (!$user->payment_gateway_id && $gatewayRecord) {
                 $paymentGatewayId = $gatewayRecord->id;
-                Log::info('[PaymentService::processSuccessCallback] Setting user payment gateway on first payment', [
-                    'user_id' => $user->id,
-                    'gateway_id' => $gatewayRecord->id,
-                    'gateway_name' => $gatewayRecord->name,
-                ]);
             }
 
             $user->update([
@@ -413,6 +392,9 @@ class PaymentService
                 }
             }
 
+            // Track FirstPromoter sale for Paddle and PayProGlobal
+            $this->trackFirstPromoterSale($order->fresh(), $user, $package, $gatewayRecord);
+
             return [
                 'success'      => true,
                 'user'         => $user->fresh(),
@@ -442,19 +424,7 @@ class PaymentService
 
                 $paddleGateway = app(\App\Services\Payment\Gateways\PaddlePaymentGateway::class);
 
-                Log::info('[PaymentService::createFreePlanOrder] Getting Paddle price ID', [
-                    'user_id' => $user->id,
-                    'package_id' => $package->id,
-                    'package_name' => $package->name,
-                ]);
-
                 $priceId = $this->packageGatewayService->getPaddlePriceId($package, $paddleGateway);
-
-                Log::info('[PaymentService::createFreePlanOrder] Paddle price ID result', [
-                    'user_id' => $user->id,
-                    'package_name' => $package->name,
-                    'price_id' => $priceId,
-                ]);
                 $transactionData = [
                     'items' => [
                         [
@@ -492,15 +462,6 @@ class PaymentService
                     $paddleSubscriptionId = $transactionData['subscription_id'] ?? null;
                     $paddleInvoiceId = $transactionData['invoice_id'] ?? null;
                     $paddleInvoiceNumber = $transactionData['invoice_number'] ?? null;
-
-                    Log::info('[PaymentService::createFreePlanOrder] Paddle transaction created for free plan', [
-                        'user_id' => $user->id,
-                        'paddle_transaction_id' => $paddleTransactionId,
-                        'paddle_status' => $paddleStatus,
-                        'paddle_subscription_id' => $paddleSubscriptionId,
-                        'paddle_invoice_id' => $paddleInvoiceId,
-                        'paddle_customer_id' => $user->paddle_customer_id
-                    ]);
                 } else {
                     Log::warning('[PaymentService::createFreePlanOrder] Failed to create Paddle transaction for free plan', [
                         'user_id' => $user->id,
@@ -560,11 +521,6 @@ class PaymentService
 
     public function processAddonSuccess(User $user, string $orderId, string $addon): array
     {
-        Log::info('[PaymentService::processAddonSuccess] Processing addon success', [
-            'user_id' => $user->id,
-            'order_id' => $orderId,
-            'addon' => $addon,
-        ]);
 
         $addonPackage = Package::whereIn('name', ['Avatar Customization (Clone Yourself)'])->first();
 
@@ -592,11 +548,6 @@ class PaymentService
             ->first();
 
         if (!$order) {
-            Log::info('[PaymentService::processAddonSuccess] Order not found, creating new order', [
-                'user_id' => $user->id,
-                'order_id' => $orderId,
-                'addon' => $addon,
-            ]);
 
             $order = Order::create([
                 'user_id' => $user->id,
@@ -613,18 +564,8 @@ class PaymentService
                     'processed_at' => now()->toISOString(),
                 ],
             ]);
-
-            Log::info('[PaymentService::processAddonSuccess] Addon order created', [
-                'order_id' => $order->id,
-                'transaction_id' => $orderId,
-                'addon' => $addon,
-            ]);
         } else {
             if ($order->status === 'completed') {
-                Log::info('[PaymentService::processAddonSuccess] Order already completed', [
-                    'order_id' => $order->id,
-                    'transaction_id' => $orderId,
-                ]);
                 return [
                     'success' => true,
                     'message' => 'Add-on purchase was already processed successfully',
@@ -639,12 +580,6 @@ class PaymentService
                 'status' => 'completed',
                 'order_type' => 'addon',
                 'metadata' => $metadata,
-            ]);
-
-            Log::info('[PaymentService::processAddonSuccess] Addon order completed', [
-                'order_id' => $order->id,
-                'transaction_id' => $orderId,
-                'addon' => $addon,
             ]);
         }
 
@@ -674,11 +609,6 @@ class PaymentService
             ->first();
 
         if ($scheduledCancellationOrder) {
-            Log::info('[PaymentService::cancelScheduledCancellation] Found scheduled cancellation, cancelling it', [
-                'user_id' => $user->id,
-                'cancellation_order_id' => $scheduledCancellationOrder->id,
-                'reason' => $reason,
-            ]);
 
             $scheduledCancellationOrder->update([
                 'metadata' => array_merge($scheduledCancellationOrder->metadata ?? [], [
@@ -696,25 +626,12 @@ class PaymentService
                 $activeLicense->update([
                     'status' => 'active',
                 ]);
-
-                Log::info('[PaymentService::cancelScheduledCancellation] License status updated from cancelled_at_period_end to active', [
-                    'user_id' => $user->id,
-                    'license_id' => $activeLicense->id,
-                ]);
             }
-
-            Log::info('[PaymentService::cancelScheduledCancellation] Scheduled cancellation cancelled successfully', [
-                'user_id' => $user->id,
-                'cancellation_order_id' => $scheduledCancellationOrder->id,
-            ]);
         }
     }
 
     public function handleSubscriptionCancellation(User $user): array
     {
-        Log::info('[PaymentService::handleSubscriptionCancellation] Starting cancellation', [
-            'user_id' => $user->id,
-        ]);
 
         // Cancel ALL scheduled downgrades before processing cancellation
         $scheduledDowngradeOrders = Order::with('package')
@@ -741,12 +658,6 @@ class PaymentService
 
                 $cancelledCount++;
             }
-
-            Log::info('[PaymentService::handleSubscriptionCancellation] Cancelled all scheduled downgrades', [
-                'user_id' => $user->id,
-                'cancelled_count' => $cancelledCount,
-                'downgrade_order_ids' => $scheduledDowngradeOrders->pluck('id')->toArray(),
-            ]);
         }
 
         $activeLicense = $user->userLicence;
@@ -762,10 +673,6 @@ class PaymentService
         }
 
         $subscriptionId = $activeLicense->subscription_id;
-        Log::info('[PaymentService::handleSubscriptionCancellation] Found subscription', [
-            'user_id' => $user->id,
-            'subscription_id' => $subscriptionId,
-        ]);
 
         $gatewayRecord = $this->detectGatewayFromUser($user, $subscriptionId);
 
@@ -780,11 +687,6 @@ class PaymentService
             ];
         }
 
-        Log::info('[PaymentService::handleSubscriptionCancellation] Gateway detected', [
-            'user_id' => $user->id,
-            'gateway_name' => $gatewayRecord->name,
-        ]);
-
         $gateway = $this->gatewayFactory->create($gatewayRecord->name)
             ->setUser($user);
 
@@ -798,12 +700,6 @@ class PaymentService
                 'message' => "Cancellation is not supported for gateway {$gatewayRecord->name}"
             ];
         }
-
-        Log::info('[PaymentService::handleSubscriptionCancellation] Calling gateway cancellation', [
-            'user_id' => $user->id,
-            'gateway_name' => $gatewayRecord->name,
-            'subscription_id' => $subscriptionId,
-        ]);
 
         return $gateway->handleCancellation($user, $subscriptionId);
     }
@@ -821,10 +717,6 @@ class PaymentService
             if ($request && method_exists($request, 'session')) {
                 $request->session()->save();
             }
-            \Illuminate\Support\Facades\Log::info('[PaymentService] User authenticated via auth token', [
-                'user_id' => $user->id,
-                'auth_token' => $authToken
-            ]);
             \Illuminate\Support\Facades\Cache::forget("paypro_auth_token_{$authToken}");
             return $user;
         }
@@ -992,10 +884,6 @@ class PaymentService
                         if ($request && method_exists($request, 'session')) {
                             $request->session()->save();
                         }
-                        \Illuminate\Support\Facades\Log::info('[PaymentService] User authenticated via user_id fallback for Pay Pro Global', [
-                            'user_id' => $user->id,
-                            'gateway' => $gateway
-                        ]);
                     }
                 }
             }
@@ -1022,6 +910,66 @@ class PaymentService
         }
 
         return $this->processAddonSuccess($user, $orderId, $addon);
+    }
+
+    private function trackFirstPromoterSale(Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
+    {
+        if (!$order->transaction_id || $order->amount <= 0) {
+            return;
+        }
+
+        $gatewayName = strtolower($gatewayRecord?->name ?? '');
+        if (!in_array($gatewayName, ['paddle', 'pay pro global'])) {
+            return;
+        }
+
+        $metadata = $order->metadata ?? [];
+        $rawPayload = $metadata['raw_payload'] ?? [];
+
+        $customData = $rawPayload['custom'] ?? $rawPayload['custom_data'] ?? $metadata['custom'] ?? $metadata['custom_data'] ?? null;
+
+        if (is_string($customData)) {
+            try {
+                $customData = json_decode($customData, true);
+            } catch (\Throwable $e) {
+                $customData = null;
+            }
+        }
+
+        if (!is_array($customData)) {
+            $customData = [];
+        }
+
+        $tid = $customData['fp_tid'] ?? $customData['tid'] ?? $metadata['fp_tid'] ?? $metadata['tid'] ?? null;
+        $refId = $customData['ref_id'] ?? $metadata['ref_id'] ?? null;
+
+        $trackingData = [
+            'event_id' => $order->transaction_id,
+            'amount' => $order->amount,
+            'currency' => $order->currency ?? 'USD',
+            'email' => $user->email,
+            'uid' => (string) $user->id,
+            'plan' => $package->name,
+        ];
+
+        if ($tid) {
+            $trackingData['tid'] = $tid;
+        }
+
+        if ($refId) {
+            $trackingData['ref_id'] = $refId;
+        }
+
+        try {
+            $this->firstPromoterService->trackSale($trackingData);
+        } catch (\Throwable $e) {
+            Log::warning('[PaymentService] Failed to track FirstPromoter sale', [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'transaction_id' => $order->transaction_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
 

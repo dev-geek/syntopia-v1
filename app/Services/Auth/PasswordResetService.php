@@ -62,10 +62,6 @@ class PasswordResetService
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
-            Log::info('Password reset requested for non-existent email', [
-                'email' => $request->email,
-                'ip' => $request->ip()
-            ]);
             return [
                 'success' => true,
                 'message' => 'If your email address exists in our database, you will receive a password recovery link at your email address in a few minutes.'
@@ -75,10 +71,6 @@ class PasswordResetService
         $response = Password::broker()->sendResetLink($request->only('email'));
 
         if ($response === Password::RESET_LINK_SENT) {
-            Log::info('Password reset link sent successfully', [
-                'email' => $request->email,
-                'ip' => $request->ip()
-            ]);
             return [
                 'success' => true,
                 'message' => 'If your email address exists in our database, you will receive a password recovery link at your email address in a few minutes.'
@@ -199,14 +191,6 @@ class PasswordResetService
         DB::table('password_reset_tokens')
             ->where('email', $validated['email'])
             ->delete();
-
-        Log::info('Password reset successful', [
-            'user_id' => $user->id,
-            'email' => $user->email,
-            'ip' => $request->ip(),
-            'is_admin' => $isAdmin,
-            'password_binding_success' => $passwordBindingSuccess
-        ]);
 
         if ($isAdmin) {
             $message = 'Password successfully updated.';

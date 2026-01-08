@@ -45,12 +45,6 @@ class PreventFreePlanAbuse
         $ip = $request->ip();
         $email = $request->input('email');
 
-        Log::info('Checking free plan abuse prevention', [
-            'ip' => $ip,
-            'email' => $email,
-            'user_agent' => $request->userAgent(),
-        ]);
-
         // Use the new FreePlanAbuseService for comprehensive checks
         $abuseCheck = $this->freePlanAbuseService->checkAbusePatterns($request);
 

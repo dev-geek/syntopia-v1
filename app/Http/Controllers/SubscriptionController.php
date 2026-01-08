@@ -93,12 +93,6 @@ class SubscriptionController extends Controller
     {
         // Handle PayProGlobal POST callbacks - forward to payment success handler
         if ($request->isMethod('post') && ($request->has('ORDER_STATUS') || $request->has('ORDER_ID') || $request->has('ORDER_ITEMS'))) {
-            Log::info('PayProGlobal POST callback detected in subscription-details, forwarding to payments.success handler', [
-                'has_order_status' => $request->has('ORDER_STATUS'),
-                'has_order_id' => $request->has('ORDER_ID'),
-                'order_status' => $request->input('ORDER_STATUS'),
-            ]);
-
             // Merge gateway parameter into request and forward to payment success handler
             $request->merge(['gateway' => 'payproglobal']);
             return $this->paymentController->handleSuccess($request);

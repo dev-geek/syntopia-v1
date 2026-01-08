@@ -9,9 +9,7 @@ class VerificationTestController extends Controller
 {
     public function verifyCode(Request $request)
     {
-        \Log::info('Verification attempt', $request->all());
-
-        $request->validate([
+        \$request->validate([
             'verification_code' => 'required'
         ]);
 

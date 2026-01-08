@@ -52,11 +52,6 @@ class VerificationController extends Controller
         VerificationSessionService $sessionService,
         AuthRedirectService $redirectService
     ) {
-        Log::info('[verifyCode] Incoming request', [
-            'input' => $request->all(),
-            'session_email' => session('email'),
-        ]);
-
         $email = $sessionService->getEmailFromSessionOrRequest($request);
         if (!$email) {
             return redirect()->route('login')->withErrors('Session expired. Please login again.');
@@ -68,11 +63,6 @@ class VerificationController extends Controller
         }
 
         if ($sessionService->isUserAlreadyVerified($user)) {
-            Log::info('[verifyCode] User already verified (idempotent operation)', [
-                'user_id' => $user->id,
-                'email' => $user->email
-            ]);
-
             if ($user->tenant_id) {
                 $sessionService->clearEmailSession();
                 Auth::login($user);
@@ -157,7 +147,6 @@ class VerificationController extends Controller
         $user = $sessionService->getUserByEmail($email);
 
         if ($user) {
-            Log::info('[deleteUserAndRedirect] Deleting user', ['user_id' => $user->id, 'email' => $email]);
             $user->delete();
         } else {
             Log::warning('[deleteUserAndRedirect] User not found', ['email' => $email]);

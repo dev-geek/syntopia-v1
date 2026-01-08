@@ -17,10 +17,6 @@ class VerificationEmailService
         $mailResult = MailService::send($user->email, new VerifyEmail($user));
 
         if ($mailResult['success']) {
-            Log::info('Verification email resent successfully', [
-                'user_id' => $user->id,
-                'email' => $user->email
-            ]);
             return [
                 'success' => true,
                 'message' => 'Verification code has been resent'

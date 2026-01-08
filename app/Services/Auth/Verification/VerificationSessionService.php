@@ -15,8 +15,7 @@ class VerificationSessionService
         if (!$email && $request->has('email')) {
             $email = $request->input('email');
             session(['email' => $email]);
-            Log::info('[VerificationSessionService] Set email from request', ['email' => $email]);
-        }
+            }
 
         if (!$email) {
             Log::error('[VerificationSessionService] No email in session or request');

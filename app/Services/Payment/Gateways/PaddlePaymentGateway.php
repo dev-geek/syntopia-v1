@@ -109,18 +109,24 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
         $secureHash = hash_hmac('sha256', $paymentData['user']->id . $paymentData['package'] . time(), $this->webhookSecret);
 
+        $customData = [
+            'user_id' => $paymentData['user']->id,
+            'package' => $paymentData['package'],
+            'package_id' => $package->id,
+            'secure_hash' => $secureHash,
+            'action' => $isUpgrade ? 'upgrade' : 'new'
+        ];
+
+        if (isset($paymentData['fp_tid']) && $paymentData['fp_tid']) {
+            $customData['fp_tid'] = $paymentData['fp_tid'];
+        }
+
         $transactionData = [
             'items' => [['price_id' => $priceId, 'quantity' => 1]],
             'customer_id' => $this->user->paddle_customer_id,
             'currency_code' => 'USD',
             'collection_mode' => 'automatic',
-            'custom_data' => [
-                'user_id' => $paymentData['user']->id,
-                'package' => $paymentData['package'],
-                'package_id' => $package->id,
-                'secure_hash' => $secureHash,
-                'action' => $isUpgrade ? 'upgrade' : 'new'
-            ],
+            'custom_data' => $customData,
             'checkout' => [
                 'settings' => ['display_mode' => 'overlay'],
                 'success_url' => route('payments.success', ['gateway' => 'paddle', 'transaction_id' => '{transaction_id}']),
@@ -266,13 +272,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
             $order = $this->createOrUpdateOrder($orderData, 'downgrade', ['pending', 'scheduled_downgrade'], true);
 
-            Log::info('[PaddlePaymentGateway::handleDowngrade] Downgrade scheduled', [
-                'user_id' => $this->user->id,
-                'order_id' => $order->id,
-                'effective_date' => $effectiveDate->toDateTimeString(),
-                'order_updated' => isset($this->order) && $this->order->id === $order->id,
-            ]);
-
             return [
                 'success' => true,
                 'message' => $appliesAtPeriodEnd
@@ -368,12 +367,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
                 $order = $this->createOrUpdateOrder($orderData, $action, ['pending'], false);
 
-                Log::info("[PaddlePaymentGateway::changeSubscriptionPlan] {$action} order created/updated", [
-                    'user_id' => $this->user->id,
-                    'order_id' => $order->id,
-                    'action' => $action,
-                ]);
-
                 return [
                     'success' => true,
                     'message' => "Package {$action}d successfully",
@@ -410,10 +403,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
         if ($subscriptionId && preg_match('/^txn_[a-z\d]+$/', $subscriptionId)) {
             $transactionIdToFetch = $subscriptionId;
             $subscriptionId = null; // Reset to fetch from transaction
-            Log::info('[PaddlePaymentGateway::handleCancellation] Detected transaction ID, will fetch subscription ID', [
-                'user_id' => $user->id,
-                'transaction_id' => $transactionIdToFetch,
-            ]);
         }
 
         if (!$subscriptionId) {
@@ -697,10 +686,6 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
                 if ($customerId) {
                     $user->update(['paddle_customer_id' => $customerId]);
-                    Log::info('[PaddlePaymentGateway::createOrGetCustomer] Paddle customer created', [
-                        'user_id' => $user->id,
-                        'customer_id' => $customerId,
-                    ]);
                     return $customerId;
                 }
             }

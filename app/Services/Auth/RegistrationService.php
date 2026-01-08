@@ -85,12 +85,6 @@ class RegistrationService
             $existingUser = User::where('email', $request->email)->lockForUpdate()->first();
             if ($existingUser) {
                 DB::rollBack();
-                Log::info('Registration attempt for existing user (idempotent operation)', [
-                    'email' => $request->email,
-                    'existing_user_id' => $existingUser->id,
-                    'ip' => $request->ip()
-                ]);
-
                 if (!$existingUser->email_verified_at) {
                     return [
                         'success' => true,
@@ -123,12 +117,6 @@ class RegistrationService
             } catch (\Illuminate\Database\QueryException $e) {
                 if ($e->getCode() == 23000 || str_contains($e->getMessage(), 'Duplicate entry')) {
                     DB::rollBack();
-                    Log::info('Duplicate user creation prevented (idempotent operation)', [
-                        'email' => $request->email,
-                        'ip' => $request->ip(),
-                        'error' => $e->getMessage()
-                    ]);
-
                     $existingUser = User::where('email', $request->email)->first();
                     if ($existingUser && !$existingUser->email_verified_at) {
                         return [
@@ -150,12 +138,6 @@ class RegistrationService
 
             $user->assignRole('User');
 
-            Log::info('User created successfully with subscriber_password', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'has_subscriber_password' => !empty($user->subscriber_password)
-            ]);
-
             $this->assignPaymentGatewayToUser($user);
 
             DB::commit();
@@ -163,11 +145,7 @@ class RegistrationService
             $mailResult = MailService::send($user->email, new VerifyEmail($user));
 
             if ($mailResult['success']) {
-                Log::info('Verification email sent successfully', [
-                    'user_id' => $user->id,
-                    'email' => $user->email
-                ]);
-            } else {
+                } else {
                 Log::warning('Failed to send verification email during registration', [
                     'user_id' => $user->id,
                     'email' => $user->email,
@@ -204,12 +182,7 @@ class RegistrationService
                 $paddleCustomerId = $paddlePaymentGateway->createOrGetCustomer($user);
 
                 if ($paddleCustomerId) {
-                    Log::info(($logPrefix ? $logPrefix . ' ' : '') . 'Paddle customer ID created for new user', [
-                        'user_id' => $user->id,
-                        'email' => $user->email,
-                        'paddle_customer_id' => $paddleCustomerId
-                    ]);
-                }
+                    }
             } catch (\Exception $e) {
                 Log::warning(($logPrefix ? $logPrefix . ' ' : '') . 'Failed to create Paddle customer ID during registration', [
                     'user_id' => $user->id,
@@ -222,12 +195,6 @@ class RegistrationService
         $activeGateway = PaymentGateways::where('is_active', true)->first();
         if ($activeGateway && !$user->payment_gateway_id) {
             $user->update(['payment_gateway_id' => $activeGateway->id]);
-            Log::info(($logPrefix ? $logPrefix . ' ' : '') . 'Active payment gateway assigned to new user during registration', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'gateway_id' => $activeGateway->id,
-                'gateway_name' => $activeGateway->name
-            ]);
-        }
+            }
     }
 }

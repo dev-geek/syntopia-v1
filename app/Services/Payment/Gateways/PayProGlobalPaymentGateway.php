@@ -66,10 +66,6 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
 
     private function createCheckout(array $paymentData, bool $returnRedirect = true): array
     {
-        Log::info('[PayProGlobalPaymentGateway::createCheckout] called', [
-            'paymentData' => $paymentData,
-            'returnRedirect' => $returnRedirect
-        ]);
 
         if (!$this->user) {
             return [
@@ -158,14 +154,6 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
         ];
 
         $checkoutUrl = 'https://store.payproglobal.com/checkout?' . http_build_query($checkoutParams);
-
-        Log::info('[PayProGlobalPaymentGateway::createCheckout] Checkout URL generated', [
-            'user_id' => $this->user->id,
-            'package' => $processedPackage,
-            'product_id' => $productId,
-            'pending_order_id' => $this->order->transaction_id,
-            'action' => $action,
-        ]);
 
         // Update order with metadata
         if ($this->order) {
@@ -312,13 +300,6 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 ? '[PayProGlobalPaymentGateway::handleDowngrade] Downgrade processed immediately for expired license'
                 : '[PayProGlobalPaymentGateway::handleDowngrade] Downgrade scheduled successfully';
 
-            Log::info($logMessage, [
-                'user_id' => $this->user->id,
-                'subscription_id' => $activeLicense->subscription_id,
-                'order_id' => $order->id,
-                'effective_date' => $effectiveDate,
-                'is_expired' => $isExpired,
-            ]);
 
             $message = $isExpired
                 ? 'Downgrade processed successfully. Your subscription has been updated immediately.'
@@ -408,12 +389,6 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
 
                 $order = $this->createOrUpdateOrder($orderData, $action, ['pending'], false);
 
-                Log::info("[PayProGlobalPaymentGateway::changeSubscriptionProduct] {$action} order created/updated", [
-                    'user_id' => $this->user->id,
-                    'order_id' => $order->id,
-                    'action' => $action,
-                ]);
-
                 return [
                     'success' => true,
                     'message' => "Subscription {$action}d successfully",
@@ -462,11 +437,6 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
                 $responseData = $response->json();
 
                 if ($responseData['isSuccess'] ?? false) {
-                    Log::info('[PayProGlobalPaymentGateway::changeProduct] Product changed successfully', [
-                        'subscription_id' => $subscriptionId,
-                        'product_id' => $productId,
-                    ]);
-
                     return ['success' => true, 'data' => $responseData];
                 }
 
@@ -620,13 +590,6 @@ class PayProGlobalPaymentGateway implements PaymentGatewayInterface
             ];
 
             $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
-
-            Log::info('[PayProGlobalPaymentGateway::handleCancellation] Cancellation scheduled successfully', [
-                'user_id' => $user->id,
-                'subscription_id' => $subscriptionId,
-                'order_id' => $order->id,
-                'effective_date' => $effectiveDate,
-            ]);
 
             return [
                 'success' => true,

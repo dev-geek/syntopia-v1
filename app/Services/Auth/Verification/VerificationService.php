@@ -75,11 +75,6 @@ class VerificationService
 
     private function handleUserWithTenant(User $user): array
     {
-        Log::info('[VerificationService] User already has tenant_id, ensuring password is bound', [
-            'user_id' => $user->id,
-            'tenant_id' => $user->tenant_id
-        ]);
-
         if ($user->subscriber_password) {
             $passwordBindResult = $this->passwordBindingService->bindPasswordWithRetry($user, $user->subscriber_password);
 
@@ -89,10 +84,7 @@ class VerificationService
                     'error' => $passwordBindResult['error_message'] ?? 'Unknown error'
                 ]);
             } else {
-                Log::info('[VerificationService] Password bound successfully for user with existing tenant_id', [
-                    'user_id' => $user->id
-                ]);
-            }
+                }
         }
 
         $user->update([
@@ -111,8 +103,6 @@ class VerificationService
 
     private function handleUserWithoutTenant(User $user): array
     {
-        Log::info('[VerificationService] Calling TenantAssignmentService with retry logic', ['user_id' => $user->id]);
-
         $apiResponse = $this->tenantAssignmentService->assignTenantWithRetry($user);
 
         if (isset($apiResponse['swal']) && $apiResponse['swal'] === true) {
@@ -183,12 +173,6 @@ class VerificationService
         // Only bind password if it wasn't already bound during tenant assignment
         $passwordAlreadyBound = $apiResponse['password_bound'] ?? false;
 
-        Log::info('[VerificationService] Checking password binding status', [
-            'user_id' => $user->id,
-            'has_subscriber_password' => !empty($user->subscriber_password),
-            'password_bound_during_tenant_assignment' => $passwordAlreadyBound
-        ]);
-
         if ($user->subscriber_password && !$passwordAlreadyBound) {
             $passwordBindResult = $this->passwordBindingService->bindPasswordWithRetry($user, $user->subscriber_password);
 
@@ -198,15 +182,9 @@ class VerificationService
                     'error' => $passwordBindResult['error_message'] ?? 'Unknown error'
                 ]);
             } else {
-                Log::info('[VerificationService] Password bound successfully after tenant assignment', [
-                    'user_id' => $user->id
-                ]);
-            }
+                }
         } elseif ($user->subscriber_password && $passwordAlreadyBound) {
-            Log::info('[VerificationService] Password already bound during tenant assignment, skipping duplicate binding', [
-                'user_id' => $user->id
-            ]);
-        }
+            }
 
         $this->assignFreePackageIfNeeded($user);
 
@@ -247,17 +225,9 @@ class VerificationService
                 }
 
                 $this->subscriptionService->assignFreePlanImmediately($user, $freePackage);
-                Log::info('[VerificationService] Free package assigned during email verification', ['user_id' => $user->id]);
-            } else {
-                Log::info('[VerificationService] Skipping Free package assignment - user has paid package', [
-                    'user_id' => $user->id,
-                    'package_name' => $user->package->name,
-                ]);
-            }
+                } else {
+                }
         } else {
-            Log::info('[VerificationService] Skipping Free package assignment - user has purchased paid packages', [
-                'user_id' => $user->id,
-            ]);
-        }
+            }
     }
 }

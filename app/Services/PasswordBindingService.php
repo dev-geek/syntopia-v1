@@ -74,10 +74,6 @@ class PasswordBindingService
                 if (str_contains(strtolower($errorMessage), 'already') ||
                     str_contains(strtolower($errorMessage), 'bound') ||
                     $errorCode == 200) {
-                    Log::info('Password already bound (idempotent operation)', [
-                        'user_id' => $user->id,
-                        'response' => $bindJson
-                    ]);
                     return [
                         'success' => true,
                         'data' => $bindJson['data'] ?? null,
@@ -135,19 +131,9 @@ class PasswordBindingService
 
         while ($attempt < $maxAttempts) {
             $attempt++;
-            Log::info('Password binding attempt', [
-                'user_id' => $user->id,
-                'attempt' => $attempt,
-                'max_attempts' => $maxAttempts
-            ]);
-
             $result = $this->bindPassword($user, $plainPassword);
 
             if ($result['success']) {
-                Log::info('Password bound successfully', [
-                    'user_id' => $user->id,
-                    'attempt' => $attempt
-                ]);
                 return $result;
             }
 
@@ -156,11 +142,6 @@ class PasswordBindingService
             // Wait before retrying (exponential backoff)
             if ($attempt < $maxAttempts) {
                 $delay = $attempt * 500; // 500ms, 1000ms, 1500ms
-                Log::info('Waiting before password binding retry', [
-                    'user_id' => $user->id,
-                    'attempt' => $attempt,
-                    'delay_ms' => $delay
-                ]);
                 usleep($delay * 1000);
             }
         }

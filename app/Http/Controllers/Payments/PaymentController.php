@@ -24,11 +24,6 @@ class PaymentController extends Controller
             $gatewayToUse = $gateway;
             if ($user->paymentGateway) {
                 $gatewayToUse = $user->paymentGateway->name;
-                Log::info('[PaymentController::gatewayCheckout] Using user original gateway instead of requested gateway', [
-                    'user_id' => $user->id,
-                    'requested_gateway' => $gateway,
-                    'user_original_gateway' => $gatewayToUse,
-                ]);
             }
 
             $result = $this->paymentService->processPayment([
@@ -106,10 +101,6 @@ class PaymentController extends Controller
 
     public function handlePayProGlobalThankYou(Request $request)
     {
-        Log::info('[PaymentController::handlePayProGlobalThankYou] PayProGlobal thank you page accessed', [
-            'query_params' => $request->query(),
-            'all_params' => $request->all(),
-        ]);
 
         $orderId = $request->query('OrderId')
             ?? $request->query('orderId')
@@ -143,10 +134,6 @@ class PaymentController extends Controller
         if ($externalOrderId) {
             $successParams['ExternalOrderId'] = $externalOrderId;
         }
-
-        Log::info('[PaymentController::handlePayProGlobalThankYou] Redirecting to success handler', [
-            'success_params' => $successParams,
-        ]);
 
         return redirect()->route('payments.success', $successParams);
     }
