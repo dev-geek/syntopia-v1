@@ -27,7 +27,7 @@ class SocialController extends Controller
         return Socialite::driver('google')->redirect();
     }
 
-    public function googleAuthentication(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService, RegistrationService $registrationService)
+    public function googleAuthentication(Request $request, PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService, RegistrationService $registrationService)
     {
         try {
             // Get the user information from Google
@@ -275,6 +275,9 @@ class SocialController extends Controller
                         $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
 
                         DB::commit();
+
+                        $registrationService->trackFirstPromoterSignup($userData, $request);
+
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
 
@@ -311,7 +314,7 @@ class SocialController extends Controller
         return Socialite::driver('facebook')->redirect();
     }
 
-    public function handleFacebookCallback(PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService, RegistrationService $registrationService)
+    public function handleFacebookCallback(Request $request, PasswordBindingService $passwordBindingService, TenantAssignmentService $tenantAssignmentService, RegistrationService $registrationService)
     {
         try {
             $facebookUser = Socialite::driver('facebook')->user();
@@ -545,6 +548,9 @@ class SocialController extends Controller
                         $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
 
                         DB::commit();
+
+                        $registrationService->trackFirstPromoterSignup($userData, $request);
+
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Facebook');
 

@@ -9,7 +9,8 @@ class FirstPromoterService
 {
     private $apiKey;
     private $accountId;
-    private $apiUrl = 'https://api.firstpromoter.com/api/v2/track/sale';
+    private $saleApiUrl = 'https://api.firstpromoter.com/api/v2/track/sale';
+    private $signupApiUrl = 'https://api.firstpromoter.com/api/v2/track/signup';
 
     public function __construct()
     {
@@ -101,7 +102,7 @@ class FirstPromoterService
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
                 'Content-Type' => 'application/json',
-            ])->post($this->apiUrl, $payload);
+            ])->post($this->saleApiUrl, $payload);
 
             $statusCode = $response->status();
             $responseBody = $response->json() ?? [];
@@ -165,6 +166,120 @@ class FirstPromoterService
             }
         } catch (\Exception $e) {
             Log::error('FirstPromoter: Exception while tracking sale', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'payload' => $payload
+            ]);
+            return null;
+        }
+    }
+
+    public function trackSignup(array $data): ?array
+    {
+        if (!$this->apiKey || !$this->accountId) {
+            Log::warning('FirstPromoter: API key or Account ID not configured');
+            return null;
+        }
+
+        if (empty($data['email']) && empty($data['uid'])) {
+            Log::error('FirstPromoter: Missing required field: email or uid must be provided', ['data' => $data]);
+            return null;
+        }
+
+        if (empty($data['tid']) && empty($data['ref_id'])) {
+            Log::error('FirstPromoter: Missing required field: tid or ref_id must be provided', ['data' => $data]);
+            return null;
+        }
+
+        $payload = [];
+
+        if (!empty($data['email'])) {
+            $payload['email'] = $data['email'];
+        }
+
+        if (!empty($data['uid'])) {
+            $payload['uid'] = $data['uid'];
+        }
+
+        if (!empty($data['tid'])) {
+            $payload['tid'] = $data['tid'];
+        }
+
+        if (!empty($data['ref_id'])) {
+            $payload['ref_id'] = $data['ref_id'];
+        }
+
+        if (!empty($data['ip'])) {
+            $payload['ip'] = $data['ip'];
+        }
+
+        if (!empty($data['created_at'])) {
+            $payload['created_at'] = $data['created_at'];
+        }
+
+        if (isset($data['skip_email_notification'])) {
+            $payload['skip_email_notification'] = $data['skip_email_notification'];
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Account-ID' => $this->accountId,
+                'Content-Type' => 'application/json',
+            ])->post($this->signupApiUrl, $payload);
+
+            $statusCode = $response->status();
+            $responseBody = $response->json() ?? [];
+            $errorMessage = $responseBody['message'] ?? $response->body();
+
+            if ($response->successful()) {
+                $logData = [
+                    'signup_id' => $responseBody['id'] ?? null,
+                    'etype' => $responseBody['etype'] ?? null,
+                    'referral_id' => $responseBody['referral']['id'] ?? null,
+                    'referral_email' => $responseBody['referral']['email'] ?? null,
+                    'created_at' => $responseBody['created_at'] ?? null,
+                ];
+
+                Log::info('FirstPromoter: Signup tracked successfully', $logData);
+
+                return $responseBody;
+            } elseif ($statusCode === 409) {
+                Log::warning('FirstPromoter: Duplicate signup detected', [
+                    'email' => $payload['email'] ?? null,
+                    'uid' => $payload['uid'] ?? null,
+                    'message' => $errorMessage,
+                ]);
+                return ['duplicate' => true, 'message' => $errorMessage];
+            } elseif ($statusCode === 404) {
+                Log::warning('FirstPromoter: Signup not found (404)', [
+                    'status_code' => $statusCode,
+                    'email' => $payload['email'] ?? null,
+                    'uid' => $payload['uid'] ?? null,
+                    'tid' => $payload['tid'] ?? null,
+                    'ref_id' => $payload['ref_id'] ?? null,
+                    'message' => $errorMessage,
+                    'code' => $responseBody['code'] ?? null
+                ]);
+                return null;
+            } elseif ($statusCode === 400) {
+                Log::error('FirstPromoter: Validation error (400) - Invalid signup data', [
+                    'status_code' => $statusCode,
+                    'message' => $errorMessage,
+                    'payload' => $payload
+                ]);
+                return null;
+            } else {
+                Log::error('FirstPromoter: Failed to track signup', [
+                    'status_code' => $statusCode,
+                    'message' => $errorMessage,
+                    'response_body' => $responseBody,
+                    'payload' => $payload
+                ]);
+                return null;
+            }
+        } catch (\Exception $e) {
+            Log::error('FirstPromoter: Exception while tracking signup', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'payload' => $payload
