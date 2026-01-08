@@ -375,8 +375,34 @@
         document.addEventListener('DOMContentLoaded', function() {
             try {
                 Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
+
+                // FirstPromoter tracking function
+                function getFPTid() {
+                    return window.FPROM && window.FPROM.data && window.FPROM.data.tid;
+                }
+
+                // Global Paddle event callback for FirstPromoter referral tracking
+                const globalPaddleEventCallback = function(eventData) {
+                    if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {
+                        const email = eventData.data?.customer?.email;
+                        const uid = eventData.data?.customer?.id;
+
+                        if (email && uid && typeof fpr !== 'undefined') {
+                            console.log('Tracking FirstPromoter referral via global callback:', {
+                                email,
+                                uid
+                            });
+                            fpr("referral", {
+                                email,
+                                uid
+                            });
+                        }
+                    }
+                };
+
                 Paddle.Setup({
                     token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
+                    eventCallback: globalPaddleEventCallback
                 });
 
                 window.addEventListener('message', function(event) {
@@ -584,7 +610,7 @@
         function monitorPayProGlobalPopup(popup, packageName, userId) {
             payProGlobalPopup = popup;
             let thankYouPageDetected = false;
-            
+
             popupCheckInterval = setInterval(() => {
                 try {
                     if (popup.closed) {
@@ -618,10 +644,10 @@
 
                             if (orderId || externalOrderId) {
                                 console.log('Found OrderId/ExternalOrderId in thank you URL:', { orderId, externalOrderId });
-                                
+
                                 // Redirect to our thank you handler which will process and redirect to subscription-details
                                 const thankYouUrl = `/payments/payproglobal-thankyou?OrderId=${orderId || ''}&ExternalOrderId=${externalOrderId || ''}`;
-                                
+
                                 clearInterval(popupCheckInterval);
                                 setTimeout(() => {
                                     popup.close();
