@@ -30,8 +30,6 @@
 <script src="https://cdn.firstpromoter.com/fpr.js" async></script>
 {{-- FirstPromoter Tracking Script Ends here --}}
 
-{{-- FirstPromoter Referral Tracking --}}
-<x-firstpromoter-referral />
 
     <!-- TikTok Pixel Code Start -->
 

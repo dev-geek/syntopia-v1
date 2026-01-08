@@ -276,8 +276,6 @@ class SocialController extends Controller
 
                         DB::commit();
 
-                        $registrationService->trackFirstPromoterSignup($userData, $request);
-
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
 
@@ -548,8 +546,6 @@ class SocialController extends Controller
                         $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
 
                         DB::commit();
-
-                        $registrationService->trackFirstPromoterSignup($userData, $request);
 
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Facebook');

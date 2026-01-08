@@ -23,12 +23,8 @@
     <script defer src="{{ asset('js/swal-utils.js') }}"></script>
 
     <!-- Tracking Components -->
-    <x-firstpromoter-tracking />
     <x-facebook-pixel />
     <x-tiktok-pixel />
-
-    <!-- FirstPromoter Referral Tracking -->
-    <x-firstpromoter-referral />
 
     <!-- Custom Styles -->
     <link rel="stylesheet" href="{{ asset('css/auth.css') }}">

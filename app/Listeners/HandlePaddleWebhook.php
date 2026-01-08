@@ -9,11 +9,18 @@ use App\Models\{
     User,
     UserLicence,
     Order,
-    PaymentGateways
+    PaymentGateways,
+    Package
 };
+use App\Services\FirstPromoterService;
 
 class HandlePaddleWebhook
 {
+    public function __construct(
+        private FirstPromoterService $firstPromoterService
+    ) {
+    }
+
     public function handle(WebhookReceived $event): void
     {
         $payload = $event->payload;
@@ -189,7 +196,11 @@ class HandlePaddleWebhook
                 'status' => 'active',
                 'updated_at' => now()
             ]);
-            }
+        }
+
+        // Track FirstPromoter sale for recurring payments
+        $this->trackFirstPromoterSaleFromWebhook($user, $payload, $data);
+
         } catch (\Exception $e) {
             Log::channel('billing')->error('Failed to handle Paddle payment succeeded webhook', [
                 'event' => 'subscription_payment_succeeded',
@@ -197,6 +208,131 @@ class HandlePaddleWebhook
                 'error' => $e->getMessage()
             ]);
             throw $e;
+        }
+    }
+
+    protected function trackFirstPromoterSaleFromWebhook(User $user, array $payload, array $data): void
+    {
+        try {
+            // Get transaction ID from webhook data
+            $transactionId = $data['transaction_id']
+                ?? $data['id']
+                ?? $payload['transaction_id']
+                ?? $payload['id']
+                ?? null;
+
+            if (!$transactionId) {
+                Log::channel('billing')->debug('[HandlePaddleWebhook] Skipping FirstPromoter tracking: no transaction_id in webhook', [
+                    'user_id' => $user->id,
+                    'payload_keys' => array_keys($payload),
+                    'data_keys' => array_keys($data),
+                ]);
+                return;
+            }
+
+            // Get amount from webhook (Paddle sends amount in cents)
+            $amountInCents = $data['amount'] ?? $payload['amount'] ?? null;
+            if (!$amountInCents || $amountInCents <= 0) {
+                Log::channel('billing')->debug('[HandlePaddleWebhook] Skipping FirstPromoter tracking: invalid amount', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId,
+                    'amount' => $amountInCents,
+                ]);
+                return;
+            }
+
+            // Convert from cents to dollars for FirstPromoterService (it will convert back to cents)
+            $amountInDollars = (float) ($amountInCents / 100);
+
+            // Get package from user
+            $package = $user->package;
+            if (!$package) {
+                Log::channel('billing')->warning('[HandlePaddleWebhook] User has no package for FirstPromoter tracking', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId,
+                ]);
+                return;
+            }
+
+            // Get gateway record
+            $gatewayRecord = PaymentGateways::whereRaw('LOWER(name) = ?', ['paddle'])->first();
+
+            // Extract custom data from webhook payload
+            $customData = $data['custom_data']
+                ?? $payload['custom_data']
+                ?? $data['custom']
+                ?? $payload['custom']
+                ?? null;
+
+            if (is_string($customData)) {
+                try {
+                    $customData = json_decode($customData, true);
+                } catch (\Throwable $e) {
+                    Log::channel('billing')->warning('[HandlePaddleWebhook] Failed to parse custom_data', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $customData = null;
+                }
+            }
+
+            if (!is_array($customData)) {
+                $customData = [];
+            }
+
+            // Extract tracking IDs
+            $tid = $customData['fp_tid']
+                ?? $customData['tid']
+                ?? null;
+
+            $refId = $customData['ref_id']
+                ?? null;
+
+            // Prepare tracking data
+            $trackingData = [
+                'event_id' => (string) $transactionId,
+                'amount' => $amountInDollars,
+                'currency' => $data['currency'] ?? $payload['currency'] ?? 'USD',
+                'email' => $user->email,
+                'uid' => (string) $user->id,
+                'plan' => $package->name,
+            ];
+
+            if ($tid) {
+                $trackingData['tid'] = $tid;
+            }
+
+            if ($refId) {
+                $trackingData['ref_id'] = $refId;
+            }
+
+            // Track the sale
+            $result = $this->firstPromoterService->trackSale($trackingData);
+
+            if ($result === null) {
+                Log::channel('billing')->warning('[HandlePaddleWebhook] FirstPromoter tracking returned null', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId,
+                ]);
+            } elseif (isset($result['duplicate']) && $result['duplicate']) {
+                Log::channel('billing')->info('[HandlePaddleWebhook] FirstPromoter tracking: duplicate sale detected', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId,
+                ]);
+            } else {
+                Log::channel('billing')->info('[HandlePaddleWebhook] FirstPromoter sale tracked successfully', [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transactionId,
+                    'sale_id' => $result['id'] ?? null,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Don't throw - log and continue webhook processing
+            Log::channel('billing')->error('[HandlePaddleWebhook] Failed to track FirstPromoter sale from webhook', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
     }
 

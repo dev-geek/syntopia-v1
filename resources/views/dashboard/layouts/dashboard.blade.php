@@ -45,12 +45,8 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
     <script src="{{ asset('js/swal-utils.js') }}"></script>
 
     <!-- Tracking Components -->
-    <x-firstpromoter-tracking />
     <x-facebook-pixel />
     <x-tiktok-pixel />
-
-    <!-- FirstPromoter Referral Tracking -->
-    <x-firstpromoter-referral />
 
     @stack('styles')
  </head>

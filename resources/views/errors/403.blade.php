@@ -5,8 +5,6 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>403 — Forbidden</title>
 
-	<x-firstpromoter-tracking />
-
 	<style>
 		:root {
 			--bg: #0f172a; /* slate-900 */

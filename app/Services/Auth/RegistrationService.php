@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Log;
 use App\Services\DeviceFingerprintService;
 use App\Services\FreePlanAbuseService;
 use App\Services\MailService;
-use App\Services\FirstPromoterService;
 use App\Mail\VerifyEmail;
 
 class RegistrationService
@@ -19,7 +18,6 @@ class RegistrationService
         private DeviceFingerprintService $deviceFingerprintService,
         private FreePlanAbuseService $freePlanAbuseService,
         private PaymentGatewayFactory $paymentGatewayFactory,
-        private FirstPromoterService $firstPromoterService,
     ) {}
 
     public function validateRegistration(Request $request): array
@@ -144,8 +142,6 @@ class RegistrationService
 
             DB::commit();
 
-            $this->trackFirstPromoterSignup($user, $request);
-
             $mailResult = MailService::send($user->email, new VerifyEmail($user));
 
             if ($mailResult['success']) {
@@ -202,38 +198,4 @@ class RegistrationService
             }
     }
 
-    public function trackFirstPromoterSignup(User $user, Request $request): void
-    {
-        try {
-            $tid = $request->cookie('_fprom_tid') ?? $request->cookie('_fprom_track') ?? $request->input('fp_tid');
-            $refId = $request->input('ref_id');
-
-            if (!$tid && !$refId) {
-                return;
-            }
-
-            $signupData = [
-                'email' => $user->email,
-                'uid' => (string) $user->id,
-                'ip' => $request->ip(),
-                'created_at' => $user->created_at->toIso8601ZuluString(),
-            ];
-
-            if ($tid) {
-                $signupData['tid'] = $tid;
-            }
-
-            if ($refId) {
-                $signupData['ref_id'] = $refId;
-            }
-
-            $this->firstPromoterService->trackSignup($signupData);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to track FirstPromoter signup', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
 }

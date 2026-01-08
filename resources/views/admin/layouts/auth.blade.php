@@ -28,12 +28,8 @@
   @stack('password-toggle-css')
   
   <!-- Tracking Components -->
-  <x-firstpromoter-tracking />
   <x-facebook-pixel />
   <x-tiktok-pixel />
-  
-  <!-- FirstPromoter Referral Tracking -->
-  <x-firstpromoter-referral />
   
   @stack('styles')
   

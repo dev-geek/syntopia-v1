@@ -632,34 +632,6 @@ class PaymentService
 
     public function handleSubscriptionCancellation(User $user): array
     {
-
-        // Cancel ALL scheduled downgrades before processing cancellation
-        $scheduledDowngradeOrders = Order::with('package')
-            ->where('user_id', $user->id)
-            ->where('order_type', 'downgrade')
-            ->whereIn('status', ['pending', 'scheduled_downgrade'])
-            ->get();
-
-        if ($scheduledDowngradeOrders->isNotEmpty()) {
-            $cancelledCount = 0;
-            foreach ($scheduledDowngradeOrders as $scheduledDowngradeOrder) {
-                $targetPackageName = $scheduledDowngradeOrder->package->name ?? 'Unknown';
-
-                // Cancel the scheduled downgrade by updating its status to cancelled
-                $scheduledDowngradeOrder->update([
-                    'status' => 'cancelled',
-                    'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
-                        'cancelled_reason' => 'User requested subscription cancellation - cancellation takes precedence over downgrade',
-                        'cancelled_at' => now()->toISOString(),
-                        'cancelled_by' => 'subscription_cancellation',
-                        'original_status' => $scheduledDowngradeOrder->status,
-                    ]),
-                ]);
-
-                $cancelledCount++;
-            }
-        }
-
         $activeLicense = $user->userLicence;
 
         if (!$activeLicense) {
@@ -701,7 +673,33 @@ class PaymentService
             ];
         }
 
-        return $gateway->handleCancellation($user, $subscriptionId);
+        $result = $gateway->handleCancellation($user, $subscriptionId);
+
+        if (($result['success'] ?? false) === true) {
+            $scheduledDowngradeOrders = Order::with('package')
+                ->where('user_id', $user->id)
+                ->where('order_type', 'downgrade')
+                ->whereIn('status', ['pending', 'scheduled_downgrade'])
+                ->get();
+
+            if ($scheduledDowngradeOrders->isNotEmpty()) {
+                foreach ($scheduledDowngradeOrders as $scheduledDowngradeOrder) {
+                    $originalStatus = $scheduledDowngradeOrder->status;
+
+                    $scheduledDowngradeOrder->update([
+                        'status' => 'cancelled',
+                        'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
+                            'cancelled_reason' => 'User requested subscription cancellation - cancellation takes precedence over downgrade',
+                            'cancelled_at' => now()->toISOString(),
+                            'cancelled_by' => 'subscription_cancellation',
+                            'original_status' => $originalStatus,
+                        ]),
+                    ]);
+                }
+            }
+        }
+
+        return $result;
     }
 
     public function handlePayProGlobalAuthToken(string $authToken, $request = null): ?\App\Models\User
@@ -915,23 +913,69 @@ class PaymentService
     private function trackFirstPromoterSale(Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
     {
         if (!$order->transaction_id || $order->amount <= 0) {
+            Log::debug('[PaymentService] Skipping FirstPromoter tracking: missing transaction_id or invalid amount', [
+                'order_id' => $order->id,
+                'transaction_id' => $order->transaction_id,
+                'amount' => $order->amount,
+            ]);
             return;
         }
 
         $gatewayName = strtolower($gatewayRecord?->name ?? '');
-        if ($gatewayName !== 'pay pro global') {
+
+        // Only track for Paddle and PayProGlobal
+        if (!in_array($gatewayName, ['paddle', 'pay pro global'])) {
+            Log::debug('[PaymentService] Skipping FirstPromoter tracking: unsupported gateway', [
+                'gateway' => $gatewayName,
+            ]);
             return;
         }
 
         $metadata = $order->metadata ?? [];
         $rawPayload = $metadata['raw_payload'] ?? [];
 
-        $customData = $rawPayload['custom'] ?? $rawPayload['custom_data'] ?? $metadata['custom'] ?? $metadata['custom_data'] ?? null;
+        // Extract custom data from different sources based on gateway
+        $customData = null;
+
+        if ($gatewayName === 'paddle') {
+            // For Paddle: check raw_payload first, then metadata
+            $customData = $rawPayload['custom_data']
+                ?? $rawPayload['custom']
+                ?? $metadata['custom_data']
+                ?? $metadata['custom']
+                ?? null;
+        } elseif ($gatewayName === 'pay pro global') {
+            // For PayProGlobal: check raw_payload custom field (JSON string)
+            $customDataString = $rawPayload['custom'] ?? $metadata['custom'] ?? null;
+            if ($customDataString) {
+                if (is_string($customDataString)) {
+                    try {
+                        $customData = json_decode($customDataString, true);
+                    } catch (\Throwable $e) {
+                        Log::warning('[PaymentService] Failed to parse PayProGlobal custom data', [
+                            'order_id' => $order->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                } elseif (is_array($customDataString)) {
+                    $customData = $customDataString;
+                }
+            }
+
+            // Also check direct custom_data fields
+            if (!$customData) {
+                $customData = $rawPayload['custom_data'] ?? $metadata['custom_data'] ?? null;
+            }
+        }
 
         if (is_string($customData)) {
             try {
                 $customData = json_decode($customData, true);
             } catch (\Throwable $e) {
+                Log::warning('[PaymentService] Failed to parse custom data string', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
                 $customData = null;
             }
         }
@@ -940,18 +984,32 @@ class PaymentService
             $customData = [];
         }
 
-        $tid = $customData['fp_tid'] ?? $customData['tid'] ?? $metadata['fp_tid'] ?? $metadata['tid'] ?? null;
-        $refId = $customData['ref_id'] ?? $metadata['ref_id'] ?? null;
+        // Extract tracking IDs from custom data or metadata
+        $tid = $customData['fp_tid']
+            ?? $customData['tid']
+            ?? $metadata['fp_tid']
+            ?? $metadata['tid']
+            ?? null;
 
+        $refId = $customData['ref_id']
+            ?? $metadata['ref_id']
+            ?? null;
+
+        // Prepare tracking data
         $trackingData = [
             'event_id' => $order->transaction_id,
             'amount' => $order->amount,
             'currency' => $order->currency ?? 'USD',
             'email' => $user->email,
             'uid' => (string) $user->id,
-            'plan' => $package->name,
         ];
 
+        // Add plan if available
+        if ($package && $package->name) {
+            $trackingData['plan'] = $package->name;
+        }
+
+        // Add tracking IDs if available
         if ($tid) {
             $trackingData['tid'] = $tid;
         }
@@ -961,13 +1019,37 @@ class PaymentService
         }
 
         try {
-            $this->firstPromoterService->trackSale($trackingData);
+            $result = $this->firstPromoterService->trackSale($trackingData);
+
+            if ($result === null) {
+                Log::warning('[PaymentService] FirstPromoter tracking returned null', [
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'transaction_id' => $order->transaction_id,
+                    'gateway' => $gatewayName,
+                ]);
+            } elseif (isset($result['duplicate']) && $result['duplicate']) {
+                Log::info('[PaymentService] FirstPromoter tracking: duplicate sale detected', [
+                    'order_id' => $order->id,
+                    'transaction_id' => $order->transaction_id,
+                    'gateway' => $gatewayName,
+                ]);
+            } else {
+                Log::info('[PaymentService] FirstPromoter sale tracked successfully', [
+                    'order_id' => $order->id,
+                    'transaction_id' => $order->transaction_id,
+                    'gateway' => $gatewayName,
+                    'sale_id' => $result['id'] ?? null,
+                ]);
+            }
         } catch (\Throwable $e) {
-            Log::warning('[PaymentService] Failed to track FirstPromoter sale', [
+            Log::error('[PaymentService] Failed to track FirstPromoter sale', [
                 'order_id' => $order->id,
                 'user_id' => $user->id,
                 'transaction_id' => $order->transaction_id,
+                'gateway' => $gatewayName,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
     }

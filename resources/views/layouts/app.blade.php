@@ -38,13 +38,9 @@
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 
-    <x-firstpromoter-tracking />
     <x-facebook-pixel />
 
     <x-tiktok-pixel />
-
-    <!-- FirstPromoter Referral Tracking -->
-    <x-firstpromoter-referral />
 
  </head>
  <body>
