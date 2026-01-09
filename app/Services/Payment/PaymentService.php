@@ -992,7 +992,8 @@ class PaymentService
 
         $metadata = $order->metadata ?? [];
         $rawPayload = $metadata['raw_payload'] ?? [];
-        dd($metadata);
+        $fprData = session()->get('fpr_data') ?? [];
+        dd($fprData);
 
         // Extract custom data from different sources based on gateway
         $customData = null;
