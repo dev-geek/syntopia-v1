@@ -85,11 +85,11 @@ class FirstPromoterService
         }
 
         if (!empty($data['tid'])) {
-            $payload['tid'] = $data['tid'];
+            $payload['tid'] = request()->cookie('_fprom_tid');
         }
 
         if (!empty($data['ref_id'])) {
-            $payload['ref_id'] = $data['ref_id'];
+            $payload['ref_id'] = request()->cookie('_fprom_ref');
         }
 
         if (isset($data['skip_email_notification'])) {

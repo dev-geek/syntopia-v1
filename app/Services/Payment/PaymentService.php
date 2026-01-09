@@ -992,8 +992,6 @@ class PaymentService
 
         $metadata = $order->metadata ?? [];
         $rawPayload = $metadata['raw_payload'] ?? [];
-        $cookieData = request()->cookie('_fprom_ref');
-        dd($cookieData);
 
         // Extract custom data from different sources based on gateway
         $customData = null;
@@ -1005,7 +1003,7 @@ class PaymentService
                 ?? $metadata['custom_data']
                 ?? $metadata['custom']
                 ?? null;
-            dd($customData);
+
         } elseif ($gatewayName === 'pay pro global') {
             // For PayProGlobal: check raw_payload custom field (JSON string)
             $customDataString = $rawPayload['custom'] ?? $metadata['custom'] ?? null;
