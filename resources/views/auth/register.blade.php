@@ -173,6 +173,7 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
             <form id="registerForm" method="POST" action="{{ route('register') }}">
             @csrf
             <input type="hidden" name="fingerprint_id" id="fingerprintId">
+            <input type="hidden" name="fprom_tid" id="fpromTid">
                 <input type="hidden" name="email" value="{{ request()->get('email') }}">
 
                 <div class="row">
@@ -276,6 +277,32 @@ var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n
     </script>
 
     <script>
+    // Get FirstPromoter tracking ID from cookie or window object
+    document.addEventListener('DOMContentLoaded', function() {
+        function getFPTid() {
+            // Try to get from window.FPROM object (set by FirstPromoter script)
+            if (window.FPROM && window.FPROM.data && window.FPROM.data.tid) {
+                return window.FPROM.data.tid;
+            }
+            // Fallback: try to read from cookie
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === '_fprom_tid' || name === '_fprom_track') {
+                    return decodeURIComponent(value);
+                }
+            }
+            return null;
+        }
+
+        // Set the tracking ID in the hidden field
+        const fpromTidInput = document.getElementById('fpromTid');
+        const tid = getFPTid();
+        if (tid && fpromTidInput) {
+            fpromTidInput.value = tid;
+        }
+    });
+
     // Ensure email field is completely locked and cannot be modified
     document.addEventListener('DOMContentLoaded', function() {
         const emailInput = document.getElementById('email');

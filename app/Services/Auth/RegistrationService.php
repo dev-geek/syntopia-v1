@@ -212,6 +212,10 @@ class RegistrationService
         try {
             $tid = $request->cookie('_fprom_tid') ?? $request->cookie('_fprom_track');
 
+            if (!$tid) {
+                $tid = $request->input('fprom_tid');
+            }
+
             $signupData = [
                 'email' => $user->email,
                 'uid' => (string) $user->id,

@@ -165,7 +165,7 @@ class FirstPromoterService
         }
 
         if (empty($data['tid']) && empty($data['ref_id'])) {
-            Log::warning('FirstPromoter: Missing tid and ref_id - API may reject request if both are required', [
+            Log::warning('FirstPromoter: Missing tid and ref_id - API will return 400 error, but attempting call anyway', [
                 'email' => $data['email'] ?? null,
                 'uid' => $data['uid'] ?? null
             ]);
@@ -221,9 +221,11 @@ class FirstPromoterService
 
                 return $responseBody;
             } elseif ($statusCode === 400) {
+                // Common 400 error: "Both Tracking ID(tid) and Referral ID(ref_id) can not be blank! Use at least one."
                 Log::error('FirstPromoter: Validation error (400) - Invalid signup request data', [
                     'status_code' => $statusCode,
                     'message' => $errorMessage,
+                    'code' => $responseBody['code'] ?? null,
                     'payload' => $payload,
                     'response_body' => $responseBody
                 ]);
