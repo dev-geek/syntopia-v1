@@ -22,9 +22,13 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script defer src="{{ asset('js/swal-utils.js') }}"></script>
 
-    <!-- Tracking Components -->
+    {{-- Facebook Pixel Code --}}
     <x-facebook-pixel />
+
+    {{-- TikTok Pixel Code --}}
     <x-tiktok-pixel />
+
+    {{-- FirstPromoter Tracking Script --}}
     <x-firstpromoter-tracking />
 
     <!-- Custom Styles -->
