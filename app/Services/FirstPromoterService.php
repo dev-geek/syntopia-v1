@@ -101,7 +101,7 @@ class FirstPromoterService
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
                 'Content-Type' => 'application/json',
-            ])->post($this->saleApiUrl, $payload);
+            ])->post($this->saleApiUrl, $payload); dd($response->json());
 
             $statusCode = $response->status();
             $responseBody = $response->json() ?? [];
