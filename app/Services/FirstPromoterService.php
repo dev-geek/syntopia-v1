@@ -19,6 +19,7 @@ class FirstPromoterService
 
     public function trackSale(array $data): ?array
     {
+        dd($data);
         if (!$this->apiKey || !$this->accountId) {
             Log::warning('FirstPromoter: API key or Account ID not configured');
             return null;
@@ -49,6 +50,8 @@ class FirstPromoterService
             ]);
             return null;
         }
+
+        dd($data);
 
         $payload = [
             'event_id' => $data['event_id'],
