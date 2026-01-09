@@ -10,7 +10,7 @@ class FirstPromoterService
 {
     private $apiKey;
     private $accountId;
-    private $saleApiUrl = 'https://v2.firstpromoter.com/api/v2/track/sale';
+    private $saleApiUrl = 'https://api.firstpromoter.com/api/v2/track/sale';
 
     public function __construct()
     {
@@ -98,7 +98,6 @@ class FirstPromoterService
         }
 
         try {
-            dd($payload);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
