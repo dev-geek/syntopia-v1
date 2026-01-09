@@ -1078,6 +1078,8 @@ class PaymentService
             $trackingData['ref_id'] = $refId;
         }
 
+        dd(request()->cookie());
+
         try {
             $result = $this->firstPromoterService->trackSale($trackingData);
 
