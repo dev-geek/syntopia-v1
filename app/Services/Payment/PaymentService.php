@@ -180,7 +180,7 @@ class PaymentService
         return PaymentGateways::first();
     }
 
-    public function processSuccessCallback(Request $request, string $gateway, array $payload): array
+    public function processSuccessCallback(array $cookieData, string $gateway, array $payload): array
     {
         $user = Auth::user();
 
@@ -406,7 +406,7 @@ class PaymentService
             }
 
             // Track FirstPromoter sale for Paddle and PayProGlobal
-            $this->trackFirstPromoterSale($request->cookie(), $order->fresh(), $user, $package, $gatewayRecord);
+            $this->trackFirstPromoterSale(request()->cookie(), $order->fresh(), $user, $package, $gatewayRecord);
 
             return [
                 'success'      => true,
@@ -970,10 +970,10 @@ class PaymentService
         return $this->processAddonSuccess($user, $orderId, $addon);
     }
 
-    private function trackFirstPromoterSale(Request $request, Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
+    private function trackFirstPromoterSale($cookieData, Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
     {
 
-        dd($request->cookie());
+        dd($cookieData);
         if (!$order->transaction_id || $order->amount <= 0) {
             Log::debug('[PaymentService] Skipping FirstPromoter tracking: missing transaction_id or invalid amount', [
                 'order_id' => $order->id,
