@@ -60,41 +60,8 @@ class FirstPromoterService
             $payload['email'] = $data['email'];
         }
 
-        if (!empty($data['uid'])) {
-            $payload['uid'] = $data['uid'];
-        }
-
-        if (!empty($data['quantity'])) {
-            $payload['quantity'] = $data['quantity'];
-        }
-
-        if (!empty($data['plan'])) {
-            $payload['plan'] = $data['plan'];
-        }
-
         if (!empty($data['currency']) && $data['currency'] !== config('payment.firstpromoter.default_currency', 'USD')) {
             $payload['currency'] = $data['currency'];
-        }
-
-        if (!empty($data['mrr'])) {
-            $mrrAmount = $this->convertAmountToCents($data['mrr'], $data['currency'] ?? 'USD');
-            $payload['mrr'] = (string) $mrrAmount;
-        }
-
-        if (!empty($data['promo_code'])) {
-            $payload['promo_code'] = $data['promo_code'];
-        }
-
-        if (!empty($data['tid'])) {
-            $payload['tid'] = Cookie::get();
-        }
-
-        if (!empty($data['ref_id'])) {
-            $payload['ref_id'] = Cookie::get('_fprom_ref');
-        }
-
-        if (isset($data['skip_email_notification'])) {
-            $payload['skip_email_notification'] = $data['skip_email_notification'];
         }
 
         try {
