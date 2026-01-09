@@ -694,8 +694,9 @@ class SocialController extends Controller
 
         try {
             $firstPromoterService = app(FirstPromoterService::class);
+
             $tid = $request->cookie('_fprom_tid') ?? $request->cookie('_fprom_track');
-            
+
             $signupData = [
                 'email' => $user->email,
                 'uid' => (string) $user->id,
