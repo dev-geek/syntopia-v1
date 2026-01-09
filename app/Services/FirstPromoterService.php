@@ -97,6 +97,8 @@ class FirstPromoterService
         }
 
         try {
+
+            dd($payload,$this->apiKey,$this->accountId);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
