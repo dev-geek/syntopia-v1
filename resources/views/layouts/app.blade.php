@@ -42,6 +42,8 @@
 
     <x-tiktok-pixel />
 
+    <x-firstpromoter-tracking />
+
  </head>
  <body>
     @include('components.spinner-overlay')

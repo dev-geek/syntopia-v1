@@ -25,6 +25,7 @@
     <!-- Tracking Components -->
     <x-facebook-pixel />
     <x-tiktok-pixel />
+    <x-firstpromoter-tracking />
 
     <!-- Custom Styles -->
     <link rel="stylesheet" href="{{ asset('css/auth.css') }}">

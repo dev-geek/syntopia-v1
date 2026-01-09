@@ -448,6 +448,13 @@
     });
 </script>
 
+{{-- FirstPromoter Referral Tracking (after successful payment) --}}
+@if(session('success') && Auth::check())
+    <script>
+        fpr("referral", {email: "{{ Auth::user()->email }}"});
+    </script>
+@endif
+
 <!-- Add SweetAlert CDN -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/spinner-utils.js') }}"></script>

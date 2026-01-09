@@ -585,6 +585,17 @@
         @endpush
     @endif
 
+    {{-- FirstPromoter Referral Tracking --}}
+    @if(session('email') || Auth::check())
+        <script>
+            @if(Auth::check())
+                fpr("referral", {email: "{{ Auth::user()->email }}"});
+            @elseif(session('email'))
+                fpr("referral", {email: "{{ session('email') }}"});
+            @endif
+        </script>
+    @endif
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
