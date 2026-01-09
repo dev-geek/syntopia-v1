@@ -86,7 +86,7 @@ class FirstPromoterService
         }
 
         if (!empty($data['tid'])) {
-            $payload['tid'] = Cookie::get('_fprom_tid');
+            $payload['tid'] = Cookie::get();
         }
 
         if (!empty($data['ref_id'])) {
@@ -99,7 +99,7 @@ class FirstPromoterService
 
         try {
 
-            dd($payload);
+            dd(Cookie::get(), $payload);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
