@@ -1054,6 +1054,8 @@ class PaymentService
             ?? $metadata['ref_id']
             ?? null;
 
+            dd($tid,$refId);
+
         // Prepare tracking data
         $trackingData = [
             'event_id' => $order->transaction_id,
