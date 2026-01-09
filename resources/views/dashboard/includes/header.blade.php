@@ -48,6 +48,8 @@ $userLogs = UserLog::latest()->get(); // Fetch all logs without a limit
     <x-facebook-pixel />
     <x-tiktok-pixel />
 
+    <x-firstpromoter-tracking />
+
  </head>
 
  <body class="hold-transition sidebar-mini layout-fixed layout-navbar-fixed">
