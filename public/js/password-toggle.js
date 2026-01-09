@@ -4,7 +4,9 @@
  * Supports both FontAwesome and Bootstrap Icons
  */
 
-class PasswordToggle {
+// Prevent duplicate class declaration if script is loaded multiple times
+if (typeof PasswordToggle === 'undefined') {
+    class PasswordToggle {
     constructor() {
         this.init();
     }
@@ -229,8 +231,12 @@ class PasswordToggle {
     }
 }
 
-// Initialize password toggle functionality
-new PasswordToggle();
+    // Make it globally available
+    window.PasswordToggle = PasswordToggle;
+}
 
-// Make it globally available
-window.PasswordToggle = PasswordToggle;
+// Initialize password toggle functionality only once
+if (!window.passwordToggleInitialized) {
+    window.passwordToggleInitialized = true;
+    new PasswordToggle();
+}

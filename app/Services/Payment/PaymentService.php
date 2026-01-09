@@ -17,6 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\License\LicenseApiService;
 use App\Services\FirstPromoterService;
+use Illuminate\Support\Facades\Cache;
 
 class PaymentService
 {
@@ -49,6 +50,8 @@ class PaymentService
         if ($isDowngrade) {
             // Cancel any scheduled cancellation when user schedules a downgrade
             $this->cancelScheduledCancellation($this->user, 'downgrade');
+            // Cancel any previous scheduled downgrades (new downgrade overrides previous)
+            $this->cancelScheduledDowngrades($this->user, 'new_downgrade');
 
             $gateway = $this->gatewayFactory->create($gatewayName)->setUser($this->user);
 
@@ -231,10 +234,15 @@ class PaymentService
             $isDowngrade = $newPrice < $currentPrice && $currentPrice > 0;
 
             if ($isUpgrade || $isDowngrade) {
+                // Cancel scheduled cancellations (upgrade/downgrade overrides cancellation)
                 $this->cancelScheduledCancellation($user, $isUpgrade ? 'upgrade' : 'downgrade');
 
                 if ($isUpgrade) {
+                    // Cancel scheduled downgrades (upgrade overrides downgrade)
                     $this->cancelScheduledDowngrades($user, 'upgrade');
+                } elseif ($isDowngrade) {
+                    // Cancel previous scheduled downgrades (new downgrade overrides previous downgrade)
+                    $this->cancelScheduledDowngrades($user, 'new_downgrade');
                 }
             }
 
@@ -606,23 +614,25 @@ class PaymentService
      */
     public function cancelScheduledCancellation(User $user, string $reason = 'subscription_change'): void
     {
-        $scheduledCancellationOrder = Order::where('user_id', $user->id)
+        // Get ALL scheduled cancellation orders, not just the latest
+        // This handles cases where multiple cancellation orders exist after subscription changes
+        $scheduledCancellationOrders = Order::where('user_id', $user->id)
             ->where('status', 'cancelled')
             ->whereJsonContains('metadata->cancellation_scheduled', true)
-            ->latest('created_at')
-            ->first();
+            ->get();
 
-        if ($scheduledCancellationOrder) {
-
-            $scheduledCancellationOrder->update([
-                'metadata' => array_merge($scheduledCancellationOrder->metadata ?? [], [
-                    'cancelled_reason' => "User {$reason} subscription",
-                    'cancelled_at' => now()->toISOString(),
-                    'cancelled_by' => $reason,
-                    'overwritten_at' => now()->toISOString(),
-                    'cancellation_scheduled' => false, // Mark as no longer scheduled
-                ]),
-            ]);
+        if ($scheduledCancellationOrders->isNotEmpty()) {
+            foreach ($scheduledCancellationOrders as $scheduledCancellationOrder) {
+                $scheduledCancellationOrder->update([
+                    'metadata' => array_merge($scheduledCancellationOrder->metadata ?? [], [
+                        'cancelled_reason' => "User {$reason} subscription",
+                        'cancelled_at' => now()->toISOString(),
+                        'cancelled_by' => $reason,
+                        'overwritten_at' => now()->toISOString(),
+                        'cancellation_scheduled' => false, // Mark as no longer scheduled
+                    ]),
+                ]);
+            }
 
             // Update license status if it was set to cancelled_at_period_end
             $activeLicense = $user->userLicence;
@@ -630,6 +640,40 @@ class PaymentService
                 $activeLicense->update([
                     'status' => 'active',
                 ]);
+            }
+
+            // Cancel scheduled cancellation in the payment gateway
+            $gatewayRecord = $user->paymentGateway;
+            if ($gatewayRecord && $activeLicense && $activeLicense->subscription_id) {
+                try {
+                    $gatewayName = strtolower($gatewayRecord->name);
+                    $gateway = $this->gatewayFactory->create($gatewayRecord->name)->setUser($user);
+
+                    // Call the appropriate method based on gateway
+                    if ($gatewayName === 'paddle') {
+                        /** @var \App\Services\Payment\Gateways\PaddlePaymentGateway $gateway */
+                        if (method_exists($gateway, 'cancelScheduledCancellationInPaddle')) {
+                            $gateway->cancelScheduledCancellationInPaddle($activeLicense->subscription_id);
+                        }
+                    } elseif ($gatewayName === 'pay pro global') {
+                        /** @var \App\Services\Payment\Gateways\PayProGlobalPaymentGateway $gateway */
+                        if (method_exists($gateway, 'cancelScheduledCancellationInPayProGlobal')) {
+                            $gateway->cancelScheduledCancellationInPayProGlobal($activeLicense->subscription_id);
+                        }
+                    } elseif ($gatewayName === 'fastspring') {
+                        /** @var \App\Services\Payment\Gateways\FastSpringPaymentGateway $gateway */
+                        if (method_exists($gateway, 'cancelScheduledCancellationInFastSpring')) {
+                            $gateway->cancelScheduledCancellationInFastSpring($activeLicense->subscription_id);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('[PaymentService::cancelScheduledCancellation] Failed to cancel scheduled cancellation in gateway', [
+                        'user_id' => $user->id,
+                        'gateway' => $gatewayRecord->name,
+                        'subscription_id' => $activeLicense->subscription_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
     }
@@ -707,31 +751,12 @@ class PaymentService
             ];
         }
 
+        // Cancel any previous scheduled cancellations (new cancellation overrides previous cancellation)
+        $this->cancelScheduledCancellation($user, 'new_cancellation');
+        // Cancel any scheduled downgrades (cancellation overrides downgrade)
+        $this->cancelScheduledDowngrades($user, 'cancellation');
+
         $result = $gateway->handleCancellation($user, $subscriptionId);
-
-        if (($result['success'] ?? false) === true) {
-            $scheduledDowngradeOrders = Order::with('package')
-                ->where('user_id', $user->id)
-                ->where('order_type', 'downgrade')
-                ->whereIn('status', ['pending', 'scheduled_downgrade'])
-                ->get();
-
-            if ($scheduledDowngradeOrders->isNotEmpty()) {
-                foreach ($scheduledDowngradeOrders as $scheduledDowngradeOrder) {
-                    $originalStatus = $scheduledDowngradeOrder->status;
-
-                    $scheduledDowngradeOrder->update([
-                        'status' => 'cancelled',
-                        'metadata' => array_merge($scheduledDowngradeOrder->metadata ?? [], [
-                            'cancelled_reason' => 'User requested subscription cancellation - cancellation takes precedence over downgrade',
-                            'cancelled_at' => now()->toISOString(),
-                            'cancelled_by' => 'subscription_cancellation',
-                            'original_status' => $originalStatus,
-                        ]),
-                    ]);
-                }
-            }
-        }
 
         return $result;
     }
@@ -743,13 +768,13 @@ class PaymentService
             return null;
         }
 
-        $user = \App\Models\User::find($userId);
+        $user = User::find($userId);
         if ($user && method_exists($user, 'hasRole') && $user->hasRole('User')) {
-            \Illuminate\Support\Facades\Auth::guard('web')->login($user, true);
+            Auth::guard('web')->login($user, true);
             if ($request && method_exists($request, 'session')) {
                 $request->session()->save();
             }
-            \Illuminate\Support\Facades\Cache::forget("paypro_auth_token_{$authToken}");
+            Cache::forget("paypro_auth_token_{$authToken}");
             return $user;
         }
 

@@ -79,9 +79,6 @@
         <!-- Bootstrap 5 Bundle JS (for Offcanvas) -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-        <!-- Password Toggle Functionality -->
-        <script src="{{ asset('js/password-toggle.js') }}"></script>
-
         <!-- Copy to Clipboard Utility -->
         <script src="{{ asset('js/copy-to-clipboard.js') }}"></script>
 

@@ -457,14 +457,161 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
         }
 
         try {
+            // First, check the current subscription status
+            $subscriptionResponse = $this->makeApiRequest('get', "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}");
+            
+            if ($subscriptionResponse && $subscriptionResponse->successful()) {
+                $subscriptionData = $subscriptionResponse->json()['data'] ?? [];
+                $subscriptionStatus = $subscriptionData['status'] ?? null;
+                $scheduledChange = $subscriptionData['scheduled_change'] ?? null;
+                
+                // If subscription is already cancelled or has a scheduled cancellation, handle it
+                if ($subscriptionStatus === 'canceled' || ($scheduledChange && isset($scheduledChange['action']) && $scheduledChange['action'] === 'cancel')) {
+                    Log::info('[PaddlePaymentGateway::handleCancellation] Subscription already has cancellation scheduled', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                        'status' => $subscriptionStatus,
+                        'scheduled_change' => $scheduledChange,
+                    ]);
+                    
+                    // Update license and create order to reflect the existing cancellation
+                    $canceledAt = $subscriptionData['canceled_at'] ?? null;
+                    $effectiveAt = $scheduledChange['effective_at'] ?? $canceledAt;
+                    
+                    $activeLicense->update([
+                        'status' => 'cancelled_at_period_end',
+                        'cancelled_at' => $canceledAt ? \Carbon\Carbon::parse($canceledAt) : now(),
+                    ]);
+                    
+                    $currentPackage = $user->package;
+                    $metadata = [
+                        'source' => 'paddle_cancellation_scheduling',
+                        'subscription_id' => $subscriptionId,
+                        'subscription_status' => $subscriptionStatus,
+                        'cancelled_at' => $canceledAt,
+                        'scheduled_change' => $scheduledChange,
+                        'effective_at' => $effectiveAt,
+                        'next_billed_at' => $subscriptionData['next_billed_at'] ?? null,
+                        'cancelled_at_timestamp' => now()->toISOString(),
+                        'cancellation_scheduled' => true,
+                        'already_scheduled' => true,
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $subscriptionId,
+                        ],
+                    ];
+                    
+                    $orderData = [
+                        'user_id' => $user->id,
+                        'package_id' => $user->package_id,
+                        'amount' => 0,
+                        'currency' => 'USD',
+                        'status' => 'cancelled',
+                        'order_type' => 'cancellation',
+                        'payment_gateway_id' => $user->payment_gateway_id,
+                        'transaction_id' => 'PADDLE-CANCEL-' . Str::random(10),
+                        'metadata' => $metadata,
+                    ];
+                    
+                    $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
+                    
+                    return [
+                        'success' => true,
+                        'message' => 'Subscription cancellation is already scheduled. Your subscription will remain active until the end of your current billing period.',
+                        'cancellation_type' => 'end_of_billing_period',
+                        'order_id' => $order->id,
+                        'subscription_id' => $subscriptionId,
+                        'effective_at' => $effectiveAt,
+                        'next_billed_at' => $subscriptionData['next_billed_at'] ?? null,
+                    ];
+                }
+            }
+            
             $response = $this->makeApiRequest('post', "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}/cancel", [
                 'effective_from' => 'next_billing_period',
             ]);
 
             if (!$response || !$response->successful()) {
+                $errorMessage = $this->extractErrorMessage($response);
+                
+                // Check if the error is because subscription is already cancelled
+                $responseBody = $response->json() ?? [];
+                $errorCode = $responseBody['error']?['type'] ?? '';
+                
+                if (stripos($errorMessage, 'already canceled') !== false || 
+                    stripos($errorMessage, 'already cancelled') !== false ||
+                    $errorCode === 'subscription_already_canceled') {
+                    
+                    Log::info('[PaddlePaymentGateway::handleCancellation] Subscription already cancelled, creating order record', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscriptionId,
+                    ]);
+                    
+                    // Get subscription details to create order
+                    $subscriptionResponse = $this->makeApiRequest('get', "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}");
+                    $subscriptionData = $subscriptionResponse && $subscriptionResponse->successful() 
+                        ? ($subscriptionResponse->json()['data'] ?? []) 
+                        : [];
+                    
+                    $canceledAt = $subscriptionData['canceled_at'] ?? now()->toISOString();
+                    $scheduledChange = $subscriptionData['scheduled_change'] ?? null;
+                    $effectiveAt = $scheduledChange['effective_at'] ?? $canceledAt;
+                    
+                    $activeLicense->update([
+                        'status' => 'cancelled_at_period_end',
+                        'cancelled_at' => \Carbon\Carbon::parse($canceledAt),
+                    ]);
+                    
+                    $currentPackage = $user->package;
+                    $metadata = [
+                        'source' => 'paddle_cancellation_scheduling',
+                        'subscription_id' => $subscriptionId,
+                        'subscription_status' => $subscriptionData['status'] ?? 'canceled',
+                        'cancelled_at' => $canceledAt,
+                        'scheduled_change' => $scheduledChange,
+                        'effective_at' => $effectiveAt,
+                        'next_billed_at' => $subscriptionData['next_billed_at'] ?? null,
+                        'cancelled_at_timestamp' => now()->toISOString(),
+                        'cancellation_scheduled' => true,
+                        'already_cancelled' => true,
+                        'current_subscription' => [
+                            'package_id' => $currentPackage?->id,
+                            'package_name' => $currentPackage?->name,
+                            'package_price' => $currentPackage?->price ?? 0,
+                            'subscription_id' => $subscriptionId,
+                        ],
+                    ];
+                    
+                    $orderData = [
+                        'user_id' => $user->id,
+                        'package_id' => $user->package_id,
+                        'amount' => 0,
+                        'currency' => 'USD',
+                        'status' => 'cancelled',
+                        'order_type' => 'cancellation',
+                        'payment_gateway_id' => $user->payment_gateway_id,
+                        'transaction_id' => 'PADDLE-CANCEL-' . Str::random(10),
+                        'metadata' => $metadata,
+                    ];
+                    
+                    $order = $this->createOrUpdateOrder($orderData, 'cancellation', ['pending', 'cancelled'], true);
+                    
+                    return [
+                        'success' => true,
+                        'message' => 'Subscription cancellation is already scheduled. Your subscription will remain active until the end of your current billing period.',
+                        'cancellation_type' => 'end_of_billing_period',
+                        'order_id' => $order->id,
+                        'subscription_id' => $subscriptionId,
+                        'effective_at' => $effectiveAt,
+                        'next_billed_at' => $subscriptionData['next_billed_at'] ?? null,
+                    ];
+                }
+                
                 return [
                     'success' => false,
-                    'message' => 'Failed to cancel subscription: ' . $this->extractErrorMessage($response)
+                    'message' => 'Failed to cancel subscription: ' . $errorMessage
                 ];
             }
 
@@ -803,5 +950,73 @@ class PaddlePaymentGateway implements PaymentGatewayInterface
 
         // Create new order
         return Order::create($orderData);
+    }
+
+    /**
+     * Cancel a scheduled cancellation in Paddle by updating the subscription
+     * to remove the scheduled_change. This is called when user upgrades/downgrades
+     * to override any existing scheduled cancellation.
+     *
+     * @param string $subscriptionId
+     * @return bool
+     */
+    public function cancelScheduledCancellationInPaddle(string $subscriptionId): bool
+    {
+        if (!$subscriptionId || !preg_match('/^sub_[a-z\d]{26}$/', $subscriptionId)) {
+            Log::warning('[PaddlePaymentGateway::cancelScheduledCancellationInPaddle] Invalid subscription ID', [
+                'subscription_id' => $subscriptionId,
+            ]);
+            return false;
+        }
+
+        try {
+            // First, check if there's a scheduled cancellation
+            $subscriptionResponse = $this->makeApiRequest('get', "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}");
+            
+            if (!$subscriptionResponse || !$subscriptionResponse->successful()) {
+                Log::warning('[PaddlePaymentGateway::cancelScheduledCancellationInPaddle] Failed to get subscription', [
+                    'subscription_id' => $subscriptionId,
+                    'error' => $this->extractErrorMessage($subscriptionResponse),
+                ]);
+                return false;
+            }
+
+            $subscriptionData = $subscriptionResponse->json()['data'] ?? [];
+            $scheduledChange = $subscriptionData['scheduled_change'] ?? null;
+            
+            // If there's no scheduled cancellation, nothing to do
+            if (!$scheduledChange || !isset($scheduledChange['action']) || $scheduledChange['action'] !== 'cancel') {
+                Log::debug('[PaddlePaymentGateway::cancelScheduledCancellationInPaddle] No scheduled cancellation found', [
+                    'subscription_id' => $subscriptionId,
+                ]);
+                return true; // Not an error, just nothing to cancel
+            }
+
+            // Update subscription to remove scheduled_change by setting it to null
+            // According to Paddle API, we can update subscription and remove scheduled_change
+            $updateResponse = $this->makeApiRequest('patch', "{$this->apiBaseUrl}/subscriptions/{$subscriptionId}", [
+                'scheduled_change' => null,
+            ]);
+
+            if ($updateResponse && $updateResponse->successful()) {
+                Log::info('[PaddlePaymentGateway::cancelScheduledCancellationInPaddle] Successfully cancelled scheduled cancellation in Paddle', [
+                    'subscription_id' => $subscriptionId,
+                ]);
+                return true;
+            }
+
+            Log::warning('[PaddlePaymentGateway::cancelScheduledCancellationInPaddle] Failed to cancel scheduled cancellation in Paddle', [
+                'subscription_id' => $subscriptionId,
+                'error' => $this->extractErrorMessage($updateResponse),
+            ]);
+            return false;
+        } catch (\Exception $e) {
+            Log::error('[PaddlePaymentGateway::cancelScheduledCancellationInPaddle] Exception', [
+                'subscription_id' => $subscriptionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return false;
+        }
     }
 }
