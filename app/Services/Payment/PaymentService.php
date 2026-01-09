@@ -180,7 +180,7 @@ class PaymentService
         return PaymentGateways::first();
     }
 
-    public function processSuccessCallback(string $gateway, array $payload): array
+    public function processSuccessCallback(Request $request, string $gateway, array $payload): array
     {
         $user = Auth::user();
 
@@ -406,7 +406,7 @@ class PaymentService
             }
 
             // Track FirstPromoter sale for Paddle and PayProGlobal
-            $this->trackFirstPromoterSale($order->fresh(), $user, $package, $gatewayRecord);
+            $this->trackFirstPromoterSale($request->cookie(), $order->fresh(), $user, $package, $gatewayRecord);
 
             return [
                 'success'      => true,
