@@ -118,7 +118,7 @@
                                         $isFreePlan = $currentPackage && strtolower($currentPackage) === 'free';
                                         $isBusinessPlan = $currentPackage && strtolower($currentPackage) === 'business';
                                     @endphp
-                                    @include('subscription.includes._subscription-actions', ['isFreePlan' => $isFreePlan, 'isBusinessPlan' => $isBusinessPlan])
+                                    @include('subscription.includes._subscription-actions', ['isFreePlan' => $isFreePlan, 'isBusinessPlan' => $isBusinessPlan, 'hasScheduledCancellation' => $hasScheduledCancellation ?? false, 'calculatedEndDate' => $calculatedEndDate ?? null])
                                 @endif
                             </div>
                         </div>
@@ -411,41 +411,44 @@
     });
 
     // Initialize SweetAlert for cancellation
-    document.getElementById('cancelSubscriptionBtn')?.addEventListener('click', function() {
-        Swal.fire({
-            title: 'Schedule Subscription Cancellation',
-            text: "Your subscription will remain active until the end of your current billing period. You can continue using all premium features until then. Are you sure you want to schedule the cancellation?",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, cancel it!',
-            cancelButtonText: 'No, keep it',
-            reverseButtons: true,
-            showLoaderOnConfirm: true,
-            preConfirm: () => {
-                return new Promise((resolve) => {
-                    if (window.SpinnerUtils && typeof SpinnerUtils.show === 'function') {
-                        SpinnerUtils.show('Scheduling cancellation...');
-                    }
-                    document.getElementById('cancelSubscriptionForm').submit();
-                });
-            },
-            allowOutsideClick: () => !Swal.isLoading()
-        }).then((result) => {
-            if (result.isConfirmed) {
-                Swal.fire({
-                    title: 'Scheduling Cancellation...',
-                    text: 'Your subscription cancellation is being scheduled',
-                    timer: 2000,
-                    timerProgressBar: true,
-                    didOpen: () => {
-                        Swal.showLoading();
-                    }
-                });
-            }
+    const cancelBtn = document.getElementById('cancelSubscriptionBtn');
+    if (cancelBtn && !cancelBtn.disabled) {
+        cancelBtn.addEventListener('click', function() {
+            Swal.fire({
+                title: 'Schedule Subscription Cancellation',
+                text: "Your subscription will remain active until the end of your current billing period. You can continue using all premium features until then. Are you sure you want to schedule the cancellation?",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, cancel it!',
+                cancelButtonText: 'No, keep it',
+                reverseButtons: true,
+                showLoaderOnConfirm: true,
+                preConfirm: () => {
+                    return new Promise((resolve) => {
+                        if (window.SpinnerUtils && typeof SpinnerUtils.show === 'function') {
+                            SpinnerUtils.show('Scheduling cancellation...');
+                        }
+                        document.getElementById('cancelSubscriptionForm').submit();
+                    });
+                },
+                allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Scheduling Cancellation...',
+                        text: 'Your subscription cancellation is being scheduled',
+                        timer: 2000,
+                        timerProgressBar: true,
+                        didOpen: () => {
+                            Swal.showLoading();
+                        }
+                    });
+                }
+            });
         });
-    });
+    }
 </script>
 
 {{-- FirstPromoter Referral Tracking (after successful payment) --}}
