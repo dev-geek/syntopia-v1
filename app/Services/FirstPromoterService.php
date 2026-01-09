@@ -165,7 +165,10 @@ class FirstPromoterService
         }
 
         if (empty($data['tid']) && empty($data['ref_id'])) {
-            Log::warning('FirstPromoter: Missing tid and ref_id - signup will be tracked but not linked to referral', ['data' => $data]);
+            Log::warning('FirstPromoter: Missing tid and ref_id - API may reject request if both are required', [
+                'email' => $data['email'] ?? null,
+                'uid' => $data['uid'] ?? null
+            ]);
         }
 
         $payload = [];
