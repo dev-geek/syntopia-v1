@@ -1003,6 +1003,7 @@ class PaymentService
                 ?? $metadata['custom_data']
                 ?? $metadata['custom']
                 ?? null;
+            dd($customData);
         } elseif ($gatewayName === 'pay pro global') {
             // For PayProGlobal: check raw_payload custom field (JSON string)
             $customDataString = $rawPayload['custom'] ?? $metadata['custom'] ?? null;
@@ -1053,8 +1054,6 @@ class PaymentService
         $refId = $customData['ref_id']
             ?? $metadata['ref_id']
             ?? null;
-
-            dd($tid,$refId);
 
         // Prepare tracking data
         $trackingData = [
