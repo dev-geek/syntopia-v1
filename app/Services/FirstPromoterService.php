@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -85,11 +86,11 @@ class FirstPromoterService
         }
 
         if (!empty($data['tid'])) {
-            $payload['tid'] = request()->cookie('_fprom_tid');
+            $payload['tid'] = Cookie::get('_fprom_tid');
         }
 
         if (!empty($data['ref_id'])) {
-            $payload['ref_id'] = request()->cookie('_fprom_ref');
+            $payload['ref_id'] = Cookie::get('_fprom_ref');
         }
 
         if (isset($data['skip_email_notification'])) {
@@ -98,7 +99,7 @@ class FirstPromoterService
 
         try {
 
-            dd($payload,$this->apiKey,$this->accountId);
+            dd($payload);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
