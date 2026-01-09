@@ -992,6 +992,7 @@ class PaymentService
 
         $metadata = $order->metadata ?? [];
         $rawPayload = $metadata['raw_payload'] ?? [];
+        dd($metadata);
 
         // Extract custom data from different sources based on gateway
         $customData = null;
