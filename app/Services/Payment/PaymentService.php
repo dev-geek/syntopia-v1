@@ -17,7 +17,6 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\License\LicenseApiService;
 use App\Services\FirstPromoterService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class PaymentService
@@ -180,7 +179,7 @@ class PaymentService
         return PaymentGateways::first();
     }
 
-    public function processSuccessCallback(array $cookieData, string $gateway, array $payload): array
+    public function processSuccessCallback(string $gateway, array $payload): array
     {
         $user = Auth::user();
 
@@ -406,7 +405,7 @@ class PaymentService
             }
 
             // Track FirstPromoter sale for Paddle and PayProGlobal
-            $this->trackFirstPromoterSale(request()->cookie(), $order->fresh(), $user, $package, $gatewayRecord);
+            $this->trackFirstPromoterSale($order->fresh(), $user, $package, $gatewayRecord);
 
             return [
                 'success'      => true,
@@ -893,7 +892,7 @@ class PaymentService
         };
     }
 
-    public function processSuccessCallbackWithAuth(array $cookieData, array $requestData, array $queryData, ?string $successUrl = null, $request = null): array
+    public function processSuccessCallbackWithAuth(array $requestData, array $queryData, ?string $successUrl = null, $request = null): array
     {
         $gateway = $this->extractGatewayFromRequest($requestData, $successUrl);
         if (empty($gateway)) {
@@ -948,7 +947,7 @@ class PaymentService
         }
 
         $payload = $this->prepareSuccessCallbackPayload($requestData, $queryData);
-        $result = $this->processSuccessCallback($cookieData, $gateway, $payload);
+        $result = $this->processSuccessCallback($gateway, $payload);
 
         if (!isset($result['success'])) {
             \Illuminate\Support\Facades\Log::error('Invalid response from processSuccessCallback', [
@@ -970,10 +969,8 @@ class PaymentService
         return $this->processAddonSuccess($user, $orderId, $addon);
     }
 
-    private function trackFirstPromoterSale($cookieData, Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
+    private function trackFirstPromoterSale(Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
     {
-
-        dd($cookieData);
         if (!$order->transaction_id || $order->amount <= 0) {
             Log::debug('[PaymentService] Skipping FirstPromoter tracking: missing transaction_id or invalid amount', [
                 'order_id' => $order->id,

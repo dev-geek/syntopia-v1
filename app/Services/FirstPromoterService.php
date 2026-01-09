@@ -98,8 +98,6 @@ class FirstPromoterService
         }
 
         try {
-
-            dd(request()->cookie(), $payload);
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Account-ID' => $this->accountId,
