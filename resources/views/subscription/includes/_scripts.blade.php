@@ -590,23 +590,6 @@
             const paddleEventCallback = function(eventData) {
                 console.log('Paddle event callback triggered:', eventData);
 
-                // Track FirstPromoter referral when checkout is completed
-                if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {
-                    const email = eventData.data?.customer?.email || userEmail;
-                    const uid = eventData.data?.customer?.id || loggedInUserId;
-
-                    if (email && uid && typeof fpr !== 'undefined') {
-                        console.log('Tracking FirstPromoter referral:', {
-                            email,
-                            uid
-                        });
-                        fpr("referral", {
-                            email,
-                            uid
-                        });
-                    }
-                }
-
                 handlePaddleEvent(eventData, action);
             };
 

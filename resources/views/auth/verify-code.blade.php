@@ -469,7 +469,7 @@
             </div>
             <h1 class="heading-text">Check your Email</h1>
             <p class="email-text">Please enter the verification code was sent to {{ $email ?? Auth::user()->email }}</p>
-            
+
             <div class="expiration-notice" id="expiration-notice">
                 <i class="fas fa-clock" style="margin-right: 8px;"></i>
                 <strong>Verification code expires in <span id="countdown-timer">60:00</span></strong>
@@ -585,17 +585,6 @@
         @endpush
     @endif
 
-    {{-- FirstPromoter Referral Tracking --}}
-    @if(session('email') || Auth::check())
-        <script>
-            @if(Auth::check())
-                fpr("referral", {email: "{{ Auth::user()->email }}"});
-            @elseif(session('email'))
-                fpr("referral", {email: "{{ session('email') }}"});
-            @endif
-        </script>
-    @endif
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
@@ -633,7 +622,7 @@
         const expirationTimestamp = {{ $expirationTimestamp }};
         const countdownElement = document.getElementById('countdown-timer');
         const expirationNotice = document.getElementById('expiration-notice');
-        
+
         if (!countdownElement || !expirationNotice) return;
 
         function updateCountdown() {

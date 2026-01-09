@@ -376,28 +376,8 @@
             try {
                 Paddle.Environment.set('{{ config('payment.gateways.Paddle.environment', 'sandbox') }}');
 
-                // Global Paddle event callback for FirstPromoter referral tracking
-                const globalPaddleEventCallback = function(eventData) {
-                    if (eventData.name === 'checkout.completed' || eventData.type === 'checkout.completed') {
-                        const email = eventData.data?.customer?.email;
-                        const uid = eventData.data?.customer?.id;
-
-                        if (email && uid && typeof fpr !== 'undefined') {
-                            console.log('Tracking FirstPromoter referral via global callback:', {
-                                email,
-                                uid
-                            });
-                            fpr("referral", {
-                                email,
-                                uid
-                            });
-                        }
-                    }
-                };
-
                 Paddle.Setup({
-                    token: '{{ config('payment.gateways.Paddle.client_side_token') }}',
-                    eventCallback: globalPaddleEventCallback
+                    token: '{{ config('payment.gateways.Paddle.client_side_token') }}'
                 });
 
                 window.addEventListener('message', function(event) {
