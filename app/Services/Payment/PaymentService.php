@@ -893,7 +893,7 @@ class PaymentService
         };
     }
 
-    public function processSuccessCallbackWithAuth(array $requestData, array $queryData, ?string $successUrl = null, $request = null): array
+    public function processSuccessCallbackWithAuth(array $cookieData, array $requestData, array $queryData, ?string $successUrl = null, $request = null): array
     {
         $gateway = $this->extractGatewayFromRequest($requestData, $successUrl);
         if (empty($gateway)) {
@@ -948,7 +948,7 @@ class PaymentService
         }
 
         $payload = $this->prepareSuccessCallbackPayload($requestData, $queryData);
-        $result = $this->processSuccessCallback($gateway, $payload);
+        $result = $this->processSuccessCallback($cookieData, $gateway, $payload);
 
         if (!isset($result['success'])) {
             \Illuminate\Support\Facades\Log::error('Invalid response from processSuccessCallback', [
