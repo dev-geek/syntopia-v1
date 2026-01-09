@@ -30,8 +30,6 @@ Route::get('/subscription', [SubscriptionController::class, 'index'])->name('sub
 Route::post('/public/submit', function (Request $request) {
     // Handle public POST request
     return response()->json(['message' => 'Public POST route received', 'data' => $request->all()]);
-    // dd the user id and order id
-    dd($request->user()->id, $request->order_id);
 })->name('public.submit');
 
 /*

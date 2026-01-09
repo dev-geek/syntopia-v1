@@ -476,8 +476,6 @@ class AdminController extends Controller
         $results['message'] = $results['overall_status'] === 'success'
             ? 'All scheduled commands executed successfully.'
             : 'Some commands failed. Check individual command results.';
-
-        dd($results);
     }
 
     private function parseCommandOutput(string $output, string $command): array
