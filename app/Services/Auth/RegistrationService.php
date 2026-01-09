@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\DeviceFingerprintService;
 use App\Services\FreePlanAbuseService;
 use App\Services\MailService;
+use App\Services\FirstPromoterService;
 use App\Mail\VerifyEmail;
 
 class RegistrationService
@@ -18,6 +19,7 @@ class RegistrationService
         private DeviceFingerprintService $deviceFingerprintService,
         private FreePlanAbuseService $freePlanAbuseService,
         private PaymentGatewayFactory $paymentGatewayFactory,
+        private FirstPromoterService $firstPromoterService,
     ) {}
 
     public function validateRegistration(Request $request): array
@@ -143,6 +145,8 @@ class RegistrationService
 
             DB::commit();
 
+            $this->trackFirstPromoterSignup($user, $request);
+
             $mailResult = MailService::send($user->email, new VerifyEmail($user));
 
             if ($mailResult['success']) {
@@ -197,6 +201,36 @@ class RegistrationService
         if ($activeGateway && !$user->payment_gateway_id) {
             $user->update(['payment_gateway_id' => $activeGateway->id]);
             }
+    }
+
+    private function trackFirstPromoterSignup(User $user, Request $request): void
+    {
+        if (!config('payment.firstpromoter.enabled', false)) {
+            return;
+        }
+
+        try {
+            $tid = $request->cookie('_fprom_tid') ?? $request->cookie('_fprom_track');
+
+            $signupData = [
+                'email' => $user->email,
+                'uid' => (string) $user->id,
+                'ip' => $request->ip(),
+                'created_at' => $user->created_at->toIso8601String(),
+            ];
+
+            if ($tid) {
+                $signupData['tid'] = $tid;
+            }
+
+            $this->firstPromoterService->trackSignup($signupData);
+        } catch (\Exception $e) {
+            Log::warning('Failed to track FirstPromoter signup', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 
 }

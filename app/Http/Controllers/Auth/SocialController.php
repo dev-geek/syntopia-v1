@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Services\SubscriptionService;
 use App\Services\Auth\RegistrationService;
+use App\Services\FirstPromoterService;
 use App\Models\{Package, PaymentGateways};
 use App\Factories\PaymentGatewayFactory;
 
@@ -275,6 +276,8 @@ class SocialController extends Controller
                         $subscriptionService->assignFreePlanImmediately($userData, $freePackage);
 
                         DB::commit();
+
+                        $this->trackFirstPromoterSignup($userData, $request);
 
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Google');
@@ -547,6 +550,8 @@ class SocialController extends Controller
 
                         DB::commit();
 
+                        $this->trackFirstPromoterSignup($userData, $request);
+
                         Auth::login($userData);
                         return $this->redirectBasedOnUserRole($userData, 'Welcome! Account created successfully with Facebook');
 
@@ -679,5 +684,36 @@ class SocialController extends Controller
         }
 
         return true;
+    }
+
+    private function trackFirstPromoterSignup($user, Request $request): void
+    {
+        if (!config('payment.firstpromoter.enabled', false)) {
+            return;
+        }
+
+        try {
+            $firstPromoterService = app(FirstPromoterService::class);
+            $tid = $request->cookie('_fprom_tid') ?? $request->cookie('_fprom_track');
+            
+            $signupData = [
+                'email' => $user->email,
+                'uid' => (string) $user->id,
+                'ip' => $request->ip(),
+                'created_at' => $user->created_at->toIso8601String(),
+            ];
+
+            if ($tid) {
+                $signupData['tid'] = $tid;
+            }
+
+            $firstPromoterService->trackSignup($signupData);
+        } catch (\Exception $e) {
+            Log::warning('Failed to track FirstPromoter signup', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 }

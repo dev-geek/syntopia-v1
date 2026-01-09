@@ -11,6 +11,7 @@ class FirstPromoterService
     private $apiKey;
     private $accountId;
     private $saleApiUrl = 'https://api.firstpromoter.com/api/v2/track/sale';
+    private $signupApiUrl = 'https://api.firstpromoter.com/api/v2/track/signup';
 
     public function __construct()
     {
@@ -143,6 +144,106 @@ class FirstPromoterService
             }
         } catch (\Exception $e) {
             Log::error('FirstPromoter: Exception while tracking sale', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'payload' => $payload
+            ]);
+            return null;
+        }
+    }
+
+    public function trackSignup(array $data): ?array
+    {
+        if (!$this->apiKey || !$this->accountId) {
+            Log::warning('FirstPromoter: API key or Account ID not configured');
+            return null;
+        }
+
+        if (empty($data['email']) && empty($data['uid'])) {
+            Log::error('FirstPromoter: Missing required field: email or uid must be provided', ['data' => $data]);
+            return null;
+        }
+
+        if (empty($data['tid']) && empty($data['ref_id'])) {
+            Log::warning('FirstPromoter: Missing tid and ref_id - signup may not be linked to referral', ['data' => $data]);
+        }
+
+        $payload = [];
+
+        if (!empty($data['email'])) {
+            $payload['email'] = $data['email'];
+        }
+
+        if (!empty($data['uid'])) {
+            $payload['uid'] = $data['uid'];
+        }
+
+        if (!empty($data['tid'])) {
+            $payload['tid'] = $data['tid'];
+        }
+
+        if (!empty($data['ref_id'])) {
+            $payload['ref_id'] = $data['ref_id'];
+        }
+
+        if (!empty($data['ip'])) {
+            $payload['ip'] = $data['ip'];
+        }
+
+        if (!empty($data['created_at'])) {
+            $payload['created_at'] = $data['created_at'];
+        }
+
+        if (isset($data['skip_email_notification'])) {
+            $payload['skip_email_notification'] = $data['skip_email_notification'];
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Account-ID' => $this->accountId,
+                'Content-Type' => 'application/json',
+            ])->post($this->signupApiUrl, $payload);
+
+            $statusCode = $response->status();
+            $responseBody = $response->json() ?? [];
+            $errorMessage = $responseBody['message'] ?? $response->body();
+
+            if ($response->successful()) {
+                Log::info('FirstPromoter: Signup tracked successfully', [
+                    'email' => $payload['email'] ?? null,
+                    'uid' => $payload['uid'] ?? null,
+                    'referral_id' => $responseBody['referral']['id'] ?? null,
+                ]);
+
+                return $responseBody;
+            } elseif ($statusCode === 400) {
+                Log::error('FirstPromoter: Validation error (400) - Invalid signup request data', [
+                    'status_code' => $statusCode,
+                    'message' => $errorMessage,
+                    'payload' => $payload,
+                    'response_body' => $responseBody
+                ]);
+                return null;
+            } elseif ($statusCode === 404) {
+                Log::warning('FirstPromoter: Referral not found (404)', [
+                    'status_code' => $statusCode,
+                    'message' => $errorMessage,
+                    'email' => $payload['email'] ?? null,
+                    'uid' => $payload['uid'] ?? null,
+                ]);
+                return null;
+            } else {
+                Log::error('FirstPromoter: Failed to track signup', [
+                    'status_code' => $statusCode,
+                    'message' => $errorMessage,
+                    'response_body' => $responseBody,
+                    'payload' => $payload
+                ]);
+                return null;
+            }
+        } catch (\Exception $e) {
+            Log::error('FirstPromoter: Exception while tracking signup', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'payload' => $payload
