@@ -17,6 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\License\LicenseApiService;
 use App\Services\FirstPromoterService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class PaymentService
@@ -969,8 +970,10 @@ class PaymentService
         return $this->processAddonSuccess($user, $orderId, $addon);
     }
 
-    private function trackFirstPromoterSale(Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
+    private function trackFirstPromoterSale(Request $request, Order $order, User $user, Package $package, ?PaymentGateways $gatewayRecord): void
     {
+
+        dd($request->cookie());
         if (!$order->transaction_id || $order->amount <= 0) {
             Log::debug('[PaymentService] Skipping FirstPromoter tracking: missing transaction_id or invalid amount', [
                 'order_id' => $order->id,
@@ -1077,8 +1080,6 @@ class PaymentService
         if ($refId) {
             $trackingData['ref_id'] = $refId;
         }
-
-        dd(request()->cookie());
 
         try {
             $result = $this->firstPromoterService->trackSale($trackingData);
